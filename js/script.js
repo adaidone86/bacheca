@@ -12,9 +12,40 @@ class BacheaCalendar {
 
     init() {
         this.setupEventListeners();
+        this.detectDevice();
         // Carica da GitHub PRIMA di renderizzare
         this.loadFromGitHub().then(() => {
             this.render();
+        });
+    }
+
+    detectDevice() {
+        // Rileva se è mobile o desktop
+        const isMobile = window.innerWidth < 768;
+
+        if (isMobile) {
+            // Su mobile: attiva vista lista
+            this.isListView = true;
+            const viewToggleBtn = document.getElementById('viewToggleBtn');
+            const listView = document.getElementById('listView');
+            const calendarView = document.getElementById('calendarView');
+
+            viewToggleBtn.textContent = '📅 Calendario';
+            viewToggleBtn.classList.add('active');
+            listView.style.display = 'block';
+            calendarView.style.display = 'none';
+
+            // Renderizza la lista subito
+            setTimeout(() => this.renderList(), 100);
+        }
+
+        // Ascolta il ridimensionamento della finestra
+        window.addEventListener('resize', () => {
+            const nowMobile = window.innerWidth < 768;
+            if (nowMobile !== this.isListView) {
+                // Se il dispositivo cambia (es: rotazione dello schermo), cambia vista
+                this.toggleView();
+            }
         });
     }
 
