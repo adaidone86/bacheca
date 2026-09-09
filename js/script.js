@@ -808,6 +808,7 @@ class BacheaCalendar {
         }
         // Default: tutti i colori visibili
         return {
+            'color-neutral': true,
             'color-yellow': true,
             'color-pink': true,
             'color-green': true,

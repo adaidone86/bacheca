@@ -15,47 +15,59 @@
       • Il giorno appare con sfondo grigio ma gli eventi rimangono colorati
 
 1️⃣ AGGIUNGERE UN EVENTO
-   • Clicca su un giorno del calendario
-   • Scrivi il nome dell'evento
-   • Aggiungi opzionalmente: ora, luogo e note
-   • Scegli il colore che rappresenta la categoria
-   • Clicca "Aggiungi"
+   • Clicca su un giorno del calendario (da domani in poi)
+   • Si aprirà un modal con 3 sezioni: Evento, Partecipanti, Dettagli
+   • Completa i campi e clicca "Aggiungi"
 
-2️⃣ AGGIUNGERE PARTECIPANTI (opzionale)
-       • Durante la creazione di un evento, spunta "👥 Aggiungi partecipanti"
-       • Apparirà un campo dove puoi inserire i nomi
-       • Scrivi un nome per riga (Es: Mario, Luigi, Peach)
-       • I partecipanti verranno mostrati nella lista eventi
-       • Puoi modificare i partecipanti anche dopo aver creato l'evento
+📋 LE 3 SEZIONI DEL MODAL
 
-3️⃣ VISUALIZZARE GLI EVENTI
-       • Vedrai i nomi degli eventi come post-it colorati sui giorni
-       • Clicca su un post-it per vedere tutti i dettagli
+   🔹 SEZIONE "EVENTO" (Obbligatoria)
+      • Nome evento: il titolo dell'evento (OBBLIGATORIO)
+      • Ora: l'orario dell'evento (OBBLIGATORIO)
+      • Luogo: dove si svolge l'evento (OBBLIGATORIO)
+      • Note: descrizione o dettagli aggiuntivi (OBBLIGATORIO)
 
-4️⃣ MODIFICARE UN EVENTO
-       • Clicca su un evento
-       • Modifica i dati che desideri
-       • Clicca "Salva"
+   🔹 SEZIONE "PARTECIPANTI" (Opzionale)
+      • Spunta "👥 Aggiungi partecipanti" per abilitare questa sezione
+      • Inserisci i nomi dei partecipanti nel campo
+      • Clicca il tasto "Salva" accanto al campo per aggiungerli
+      • Usa il tasto "🗑️ Elimina" per rimuovere un partecipante
+      • I partecipanti verranno mostrati nella lista eventi
 
-5️⃣ MODIFICARE UN EVENTO
-       • Clicca su un evento
-       • Modifica i dati che desideri
-       • Clicca "Salva"
+   🔹 SEZIONE "DETTAGLI" (Opzionale)
+      • Colore: seleziona il colore/categoria dell'evento (colore neutro di default)
+      • Link: inserisci un link utile per l'evento
+      • Immagine: aggiungi un'immagine per l'evento
 
-6️⃣ NAVIGAZIONE
+2️⃣ VISUALIZZARE GLI EVENTI
+   • Vedrai i nomi degli eventi come post-it colorati sui giorni
+   • Clicca su un post-it per vedere tutti i dettagli
+
+3️⃣ MODIFICARE UN EVENTO
+   • Clicca su un evento
+   • Modifica i dati nelle 3 sezioni che desideri
+   • Clicca "Salva"
+
+4️⃣ ELIMINARE UN EVENTO
+   • Clicca su un evento
+   • Clicca il tasto "Elimina"
+   • Conferma l'eliminazione
+
+5️⃣ NAVIGAZIONE
    • Usa i pulsanti per andare al mese precedente/successivo
    • Clicca "Oggi" per tornare al mese corrente
 
-7️⃣ FILTRARE PER CATEGORIA
+6️⃣ FILTRARE PER CATEGORIA
    • Clicca il pulsante "⚙️ Impostazioni"
    • Seleziona/deseleziona le categorie che vuoi vedere
    • Vedrai solo gli eventi delle categorie scelte
 
-8️⃣ CAMBIARE VISTA
+7️⃣ CAMBIARE VISTA
    • Clicca "📋 Lista" per passare alla visualizzazione in lista
    • Clicca di nuovo per tornare al calendario
 
-9️⃣ CATEGORIE COLORI
+8️⃣ CATEGORIE COLORI
+   ⚪ Senza categoria (Neutro)
    🍽️  Gastronomia/Cibo (Giallo)
    👥 Serate/Sociali (Rosa)
    ⛹️  Sport/Attività (Verde)
