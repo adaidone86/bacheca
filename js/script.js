@@ -307,12 +307,15 @@ class BacheaCalendar {
                 });
             }
 
-            // Aggiungi listener di click solo se il giorno non è passato
-            if (!isDisabledDay) {
+            // Aggiungi listener di click solo se il giorno non è passato e è del mese corrente
+            const canAddEvents = !isDisabledDay && dayObj.isCurrentMonth;
+            if (canAddEvents) {
                 dayEl.addEventListener('click', () => this.openModal(dayObj.date));
                 dayEl.style.cursor = 'pointer';
             } else {
                 dayEl.style.cursor = 'default';
+                // Nascondi il pulsante + per giorni disabilitati o giorni di altri mesi
+                dayEl.querySelector('.add-note-btn').style.display = 'none';
             }
 
             daysGrid.appendChild(dayEl);
