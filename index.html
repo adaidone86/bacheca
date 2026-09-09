@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bacheca</title>
+    <title>Bacheca Collaborativa</title>
     <style>
         * {
             margin: 0;
@@ -12,7 +12,7 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             padding: 20px;
@@ -20,149 +20,281 @@
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
         }
 
         header {
             text-align: center;
             color: white;
-            margin-bottom: 50px;
-            animation: fadeIn 0.6s ease-in;
+            margin-bottom: 30px;
         }
 
         h1 {
-            font-size: 3.5rem;
-            font-weight: 700;
-            margin-bottom: 10px;
+            font-size: 2.5rem;
+            margin-bottom: 8px;
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
         }
 
         .subtitle {
-            font-size: 1.2rem;
-            opacity: 0.95;
-            font-weight: 300;
-        }
-
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 30px;
-            margin-bottom: 50px;
-        }
-
-        .card {
-            background: white;
-            border-radius: 12px;
-            padding: 30px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-            animation: slideUp 0.6s ease-in;
-        }
-
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 50px rgba(0, 0, 0, 0.2);
-        }
-
-        .card-icon {
-            font-size: 2.5rem;
-            margin-bottom: 15px;
-        }
-
-        .card h2 {
-            font-size: 1.5rem;
-            margin-bottom: 12px;
-            color: #667eea;
-        }
-
-        .card p {
             font-size: 1rem;
-            line-height: 1.6;
-            color: #666;
-            margin-bottom: 15px;
+            opacity: 0.95;
         }
 
-        .card a {
-            display: inline-block;
-            padding: 10px 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            text-decoration: none;
-            border-radius: 6px;
-            transition: opacity 0.3s ease;
-            font-weight: 500;
-        }
-
-        .card a:hover {
-            opacity: 0.9;
-        }
-
-        .section-title {
-            color: white;
-            font-size: 2rem;
-            margin: 40px 0 25px 0;
-            font-weight: 600;
-            text-align: center;
-        }
-
-        .list {
+        .calendar-wrapper {
             background: white;
-            border-radius: 12px;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+            padding: 30px;
             overflow: hidden;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-            animation: slideUp 0.6s ease-in;
         }
 
-        .list-item {
-            padding: 20px 30px;
-            border-bottom: 1px solid #eee;
+        .calendar-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            transition: background-color 0.3s ease;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 15px;
         }
 
-        .list-item:last-child {
-            border-bottom: none;
-        }
-
-        .list-item:hover {
-            background-color: #f9f9f9;
-        }
-
-        .list-item a {
+        .month-year {
+            font-size: 1.8rem;
+            font-weight: 600;
             color: #667eea;
-            text-decoration: none;
-            font-weight: 500;
-            transition: color 0.3s ease;
-        }
-
-        .list-item a:hover {
-            color: #764ba2;
-        }
-
-        footer {
+            flex: 1;
             text-align: center;
+            min-width: 200px;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .btn-nav {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 30px 0;
-            opacity: 0.8;
+        }
+
+        .btn-nav:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-today {
+            background: #f0f0f0;
+            color: #667eea;
+        }
+
+        .btn-today:hover {
+            background: #e0e0e0;
+        }
+
+        .weekdays {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .weekday {
+            text-align: center;
+            font-weight: 600;
+            color: #667eea;
+            padding: 12px;
             font-size: 0.9rem;
+            text-transform: uppercase;
         }
 
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-            }
-            to {
-                opacity: 1;
-            }
+        .days-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 10px;
+            min-height: 400px;
         }
 
-        @keyframes slideUp {
+        .day {
+            background: #f9f9f9;
+            border: 2px solid #eee;
+            border-radius: 12px;
+            padding: 12px;
+            min-height: 120px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .day:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+        }
+
+        .day.other-month {
+            background: #fafafa;
+            opacity: 0.5;
+        }
+
+        .day-number {
+            font-weight: 600;
+            color: #667eea;
+            font-size: 0.9rem;
+            margin-bottom: 8px;
+        }
+
+        .day.other-month .day-number {
+            color: #999;
+        }
+
+        .notes-container {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .note {
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            word-wrap: break-word;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .note:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .note-text {
+            flex: 1;
+            line-height: 1.3;
+        }
+
+        .note-delete {
+            background: rgba(255, 255, 255, 0.7);
+            border: none;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 12px;
+            padding: 0;
+            flex-shrink: 0;
+        }
+
+        .note-delete:hover {
+            background: rgba(255, 255, 255, 1);
+        }
+
+        .color-yellow {
+            background: #ffd54f;
+            color: #333;
+        }
+
+        .color-pink {
+            background: #ff6b9d;
+            color: white;
+        }
+
+        .color-green {
+            background: #81c784;
+            color: white;
+        }
+
+        .color-blue {
+            background: #64b5f6;
+            color: white;
+        }
+
+        .color-purple {
+            background: #ba68c8;
+            color: white;
+        }
+
+        .color-orange {
+            background: #ffb74d;
+            color: white;
+        }
+
+        .add-note-btn {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            background: rgba(102, 126, 234, 0.1);
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            opacity: 0;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: 2px solid #667eea;
+            color: #667eea;
+        }
+
+        .day:hover .add-note-btn {
+            opacity: 1;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
             from {
                 opacity: 0;
-                transform: translateY(20px);
+                transform: translateY(-20px);
             }
             to {
                 opacity: 1;
@@ -170,17 +302,122 @@
             }
         }
 
+        .modal-header {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #667eea;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #eee;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 80px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .color-picker {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .color-option {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 3px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .color-option:hover {
+            transform: scale(1.1);
+        }
+
+        .color-option.selected {
+            border-color: #333;
+            box-shadow: 0 0 0 2px white, 0 0 0 4px #333;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-save {
+            flex: 1;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-save:hover {
+            opacity: 0.9;
+        }
+
+        .btn-cancel {
+            flex: 1;
+            padding: 12px;
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-cancel:hover {
+            background: #e0e0e0;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #999;
+            padding: 20px;
+            font-size: 0.9rem;
+        }
+
+        footer {
+            text-align: center;
+            color: white;
+            margin-top: 30px;
+            opacity: 0.8;
+            font-size: 0.9rem;
+        }
+
         @media (max-width: 768px) {
+            .calendar-wrapper {
+                padding: 20px;
+            }
+
             h1 {
-                font-size: 2.5rem;
+                font-size: 1.8rem;
             }
 
-            .section-title {
-                font-size: 1.5rem;
+            .day {
+                min-height: 100px;
             }
 
-            .grid {
-                grid-template-columns: 1fr;
+            .days-grid {
+                min-height: 350px;
             }
         }
     </style>
@@ -188,84 +425,283 @@
 <body>
     <div class="container">
         <header>
-            <h1>📌 Bacheca</h1>
-            <p class="subtitle">Benvenuto sulla mia bacheca personale</p>
+            <h1>📅 Bacheca Collaborativa</h1>
+            <p class="subtitle">Aggiungi le tue proposte di cose da fare cliccando su un giorno!</p>
         </header>
 
-        <div class="grid">
-            <div class="card">
-                <div class="card-icon">💼</div>
-                <h2>Progetti</h2>
-                <p>Scopri i miei ultimi progetti e lavori. Dalla ricerca all'implementazione, troverai tutto quello che sto sviluppando.</p>
-                <a href="#progetti">Vedi tutti →</a>
+        <div class="calendar-wrapper">
+            <div class="calendar-header">
+                <button class="btn-nav" id="prevBtn">← Mese precedente</button>
+                <div class="month-year" id="monthYear"></div>
+                <button class="btn-nav" id="nextBtn">Mese successivo →</button>
+                <button class="btn-today">Oggi</button>
             </div>
 
-            <div class="card">
-                <div class="card-icon">📚</div>
-                <h2>Risorse</h2>
-                <p>Una collezione di articoli, guide e documentazione utile per sviluppatori e interessati di tecnologia.</p>
-                <a href="#risorse">Vedi risorse →</a>
+            <div class="weekdays">
+                <div class="weekday">Lun</div>
+                <div class="weekday">Mar</div>
+                <div class="weekday">Mer</div>
+                <div class="weekday">Gio</div>
+                <div class="weekday">Ven</div>
+                <div class="weekday">Sab</div>
+                <div class="weekday">Dom</div>
             </div>
 
-            <div class="card">
-                <div class="card-icon">🔗</div>
-                <h2>Link Utili</h2>
-                <p>I miei profili social, repository, e altri link importanti dove puoi trovarmi e seguire il mio lavoro.</p>
-                <a href="#link">Vedi link →</a>
-            </div>
-        </div>
-
-        <h2 class="section-title" id="progetti">📂 Progetti</h2>
-        <div class="list">
-            <div class="list-item">
-                <span>🚀 <strong>Progetto 1</strong> - Descrizione breve del progetto</span>
-                <a href="#">Visita →</a>
-            </div>
-            <div class="list-item">
-                <span>🎨 <strong>Progetto 2</strong> - Descrizione breve del progetto</span>
-                <a href="#">Visita →</a>
-            </div>
-            <div class="list-item">
-                <span>⚙️ <strong>Progetto 3</strong> - Descrizione breve del progetto</span>
-                <a href="#">Visita →</a>
-            </div>
-        </div>
-
-        <h2 class="section-title" id="risorse">📚 Risorse</h2>
-        <div class="list">
-            <div class="list-item">
-                <span>📖 Articolo interessante</span>
-                <a href="#">Leggi →</a>
-            </div>
-            <div class="list-item">
-                <span>📖 Guida pratica</span>
-                <a href="#">Leggi →</a>
-            </div>
-            <div class="list-item">
-                <span>📖 Documentazione</span>
-                <a href="#">Leggi →</a>
-            </div>
-        </div>
-
-        <h2 class="section-title" id="link">🔗 Link Utili</h2>
-        <div class="list">
-            <div class="list-item">
-                <span>GitHub</span>
-                <a href="https://github.com">Profilo →</a>
-            </div>
-            <div class="list-item">
-                <span>LinkedIn</span>
-                <a href="https://linkedin.com">Profilo →</a>
-            </div>
-            <div class="list-item">
-                <span>Email</span>
-                <a href="mailto:contact@example.com">Scrivi →</a>
-            </div>
+            <div class="days-grid" id="daysGrid"></div>
         </div>
 
         <footer>
-            <p>&copy; 2026 • Bacheca Personale</p>
+            <p>💡 Clicca su un giorno per aggiungere una proposta • Le proposte vengono salvate automaticamente</p>
         </footer>
     </div>
+
+    <!-- Modal per aggiungere nota -->
+    <div class="modal" id="modal">
+        <div class="modal-content">
+            <div class="modal-header" id="modalTitle">Aggiungi una proposta</div>
+            <form id="noteForm">
+                <div class="form-group">
+                    <label for="noteText">Cosa vuoi fare?</label>
+                    <textarea id="noteText" placeholder="Scrivi la tua proposta..." required></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Colore</label>
+                    <div class="color-picker" id="colorPicker">
+                        <div class="color-option color-yellow selected" data-color="color-yellow"></div>
+                        <div class="color-option color-pink" data-color="color-pink"></div>
+                        <div class="color-option color-green" data-color="color-green"></div>
+                        <div class="color-option color-blue" data-color="color-blue"></div>
+                        <div class="color-option color-purple" data-color="color-purple"></div>
+                        <div class="color-option color-orange" data-color="color-orange"></div>
+                    </div>
+                </div>
+
+                <div class="modal-buttons">
+                    <button type="submit" class="btn-save">Aggiungi</button>
+                    <button type="button" class="btn-cancel" id="closeBtn">Annulla</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        class BacheaCalendar {
+            constructor() {
+                this.currentDate = new Date();
+                this.selectedDate = null;
+                this.selectedColor = 'color-yellow';
+                this.notes = this.loadNotes();
+                this.init();
+            }
+
+            init() {
+                this.setupEventListeners();
+                this.render();
+            }
+
+            setupEventListeners() {
+                document.getElementById('prevBtn').addEventListener('click', () => this.previousMonth());
+                document.getElementById('nextBtn').addEventListener('click', () => this.nextMonth());
+                document.querySelector('.btn-today').addEventListener('click', () => this.today());
+
+                document.getElementById('closeBtn').addEventListener('click', () => this.closeModal());
+                document.getElementById('modal').addEventListener('click', (e) => {
+                    if (e.target === document.getElementById('modal')) this.closeModal();
+                });
+
+                document.getElementById('noteForm').addEventListener('submit', (e) => this.addNote(e));
+
+                document.querySelectorAll('.color-option').forEach(option => {
+                    option.addEventListener('click', (e) => {
+                        document.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
+                        e.target.classList.add('selected');
+                        this.selectedColor = e.target.dataset.color;
+                    });
+                });
+            }
+
+            render() {
+                this.renderCalendar();
+                this.updateHeader();
+            }
+
+            renderCalendar() {
+                const year = this.currentDate.getFullYear();
+                const month = this.currentDate.getMonth();
+
+                const firstDay = new Date(year, month, 1);
+                const lastDay = new Date(year, month + 1, 0);
+                const prevLastDay = new Date(year, month, 0);
+
+                const daysInMonth = lastDay.getDate();
+                const daysInPrevMonth = prevLastDay.getDate();
+                const firstDayOfWeek = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
+
+                let daysArray = [];
+
+                // Giorni mese precedente
+                for (let i = firstDayOfWeek - 1; i >= 0; i--) {
+                    daysArray.push({
+                        day: daysInPrevMonth - i,
+                        isCurrentMonth: false,
+                        date: new Date(year, month - 1, daysInPrevMonth - i)
+                    });
+                }
+
+                // Giorni mese corrente
+                for (let i = 1; i <= daysInMonth; i++) {
+                    daysArray.push({
+                        day: i,
+                        isCurrentMonth: true,
+                        date: new Date(year, month, i)
+                    });
+                }
+
+                // Giorni mese successivo
+                const remainingDays = 42 - daysArray.length;
+                for (let i = 1; i <= remainingDays; i++) {
+                    daysArray.push({
+                        day: i,
+                        isCurrentMonth: false,
+                        date: new Date(year, month + 1, i)
+                    });
+                }
+
+                const daysGrid = document.getElementById('daysGrid');
+                daysGrid.innerHTML = '';
+
+                daysArray.forEach(dayObj => {
+                    const dayEl = document.createElement('div');
+                    dayEl.className = `day ${!dayObj.isCurrentMonth ? 'other-month' : ''}`;
+
+                    const dateKey = this.getDateKey(dayObj.date);
+                    const dayNotes = this.notes[dateKey] || [];
+
+                    dayEl.innerHTML = `
+                        <div class="day-number">${dayObj.day}</div>
+                        <div class="notes-container" id="notes-${dateKey}">
+                            ${dayNotes.length === 0 ? '<div class="empty-state">✨</div>' : ''}
+                        </div>
+                        <button class="add-note-btn" type="button">+</button>
+                    `;
+
+                    // Aggiungi le note al giorno
+                    const notesContainer = dayEl.querySelector(`#notes-${dateKey}`);
+                    if (dayNotes.length > 0) {
+                        notesContainer.innerHTML = '';
+                        dayNotes.forEach((note, index) => {
+                            const noteEl = document.createElement('div');
+                            noteEl.className = `note ${note.color}`;
+                            noteEl.innerHTML = `
+                                <span class="note-text">${this.escapeHtml(note.text)}</span>
+                                <button class="note-delete" type="button">✕</button>
+                            `;
+                            noteEl.querySelector('.note-delete').addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                this.deleteNote(dateKey, index);
+                            });
+                            notesContainer.appendChild(noteEl);
+                        });
+                    }
+
+                    dayEl.addEventListener('click', () => this.openModal(dayObj.date));
+                    daysGrid.appendChild(dayEl);
+                });
+            }
+
+            openModal(date) {
+                this.selectedDate = date;
+                document.getElementById('noteText').value = '';
+                document.getElementById('modal').classList.add('active');
+                document.getElementById('noteText').focus();
+
+                const dateStr = date.toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+                document.getElementById('modalTitle').textContent = `Proposta per ${dateStr}`;
+            }
+
+            closeModal() {
+                document.getElementById('modal').classList.remove('active');
+                this.selectedDate = null;
+            }
+
+            addNote(e) {
+                e.preventDefault();
+                const text = document.getElementById('noteText').value.trim();
+                if (!text || !this.selectedDate) return;
+
+                const dateKey = this.getDateKey(this.selectedDate);
+                if (!this.notes[dateKey]) {
+                    this.notes[dateKey] = [];
+                }
+
+                this.notes[dateKey].push({
+                    text,
+                    color: this.selectedColor
+                });
+
+                this.saveNotes();
+                this.closeModal();
+                this.renderCalendar();
+            }
+
+            deleteNote(dateKey, index) {
+                if (this.notes[dateKey]) {
+                    this.notes[dateKey].splice(index, 1);
+                    if (this.notes[dateKey].length === 0) {
+                        delete this.notes[dateKey];
+                    }
+                    this.saveNotes();
+                    this.renderCalendar();
+                }
+            }
+
+            getDateKey(date) {
+                return date.toISOString().split('T')[0];
+            }
+
+            previousMonth() {
+                this.currentDate.setMonth(this.currentDate.getMonth() - 1);
+                this.render();
+            }
+
+            nextMonth() {
+                this.currentDate.setMonth(this.currentDate.getMonth() + 1);
+                this.render();
+            }
+
+            today() {
+                this.currentDate = new Date();
+                this.render();
+            }
+
+            updateHeader() {
+                const options = { year: 'numeric', month: 'long' };
+                const monthYear = this.currentDate.toLocaleDateString('it-IT', options);
+                document.getElementById('monthYear').textContent = monthYear.charAt(0).toUpperCase() + monthYear.slice(1);
+            }
+
+            saveNotes() {
+                localStorage.setItem('bacheaNotes', JSON.stringify(this.notes));
+            }
+
+            loadNotes() {
+                try {
+                    return JSON.parse(localStorage.getItem('bacheaNotes')) || {};
+                } catch {
+                    return {};
+                }
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+        }
+
+        // Inizializza il calendario
+        new BacheaCalendar();
+    </script>
 </body>
 </html>
