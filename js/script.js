@@ -182,7 +182,11 @@ class BacheaCalendar {
             this.notes[dateKey] = [];
         }
 
+        // Genera un ID unico
+        const id = 'evt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
         this.notes[dateKey].push({
+            id: id,
             title: title,
             time: document.getElementById('eventTime').value.trim(),
             location: document.getElementById('eventLocation').value.trim(),
@@ -207,7 +211,10 @@ class BacheaCalendar {
     }
 
     getDateKey(date) {
-        return date.toISOString().split('T')[0];
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     }
 
     previousMonth() {
@@ -285,7 +292,10 @@ class BacheaCalendar {
         if (!this.editingNote) return;
 
         const { dateKey, noteIndex } = this.editingNote;
+        const eventId = this.notes[dateKey][noteIndex].id;
+
         this.notes[dateKey][noteIndex] = {
+            id: eventId, // Mantieni l'ID originale
             title: document.getElementById('editTitle').value.trim(),
             time: document.getElementById('editTime').value.trim(),
             location: document.getElementById('editLocation').value.trim(),

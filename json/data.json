@@ -1,27 +1,96 @@
 {
-  "2026-09-09": [
+  "2026-09-11": [
     {
-      "title": "SAGRA DEL TORTELLO",
-      "time": "19:00-23:00",
-      "location": "📍 O.Live – Parco dell'Oliveta (Sesto)",
-      "notes": "con cena cantata! 📞 Prenotazione obbligatoria: 393 336 4633",
+      "id": "evt_001",
+      "title": "🥗 Santa Valvola Records 🍽️",
+      "time": "Tutto il giorno",
+      "location": "📍 Orto Sonoro, via Spina, Prato",
+      "notes": "Evento musicale e gastronomico\nhttps://www.instagram.com/reels/DctKDOCg0mG/",
       "color": "color-yellow"
     }
   ],
-  "2026-09-10": [
+  "2026-09-12": [
     {
-      "title": "Pulire casa",
-      "time": "10:00-12:00",
-      "location": "📍 Casa",
-      "notes": "Pulire a fondo tutti gli ambienti",
+      "id": "evt_002",
+      "title": "🥗 Santa Valvola Records 🍽️",
+      "time": "Tutto il giorno",
+      "location": "📍 Orto Sonoro, via Spina, Prato",
+      "notes": "Evento musicale e gastronomico\nhttps://www.instagram.com/reels/DctKDOCg0mG/",
+      "color": "color-yellow"
+    },
+    {
+      "id": "evt_003",
+      "title": "SAGRA DEL TORTELLO",
+      "time": "19:00-23:00",
+      "location": "📍 O.Live – Parco dell'Oliveta (Sesto)",
+      "notes": "Con cena cantata! 🎵\n📞 Prenotazione obbligatoria: 393 336 4633",
+      "color": "color-pink"
+    }
+  ],
+  "2026-09-13": [
+    {
+      "id": "evt_004",
+      "title": "🥗 Santa Valvola Records 🍽️",
+      "time": "Tutto il giorno",
+      "location": "📍 Orto Sonoro, via Spina, Prato",
+      "notes": "Evento musicale e gastronomico\nhttps://www.instagram.com/reels/DctKDOCg0mG/",
+      "color": "color-yellow"
+    },
+    {
+      "id": "evt_005",
+      "title": "🔴 TREKKING: Pania della Croce 🔴",
+      "time": "09:30-10:00 (ritrovo)",
+      "location": "📍 Molazzana (Lu)",
+      "notes": "Lunghezza: 8/9 km | Dislivello: 700 metri\nDifficoltà: media/difficile\nRitrovo: fra Chiesina Uzzanese e Porcari",
+      "color": "color-green"
+    }
+  ],
+  "2026-09-19": [
+    {
+      "id": "evt_006",
+      "title": "💁‍♀️ Serata Ragazze 💁‍♀️",
+      "time": "Sera",
+      "location": "📍 Casa Selam",
+      "notes": "Serata tra amiche! ✨",
+      "color": "color-pink"
+    }
+  ],
+  "2026-09-20": [
+    {
+      "id": "evt_007",
+      "title": "🤺 Calambur a Certaldo - Palio 🗡️⚔️",
+      "time": "Tutto il giorno",
+      "location": "📍 Certaldo",
+      "notes": "Link: https://www.instagram.com/p/DbXljY8sBo0/?stkn=Y3NlbWp4bWd3MnZo",
       "color": "color-blue"
     },
     {
-      "title": "Chiamare mamma",
-      "time": "15:00",
-      "location": "📍 Telefono",
-      "notes": "Ricordati di chiedere come sta",
+      "id": "evt_008",
+      "title": "👾 Gigacon a Firenze 🎮",
+      "time": "Tutto il giorno",
+      "location": "📍 Firenze",
+      "notes": "Biglietti: http://linktr.ee/gigacontuscany?utm_source=ig&utm_medium=social&utm_content=link_in_bio",
       "color": "color-purple"
+    }
+  ],
+  "2026-09-27": [
+    {
+      "id": "evt_009",
+      "title": "🚶 CORRI LA VITA a Firenze 🏃",
+      "time": "Mattina",
+      "location": "📍 Firenze",
+      "notes": "Corsa evento benefica\nSito: https://www.corrilavita.it/",
+      "color": "color-orange"
+    }
+  ],
+  "2026-10-04": [
+    {
+      "id": "evt_010",
+      "title": "🚶‍♀️ Di Borgo In Borgo - Barberino Tavernelle 🚶‍♂️",
+      "time": "09:00-16:00",
+      "location": "📍 Barberino Tavernelle",
+      "notes": "Passeggiata naturalistica di 12 km | Prezzo: 20€\nPartenza ore 09 - Ritrovo\nPranzo: Az. Agricola La Spinosa\nVisita Fattoria Spoiano\nSentiero delle Briglie",
+      "color": "color-green"
     }
   ]
 }
