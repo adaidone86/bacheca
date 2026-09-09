@@ -1,3 +1,18 @@
+// Firebase Config
+const firebaseConfig = {
+    apiKey: "AIzaSyBGy1u-1qF5qv8234rkEvjvEunyJAiogd4",
+    authDomain: "bacheca-c0441.firebaseapp.com",
+    databaseURL: "https://bacheca-c0441-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "bacheca-c0441",
+    storageBucket: "bacheca-c0441.firebasestorage.app",
+    messagingSenderId: "800396955473",
+    appId: "1:800396955473:web:2e0a0607a0666122a58d70"
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+
 class BacheaCalendar {
     constructor() {
         this.currentDate = new Date();
@@ -19,6 +34,8 @@ class BacheaCalendar {
         // Carica da GitHub PRIMA di renderizzare
         this.loadFromGitHub().then(() => {
             this.render();
+            // Sincronizza con Firebase automaticamente
+            this.autoSync();
         });
     }
 
@@ -231,7 +248,9 @@ class BacheaCalendar {
 
             if (visibleNotes.length > 0) {
                 notesContainer.innerHTML = '';
-                dayNotes.forEach((note, index) => {
+                // Ordina gli eventi per orario
+                const sortedNotes = this.sortByTime(dayNotes);
+                sortedNotes.forEach((note, index) => {
                     // Mostra solo se il colore è visibile
                     if (!this.isColorVisible(note.color)) return;
 
@@ -266,15 +285,31 @@ class BacheaCalendar {
 
     openModal(date) {
         this.selectedDate = date;
-        document.getElementById('noteText').value = '';
+        // Pulisci tutti i campi del form
+        document.getElementById('eventTitle').value = '';
+        document.getElementById('eventTime').value = '';
+        document.getElementById('eventLocation').value = '';
+        document.getElementById('eventNotes').value = '';
+
+        // Seleziona il colore giallo di default
+        document.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
+        document.querySelector('.color-option.color-yellow').classList.add('selected');
+        this.selectedColor = 'color-yellow';
+
         document.getElementById('modal').classList.add('active');
-        document.getElementById('noteText').focus();
+        document.getElementById('eventTitle').focus();
 
         const dateStr = date.toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
         document.getElementById('modalTitle').textContent = `Proposta per ${dateStr}`;
     }
 
     closeModal() {
+        // Pulisci i campi del form
+        document.getElementById('eventTitle').value = '';
+        document.getElementById('eventTime').value = '';
+        document.getElementById('eventLocation').value = '';
+        document.getElementById('eventNotes').value = '';
+
         document.getElementById('modal').classList.remove('active');
         this.selectedDate = null;
     }
@@ -302,8 +337,10 @@ class BacheaCalendar {
         });
 
         this.saveNotes();
+        this.autoSync(); // Sincronizza con Firebase
         this.closeModal();
         this.renderCalendar();
+        setTimeout(() => alert('✅ Evento aggiunto con successo!'), 100);
     }
 
     deleteNote(dateKey, index) {
@@ -313,6 +350,8 @@ class BacheaCalendar {
                 delete this.notes[dateKey];
             }
             this.saveNotes();
+            this.closeModal(); // Chiudi il modal di aggiunta se aperto
+            this.autoSync(); // Sincronizza con Firebase
             this.renderCalendar();
         }
     }
@@ -363,6 +402,37 @@ class BacheaCalendar {
         return div.innerHTML;
     }
 
+    // Ordina eventi per orario
+    sortByTime(events) {
+        return events.sort((a, b) => {
+            const timeA = this.extractHours(a.time);
+            const timeB = this.extractHours(b.time);
+            return timeA - timeB;
+        });
+    }
+
+    // Estrae le ore in minuti da una stringa di tempo
+    extractHours(timeStr) {
+        if (!timeStr) return 1440; // Fine giornata se non specificato
+
+        // Se contiene "Tutto il giorno" o simili, mettilo alla fine
+        if (timeStr.toLowerCase().includes('giorno') ||
+            timeStr.toLowerCase().includes('sera') ||
+            timeStr.toLowerCase().includes('mattina')) {
+            return 1440;
+        }
+
+        // Estrai il primo orario (HH:MM)
+        const match = timeStr.match(/(\d{1,2}):(\d{2})/);
+        if (match) {
+            const hours = parseInt(match[1]);
+            const minutes = parseInt(match[2]);
+            return hours * 60 + minutes;
+        }
+
+        return 1440; // Default: fine giornata
+    }
+
     // View Toggle
     toggleView() {
         this.isListView = !this.isListView;
@@ -399,7 +469,13 @@ class BacheaCalendar {
             });
         }
 
-        allEvents.sort((a, b) => a.date - b.date);
+        // Ordina per data, poi per orario
+        allEvents.sort((a, b) => {
+            const dateCompare = a.date - b.date;
+            if (dateCompare !== 0) return dateCompare;
+            // Se la data è uguale, ordina per orario
+            return this.extractHours(a.time) - this.extractHours(b.time);
+        });
 
         // Filtra per colore visibile
         const visibleEvents = allEvents.filter(event => this.isColorVisible(event.color));
@@ -468,6 +544,23 @@ class BacheaCalendar {
         document.getElementById('infoModal').classList.remove('active');
     }
 
+    autoSync() {
+        if (this.isSyncing) return;
+        this.isSyncing = true;
+
+        // Salva i dati locali direttamente su Firebase
+        database.ref('events').set(this.notes, (error) => {
+            this.isSyncing = false;
+            if (!error) {
+                // Successo: aggiorna l'interfaccia
+                this.renderCalendar();
+                if (this.isListView) {
+                    this.renderList();
+                }
+            }
+        });
+    }
+
     toggleGifModal() {
         const gifModal = document.getElementById('gifModal');
         gifModal.classList.toggle('active');
@@ -520,16 +613,20 @@ class BacheaCalendar {
         document.getElementById('editLocation').value = note.location || '';
         document.getElementById('editNotes').value = note.notes || '';
 
-        // Set colore
+        // Set colore - mantieni il colore originale come default
+        this.selectedColor = note.color || 'color-yellow';
         document.querySelectorAll('.edit-color-option').forEach(o => o.classList.remove('selected'));
-        document.querySelector(`.edit-color-option[data-color="${note.color}"]`).classList.add('selected');
-        this.selectedColor = note.color;
+        const colorElement = document.querySelector(`.edit-color-option[data-color="${this.selectedColor}"]`);
+        if (colorElement) {
+            colorElement.classList.add('selected');
+        }
 
         document.getElementById('editModal').classList.add('active');
     }
 
     closeEditModal() {
         document.getElementById('editModal').classList.remove('active');
+        this.closeModal(); // Chiudi anche il modal di aggiunta se aperto
         this.editingNote = null;
     }
 
@@ -549,8 +646,10 @@ class BacheaCalendar {
         };
 
         this.saveNotes();
+        this.autoSync(); // Sincronizza con Firebase
         this.closeEditModal();
         this.renderCalendar();
+        setTimeout(() => alert('✅ Evento modificato con successo!'), 100);
     }
 
     deleteCurrentNote() {
@@ -558,42 +657,14 @@ class BacheaCalendar {
         if (!confirm('Sei sicuro di voler eliminare questo evento?')) return;
 
         const { dateKey, noteIndex } = this.editingNote;
-        this.deleteNote(dateKey, noteIndex);
-        this.closeEditModal();
+        this.deleteNote(dateKey, noteIndex); // Elimina e sincronizza Firebase
+        this.closeEditModal(); // Chiude il popup
+        setTimeout(() => alert('✅ Evento eliminato con successo!'), 100);
     }
 
     async loadFromGitHub() {
-        try {
-            // Prova a caricare dal file locale prima
-            try {
-                const response = await fetch('./json/data.json');
-                if (response.ok) {
-                    const content = await response.text();
-                    const loadedNotes = JSON.parse(content);
-                    this.notes = loadedNotes;
-                    this.saveNotes();
-                    return Promise.resolve();
-                }
-            } catch (localError) {
-                // Se il file locale non esiste, prova GitHub
-                console.log('File locale non trovato, tentando GitHub...');
-            }
-
-            // Fallback: leggi dal file pubblico su GitHub
-            const response = await fetch(
-                'https://raw.githubusercontent.com/adaidone86/bacheca/main/json/data.json'
-            );
-
-            if (response.ok) {
-                const content = await response.text();
-                const loadedNotes = JSON.parse(content);
-                this.notes = loadedNotes;
-                this.saveNotes();
-                return Promise.resolve();
-            }
-        } catch (error) {
-            console.error('Errore nel caricamento dei dati:', error);
-        }
+        // Caricamento dati delegato a Firebase via autoSync()
+        // Non carichiamo più da data.json per evitare conflitti
         return Promise.resolve();
     }
 

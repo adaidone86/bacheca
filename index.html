@@ -6,6 +6,8 @@
     <title>Bacheca</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
     <link rel="stylesheet" href="css/style.css">
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
 </head>
 <body>
     <div id="errorContainer" class="error-container" style="display: none;">
@@ -69,7 +71,7 @@
 
                 <div class="form-group">
                     <label for="eventTime">🕐 Ora</label>
-                    <input type="text" id="eventTime" placeholder="Es: 19:00-23:00">
+                    <input type="time" id="eventTime">
                 </div>
 
                 <div class="form-group">
@@ -174,7 +176,7 @@
 
                 <div class="form-group">
                     <label for="editTime">🕐 Ora</label>
-                    <input type="text" id="editTime">
+                    <input type="time" id="editTime">
                 </div>
 
                 <div class="form-group">

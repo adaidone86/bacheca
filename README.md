@@ -79,15 +79,100 @@ Per cambiare l'associazione colore-categoria, semplicemente usa i colori diversa
 
 ## 💾 Come funzionano i dati
 
+### Archiviazione locale
 - Le proposte vengono salvate in **localStorage** del browser
 - Ogni giorno ha una chiave univoca (YYYY-MM-DD)
 - I dati persistono anche dopo il refresh della pagina
-- Nota: Ogni browser/dispositivo ha il suo storage locale
 
-Se vuoi condividere i dati tra più utenti, potrai aggiungere in futuro:
-- Un backend (Node.js, Firebase, etc.)
-- Sincronizzazione con un database
-- Export/Import dei dati
+### Sincronizzazione Cloud con Firebase 🔥
+La bacheca utilizza **Firebase Realtime Database** per sincronizzare i dati tra più utenti in tempo reale!
+
+**Come funziona:**
+1. Al caricamento della pagina, sincronizza automaticamente con Firebase
+2. Carica gli eventi salvati da altri utenti
+3. Salva i tuoi eventi nel cloud
+4. Tutti vedono gli stessi eventi condivisi
+
+**Struttura Firebase:**
+```
+bacheca-c0441 (progetto)
+└── events/
+    ├── 2024-09-01/
+    │   ├── evento1
+    │   ├── evento2
+    ├── 2024-09-02/
+    │   └── evento3
+    └── ...
+```
+
+## 🔧 Configurazione Firebase
+
+### Come è configurato
+- **Progetto:** `bacheca-c0441`
+- **Database:** Realtime Database (Europe West 1)
+- **Credenziali:** Salvate in `js/script.js` (top del file)
+- **SDK:** Firebase compat (via CDN)
+
+### Se devi creare un nuovo progetto Firebase
+
+1. Vai su https://console.firebase.google.com/
+2. Clicca **"Crea un progetto"**
+   - Nome: `Bacheca` (o quello che preferisci)
+   - Disabilita Google Analytics (gratis)
+3. Vai su **"Realtime Database"**
+   - Clicca **"Crea database"**
+   - Modalità test (per sviluppo/test)
+   - Region: Europa
+4. Vai su **Impostazioni progetto** → **App** → **Aggiungi app** → **Web**
+5. Copia il `firebaseConfig`
+6. Incolla in `js/script.js` (linee 1-12)
+
+### Credenziali attuali
+```javascript
+const firebaseConfig = {
+    apiKey: "AIzaSyBGy1u-1qF5qv8234rkEvjvEunyJAiogd4",
+    authDomain: "bacheca-c0441.firebaseapp.com",
+    databaseURL: "https://bacheca-c0441-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "bacheca-c0441",
+    storageBucket: "bacheca-c0441.firebasestorage.app",
+    messagingSenderId: "800396955473",
+    appId: "1:800396955473:web:2e0a0607a0666122a58d70"
+};
+```
+
+⚠️ **Nota:** Le API keys sono pubbliche (è normale). Usa le **regole di sicurezza** in Firebase per proteggere i dati.
+
+## 🔐 Regole di Sicurezza Firebase
+
+Attualmente il database è in **modalità test** (chiunque può leggere/scrivere).
+
+**Per produzione, usa queste regole:**
+```json
+{
+  "rules": {
+    "events": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}
+```
+
+Per restrizioni maggiori:
+- Usa **Firebase Authentication** per login
+- Restrizione per utente: `".write": "auth.uid === $uid"`
+
+## 🔄 Flusso di sincronizzazione
+
+1. **Al caricamento:** `autoSync()` legge da Firebase e fonde con i dati locali
+2. **Modifche locali:** Salvate in `localStorage` (subito)
+3. **Prossimo caricamento:** Sincronizza di nuovo
+
+**Per sync realtime durante la modifica:**
+Aggiungi una chiamata a `autoSync()` dopo ogni `saveNotes()` in:
+- `submitNote()` (dopo aggiunta evento)
+- `saveEditedNote()` (dopo modifica)
+- `deleteNote()` (dopo eliminazione)
 
 ## 📱 Responsive
 
