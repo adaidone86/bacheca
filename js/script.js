@@ -18,7 +18,7 @@ class BacheaCalendar {
         this.currentDate = new Date();
         this.selectedDate = null;
         this.selectedColor = 'color-yellow';
-        this.notes = this.loadNotes();
+        this.notes = {}; // Inizializza vuoto - i dati vengono caricati SOLO da Firebase
         this.isSyncing = false;
         this.editingNote = null; // Per tracciare quale nota stiamo editando
         this.isListView = false; // Toggle tra calendario e lista
@@ -33,9 +33,10 @@ class BacheaCalendar {
         this.loadTitle();
         // Carica da GitHub PRIMA di renderizzare
         this.loadFromGitHub().then(() => {
-            this.render();
-            // Sincronizza con Firebase automaticamente
-            this.autoSync();
+            // Sincronizza con Firebase PRIMA di renderizzare
+            this.autoSync().then(() => {
+                this.render();
+            });
         });
     }
 
@@ -385,15 +386,14 @@ class BacheaCalendar {
     }
 
     saveNotes() {
-        localStorage.setItem('bacheaNotes', JSON.stringify(this.notes));
+        // I dati vengono salvati SOLO su Firebase via autoSync()
+        // Non salviamo più su localStorage per evitare conflitti al refresh
     }
 
     loadNotes() {
-        try {
-            return JSON.parse(localStorage.getItem('bacheaNotes')) || {};
-        } catch {
-            return {};
-        }
+        // I dati vengono caricati SOLO da Firebase via autoSync()
+        // Non carichiamo più da localStorage
+        return {};
     }
 
     escapeHtml(text) {
@@ -545,19 +545,37 @@ class BacheaCalendar {
     }
 
     autoSync() {
-        if (this.isSyncing) return;
-        this.isSyncing = true;
-
-        // Salva i dati locali direttamente su Firebase
-        database.ref('events').set(this.notes, (error) => {
-            this.isSyncing = false;
-            if (!error) {
-                // Successo: aggiorna l'interfaccia
-                this.renderCalendar();
-                if (this.isListView) {
-                    this.renderList();
-                }
+        return new Promise((resolve) => {
+            if (this.isSyncing) {
+                resolve();
+                return;
             }
+            this.isSyncing = true;
+
+            // Carica i dati da Firebase
+            database.ref('events').once('value', (snapshot) => {
+                if (snapshot.exists()) {
+                    const firebaseNotes = snapshot.val();
+                    // Se this.notes è vuoto (caricamento iniziale), usa i dati da Firebase
+                    if (Object.keys(this.notes).length === 0) {
+                        this.notes = firebaseNotes;
+                    } else {
+                        // Altrimenti, fai il merge (i dati locali hanno priorità)
+                        this.notes = { ...firebaseNotes, ...this.notes };
+                    }
+                }
+
+                // Salva i dati su Firebase (solo se non è vuoto)
+                if (Object.keys(this.notes).length > 0) {
+                    database.ref('events').set(this.notes, (error) => {
+                        this.isSyncing = false;
+                        resolve();
+                    });
+                } else {
+                    this.isSyncing = false;
+                    resolve();
+                }
+            });
         });
     }
 
