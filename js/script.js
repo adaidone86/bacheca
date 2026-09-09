@@ -13,10 +13,35 @@ class BacheaCalendar {
     init() {
         this.setupEventListeners();
         this.detectDevice();
+        this.loadVersion();
         // Carica da GitHub PRIMA di renderizzare
         this.loadFromGitHub().then(() => {
             this.render();
         });
+    }
+
+    loadVersion() {
+        fetch('./descrizioni/versione')
+            .then(response => response.text())
+            .then(version => {
+                const versionText = version.trim();
+                // Valida il formato x.x.x
+                if (/^\d+\.\d+\.\d+$/.test(versionText)) {
+                    document.querySelector('footer p').innerHTML = `🪫 Powerd By: adaidone - 🆚 ${versionText}`;
+                } else {
+                    // Versione non valida - nascondi il sito
+                    this.showError();
+                }
+            })
+            .catch(error => {
+                // Errore nel caricamento del file - nascondi il sito
+                this.showError();
+            });
+    }
+
+    showError() {
+        document.getElementById('mainContainer').style.display = 'none';
+        document.getElementById('errorContainer').style.display = 'flex';
     }
 
     detectDevice() {

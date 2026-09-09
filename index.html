@@ -8,7 +8,15 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <div class="container">
+    <div id="errorContainer" class="error-container" style="display: none;">
+        <div class="error-message">
+            <h1>⚠️ Errore di configurazione</h1>
+            <p>Il file di versione non è in un formato corretto.</p>
+            <p>Formato richiesto: <strong>x.x.x</strong> (esempio: 0.0.1)</p>
+        </div>
+    </div>
+
+    <div id="mainContainer" class="container">
         <header>
             <h1>📅 Bacheca: Ma io che cazzo ne so, scusa?</h1>
             <p class="subtitle">Aggiungi le tue proposte di cose da fare!</p>
