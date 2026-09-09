@@ -179,8 +179,12 @@ class BacheaCalendar {
     }
 
     render() {
-        this.renderCalendar();
         this.updateHeader();
+        if (this.isListView) {
+            this.renderList();
+        } else {
+            this.renderCalendar();
+        }
     }
 
     renderCalendar() {
