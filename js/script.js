@@ -128,18 +128,16 @@ class BacheaCalendar {
 
         document.getElementById('noteForm').addEventListener('submit', (e) => this.addNote(e));
 
-        document.querySelectorAll('.color-option').forEach(option => {
-            option.addEventListener('click', (e) => {
-                document.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
-                e.target.classList.add('selected');
+        // Seleziona colore form aggiunta evento
+        document.querySelectorAll('.color-select').forEach(option => {
+            option.addEventListener('change', (e) => {
                 this.selectedColor = e.target.dataset.color;
             });
         });
 
-        document.querySelectorAll('.edit-color-option').forEach(option => {
-            option.addEventListener('click', (e) => {
-                document.querySelectorAll('.edit-color-option').forEach(o => o.classList.remove('selected'));
-                e.target.classList.add('selected');
+        // Seleziona colore form modifica evento
+        document.querySelectorAll('.edit-color-select').forEach(option => {
+            option.addEventListener('change', (e) => {
                 this.selectedColor = e.target.dataset.color;
             });
         });
@@ -286,7 +284,6 @@ class BacheaCalendar {
 
                     noteEl.innerHTML = `
                         <span class="note-text">${this.escapeHtml(note.title)}</span>
-                        <button class="note-delete" type="button">✕</button>
                     `;
 
                     // Click per aprire il dettaglio (solo se non è passato)
@@ -294,15 +291,6 @@ class BacheaCalendar {
                         noteEl.querySelector('.note-text').addEventListener('click', () => {
                             this.openEditModal(dateKey, index);
                         });
-
-                        // Delete button
-                        noteEl.querySelector('.note-delete').addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            this.deleteNote(dateKey, index);
-                        });
-                    } else {
-                        // Per eventi passati, disabilita il delete button
-                        noteEl.querySelector('.note-delete').style.display = 'none';
                     }
 
                     notesContainer.appendChild(noteEl);
@@ -338,8 +326,7 @@ class BacheaCalendar {
         document.getElementById('eventNotes').value = '';
 
         // Seleziona il colore giallo di default
-        document.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
-        document.querySelector('.color-option.color-yellow').classList.add('selected');
+        document.querySelector('input[name="eventColor"][data-color="color-yellow"]').checked = true;
         this.selectedColor = 'color-yellow';
 
         document.getElementById('modal').classList.add('active');
@@ -684,10 +671,9 @@ class BacheaCalendar {
 
         // Set colore - mantieni il colore originale come default
         this.selectedColor = note.color || 'color-yellow';
-        document.querySelectorAll('.edit-color-option').forEach(o => o.classList.remove('selected'));
-        const colorElement = document.querySelector(`.edit-color-option[data-color="${this.selectedColor}"]`);
-        if (colorElement) {
-            colorElement.classList.add('selected');
+        const colorRadio = document.querySelector(`input[name="editEventColor"][data-color="${this.selectedColor}"]`);
+        if (colorRadio) {
+            colorRadio.checked = true;
         }
 
         document.getElementById('editModal').classList.add('active');
