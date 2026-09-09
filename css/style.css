@@ -648,6 +648,15 @@ footer {
     border-top: 1px solid #eee;
 }
 
+.event-participants {
+    font-size: 0.85rem;
+    color: #667eea;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #eee;
+    font-weight: 500;
+}
+
 .event-item.color-yellow {
     border-left-color: #ffd54f;
 }

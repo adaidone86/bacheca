@@ -142,6 +142,16 @@ class BacheaCalendar {
             });
         });
 
+        // Checkbox partecipanti form aggiunta
+        document.getElementById('eventHasParticipants').addEventListener('change', (e) => {
+            document.getElementById('eventParticipantsGroup').style.display = e.target.checked ? 'block' : 'none';
+        });
+
+        // Checkbox partecipanti form modifica
+        document.getElementById('editHasParticipants').addEventListener('change', (e) => {
+            document.getElementById('editParticipantsGroup').style.display = e.target.checked ? 'block' : 'none';
+        });
+
         // Settings
         document.getElementById('settingsBtn').addEventListener('click', () => this.openSettings());
         document.getElementById('closeSettingsBtn').addEventListener('click', () => this.closeSettings());
@@ -324,6 +334,9 @@ class BacheaCalendar {
         document.getElementById('eventTime').value = '';
         document.getElementById('eventLocation').value = '';
         document.getElementById('eventNotes').value = '';
+        document.getElementById('eventHasParticipants').checked = false;
+        document.getElementById('eventParticipants').value = '';
+        document.getElementById('eventParticipantsGroup').style.display = 'none';
 
         // Seleziona il colore giallo di default
         document.querySelector('input[name="eventColor"][data-color="color-yellow"]').checked = true;
@@ -360,13 +373,21 @@ class BacheaCalendar {
         // Genera un ID unico
         const id = 'evt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
+        // Estrai partecipanti se checkbox spuntato
+        let participants = [];
+        if (document.getElementById('eventHasParticipants').checked) {
+            const participantsText = document.getElementById('eventParticipants').value.trim();
+            participants = participantsText.split('\n').map(p => p.trim()).filter(p => p);
+        }
+
         this.notes[dateKey].push({
             id: id,
             title: title,
             time: document.getElementById('eventTime').value.trim(),
             location: document.getElementById('eventLocation').value.trim(),
             notes: document.getElementById('eventNotes').value.trim(),
-            color: this.selectedColor
+            color: this.selectedColor,
+            participants: participants
         });
 
         this.saveNotes();
@@ -535,12 +556,17 @@ class BacheaCalendar {
             const eventEl = document.createElement('div');
             eventEl.className = `event-item ${event.color}`;
 
+            const participantsHtml = event.participants && event.participants.length > 0
+                ? `<div class="event-participants">👥 ${event.participants.map(p => this.escapeHtml(p)).join(', ')}</div>`
+                : '';
+
             eventEl.innerHTML = `
                 <div class="event-date">${dateStr.charAt(0).toUpperCase() + dateStr.slice(1)}</div>
                 <div class="event-title">${this.escapeHtml(event.title)}</div>
                 ${event.time ? `<div class="event-time">🕐 ${this.escapeHtml(event.time)}</div>` : ''}
                 ${event.location ? `<div class="event-location">📍 ${this.escapeHtml(event.location)}</div>` : ''}
                 ${event.notes ? `<div class="event-notes">${this.escapeHtml(event.notes).replace(/\n/g, '<br>')}</div>` : ''}
+                ${participantsHtml}
             `;
 
             eventEl.addEventListener('click', () => {
@@ -663,6 +689,12 @@ class BacheaCalendar {
         document.getElementById('editLocation').value = note.location || '';
         document.getElementById('editNotes').value = note.notes || '';
 
+        // Set partecipanti
+        const hasParticipants = note.participants && note.participants.length > 0;
+        document.getElementById('editHasParticipants').checked = hasParticipants;
+        document.getElementById('editParticipantsGroup').style.display = hasParticipants ? 'block' : 'none';
+        document.getElementById('editParticipants').value = hasParticipants ? note.participants.join('\n') : '';
+
         // Set colore - mantieni il colore originale come default
         this.selectedColor = note.color || 'color-yellow';
         const colorRadio = document.querySelector(`input[name="editEventColor"][data-color="${this.selectedColor}"]`);
@@ -685,13 +717,21 @@ class BacheaCalendar {
         const { dateKey, noteIndex } = this.editingNote;
         const eventId = this.notes[dateKey][noteIndex].id;
 
+        // Estrai partecipanti se checkbox spuntato
+        let participants = [];
+        if (document.getElementById('editHasParticipants').checked) {
+            const participantsText = document.getElementById('editParticipants').value.trim();
+            participants = participantsText.split('\n').map(p => p.trim()).filter(p => p);
+        }
+
         this.notes[dateKey][noteIndex] = {
             id: eventId, // Mantieni l'ID originale
             title: document.getElementById('editTitle').value.trim(),
             time: document.getElementById('editTime').value.trim(),
             location: document.getElementById('editLocation').value.trim(),
             notes: document.getElementById('editNotes').value.trim(),
-            color: this.selectedColor
+            color: this.selectedColor,
+            participants: participants
         };
 
         this.saveNotes();

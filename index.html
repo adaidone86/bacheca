@@ -85,6 +85,18 @@
                 </div>
 
                 <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="eventHasParticipants">
+                        👥 Aggiungi partecipanti
+                    </label>
+                </div>
+
+                <div class="form-group" id="eventParticipantsGroup" style="display: none;">
+                    <label for="eventParticipants">Nomi dei partecipanti</label>
+                    <textarea id="eventParticipants" placeholder="Es: Mario, Luigi, Peach (uno per riga)"></textarea>
+                </div>
+
+                <div class="form-group">
                     <label>🎨 Categoria evento</label>
                     <div class="color-filter-group">
                         <label class="color-radio">
@@ -205,6 +217,18 @@
                 <div class="form-group">
                     <label for="editNotes">📝 Note aggiuntive</label>
                     <textarea id="editNotes"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="editHasParticipants">
+                        👥 Aggiungi partecipanti
+                    </label>
+                </div>
+
+                <div class="form-group" id="editParticipantsGroup" style="display: none;">
+                    <label for="editParticipants">Nomi dei partecipanti</label>
+                    <textarea id="editParticipants" placeholder="Es: Mario, Luigi, Peach (uno per riga)"></textarea>
                 </div>
 
                 <div class="form-group">
