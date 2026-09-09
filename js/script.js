@@ -23,6 +23,10 @@ class BacheaCalendar {
         this.editingNote = null; // Per tracciare quale nota stiamo editando
         this.isListView = false; // Toggle tra calendario e lista
         this.visibleColors = this.loadColorFilters(); // Colori visibili
+        this.eventImageData = null;
+        this.editImageData = null;
+        this.cropper = null;
+        this.currentCropType = null; // 'event' o 'edit'
         this.setupCustomPopup();
         this.init();
     }
@@ -287,6 +291,70 @@ class BacheaCalendar {
             if (e.target === document.getElementById('editModal')) this.closeEditModal();
         });
 
+        // Event Image buttons
+        document.getElementById('eventImageUploadBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('eventImage').click();
+        });
+
+        document.getElementById('eventImage').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    this.currentCropType = 'event';
+                    this.openCropperModal(event.target.result);
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        document.getElementById('eventImageDeleteBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.eventImageData = null;
+            document.getElementById('eventImage').value = '';
+            document.getElementById('eventCoverContainerAdd').style.backgroundImage = 'none';
+            this.showSuccessPopup('Immagine rimossa');
+        });
+
+        // Edit Image buttons
+        document.getElementById('editImageUploadBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('editImage').click();
+        });
+
+        document.getElementById('editImage').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    this.currentCropType = 'edit';
+                    this.openCropperModal(event.target.result);
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        document.getElementById('editImageDeleteBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.editImageData = null;
+            document.getElementById('editImage').value = '';
+            this.showSuccessPopup('Immagine rimossa');
+        });
+
+        // Cropper buttons
+        document.getElementById('cropSaveBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.saveCrop();
+        });
+
+        document.getElementById('cropCancelBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.closeCropperModal();
+            document.getElementById('eventImage').value = '';
+            document.getElementById('editImage').value = '';
+        });
+
         // Edit Link buttons
         document.getElementById('editLinkOpenBtn').addEventListener('click', (e) => {
             e.preventDefault();
@@ -498,6 +566,12 @@ class BacheaCalendar {
         document.getElementById('eventParticipantsInputGroup').style.display = 'none';
         document.getElementById('eventParticipantInput').value = '';
         this.eventParticipantsList = [];
+        this.eventImageData = null;
+
+        // Reset immagine nel container (mantieni il gradiente viola)
+        const coverContainerAdd = document.getElementById('eventCoverContainerAdd');
+        coverContainerAdd.style.backgroundImage = 'none';
+        coverContainerAdd.style.minHeight = '180px';
 
         // Seleziona il colore neutro di default
         document.querySelector('input[name="eventColor"][data-color="color-neutral"]').checked = true;
@@ -590,6 +664,68 @@ class BacheaCalendar {
         });
     }
 
+    openCropperModal(imageSrc) {
+        const modal = document.getElementById('cropperModal');
+        const img = document.getElementById('cropperImage');
+        modal.style.display = 'flex';
+
+        // Distruggi il cropper precedente se esiste
+        if (this.cropper) {
+            this.cropper.destroy();
+        }
+
+        // Aspetta che l'immagine sia caricata prima di inizializzare il Cropper
+        img.onload = () => {
+            this.cropper = new Cropper(img, {
+                aspectRatio: 3 / 1, // 3:1 (molto largo, occupa meno spazio)
+                responsive: true,
+                restore: true,
+                guides: true,
+                center: true,
+                highlight: true,
+                cropBoxMovable: true,
+                cropBoxResizable: true,
+                toggleDragModeOnDblclick: true,
+                autoCropArea: 0.8, // Occupa l'80% dello spazio
+            });
+        };
+        img.src = imageSrc;
+    }
+
+    saveCrop() {
+        if (!this.cropper) return;
+
+        const canvas = this.cropper.getCroppedCanvas();
+        // Comprimi l'immagine a qualità 0.7 (70%) per occupare meno spazio
+        const croppedImage = canvas.toDataURL('image/jpeg', 0.7);
+
+        if (this.currentCropType === 'event') {
+            this.eventImageData = croppedImage;
+            // Visualizza l'immagine come copertina
+            const coverDiv = document.getElementById('eventCoverContainerAdd');
+            coverDiv.style.backgroundImage = `url(${croppedImage})`;
+            coverDiv.style.minHeight = '180px';
+        } else if (this.currentCropType === 'edit') {
+            this.editImageData = croppedImage;
+            // Visualizza l'immagine come copertina
+            const coverDiv = document.getElementById('eventCoverContainer');
+            coverDiv.style.backgroundImage = `url(${croppedImage})`;
+            coverDiv.style.minHeight = '180px';
+        }
+
+        this.closeCropperModal();
+        this.showSuccessPopup('Immagine ritagliata con successo!');
+    }
+
+    closeCropperModal() {
+        const modal = document.getElementById('cropperModal');
+        modal.style.display = 'none';
+        if (this.cropper) {
+            this.cropper.destroy();
+            this.cropper = null;
+        }
+    }
+
     renderEditLink(link) {
         const linkContainer = document.getElementById('editLinkContainer');
         const linkInputContainer = document.getElementById('editLinkInputContainer');
@@ -636,6 +772,7 @@ class BacheaCalendar {
             notes: document.getElementById('eventNotes').value.trim(),
             color: this.selectedColor,
             link: document.getElementById('eventLink').value.trim(),
+            image: this.eventImageData,
             participants: this.eventParticipantsList
         });
 
@@ -810,12 +947,17 @@ class BacheaCalendar {
                 : '';
 
             eventEl.innerHTML = `
-                <div class="event-date">${dateStr.charAt(0).toUpperCase() + dateStr.slice(1)}</div>
-                <div class="event-title">${this.escapeHtml(event.title)}</div>
-                ${event.time ? `<div class="event-time">🕐 ${this.escapeHtml(event.time)}</div>` : ''}
-                ${event.location ? `<div class="event-location">📍 ${this.escapeHtml(event.location)}</div>` : ''}
-                ${event.notes ? `<div class="event-notes">${this.escapeHtml(event.notes).replace(/\n/g, '<br>')}</div>` : ''}
-                ${participantsHtml}
+                <div style="position: relative; background-image: url(${event.image || ''}); background-size: cover; background-position: center;">
+                    <div style="position: relative; z-index: 10; padding: 16px; background: rgba(255, 255, 255, 0.95);">
+                        <div class="event-date">${dateStr.charAt(0).toUpperCase() + dateStr.slice(1)}</div>
+                        <div class="event-title">${this.escapeHtml(event.title)}</div>
+                        ${event.time ? `<div class="event-time">🕐 ${this.escapeHtml(event.time)}</div>` : ''}
+                        ${event.location ? `<div class="event-location">📍 ${this.escapeHtml(event.location)}</div>` : ''}
+                        ${event.notes ? `<div class="event-notes">${this.escapeHtml(event.notes).replace(/\n/g, '<br>')}</div>` : ''}
+                        ${participantsHtml}
+                    </div>
+                    ${event.image ? `<div style="position: absolute; top: 0; right: 0; width: 100%; height: 100%; background-image: url(${event.image}); background-size: cover; background-position: center; clip-path: polygon(15% 0%, 100% 0%, 100% 100%, 0% 100%, 15% 75%, 0% 50%, 15% 25%); z-index: 1;"></div>` : ''}
+                </div>
             `;
 
             eventEl.addEventListener('click', () => {
@@ -963,6 +1105,17 @@ class BacheaCalendar {
             colorRadio.checked = true;
         }
 
+        // Carica l'immagine se esiste
+        this.editImageData = note.image || null;
+        const coverContainer = document.getElementById('eventCoverContainer');
+        if (note.image) {
+            coverContainer.style.backgroundImage = `url(${note.image})`;
+        } else {
+            coverContainer.style.backgroundImage = 'none';
+        }
+        // Mantieni sempre una min-height per mostrare il gradiente viola
+        coverContainer.style.minHeight = '180px';
+
         document.getElementById('editModal').classList.add('active');
         document.getElementById('editModal').style.display = 'flex';
     }
@@ -1008,6 +1161,7 @@ class BacheaCalendar {
             notes: document.getElementById('editNotes').value.trim(),
             color: this.selectedColor,
             link: document.getElementById('editLink').value.trim(),
+            image: this.editImageData,
             participants: this.editParticipantsList
         };
 

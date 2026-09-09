@@ -304,13 +304,20 @@ button {
 }
 
 .modal-content {
-    background: white;
+    background: transparent;
     border-radius: 16px;
-    padding: 30px;
+    padding: 0;
     max-width: 400px;
     width: 90%;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     animation: slideDown 0.3s ease;
+    overflow: hidden;
+}
+
+.modal-content form,
+.modal-content .modal-buttons {
+    background: white;
+    padding: 30px;
 }
 
 @keyframes slideDown {
@@ -1152,9 +1159,15 @@ footer {
     }
 
     .modal-content {
-        padding: 16px;
+        padding: 0;
         width: 92%;
     }
+
+    .modal-content form,
+    .modal-content .modal-buttons {
+        padding: 16px;
+    }
+
 
     .modal-header {
         font-size: 1.2rem;

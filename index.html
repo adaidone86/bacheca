@@ -6,8 +6,10 @@
     <title>Bacheca</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 </head>
 <body>
     <div id="errorContainer" class="error-container" style="display: none;">
@@ -63,11 +65,13 @@
     <!-- Modal per aggiungere nota -->
     <div class="modal" id="modal">
         <div class="modal-content">
-            <div class="modal-header" id="modalTitle">Aggiungi un evento</div>
-            <div class="modal-tabs">
-                <button class="modal-tab active" data-tab="evento-tab">📌 Evento</button>
-                <button class="modal-tab" data-tab="participants-tab">👥 Partecipanti</button>
-                <button class="modal-tab" data-tab="details-tab">📍 Dettagli</button>
+            <div id="eventCoverContainerAdd" style="background: #764ba2; margin: 0; padding: 20px; min-height: 180px; width: 100%; display: flex; flex-direction: column; justify-content: flex-end; border-radius: 16px 16px 0 0; overflow: hidden; box-sizing: border-box;">
+                <div class="modal-header" id="modalTitle" style="color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">Aggiungi un evento</div>
+                <div class="modal-tabs" style="margin-top: 15px;">
+                    <button class="modal-tab active" data-tab="evento-tab" style="background: rgba(255,255,255,0.9); color: #667eea;">📌 Evento</button>
+                    <button class="modal-tab" data-tab="participants-tab" style="background: rgba(255,255,255,0.7); color: #333;">👥 Partecipanti</button>
+                    <button class="modal-tab" data-tab="details-tab" style="background: rgba(255,255,255,0.7); color: #333;">📍 Dettagli</button>
+                </div>
             </div>
             <form id="noteForm">
                 <!-- Tab: Evento -->
@@ -156,8 +160,12 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="eventImage">🖼️ Immagine</label>
-                        <input type="file" id="eventImage" accept="image/*">
+                        <label for="eventImage" style="margin-bottom: 8px; display: block;">🖼️ Immagine</label>
+                        <div id="eventImageContainer" style="display: flex; gap: 10px; align-items: center;">
+                            <button type="button" id="eventImageUploadBtn" style="padding: 8px 15px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer;">📤 Carica</button>
+                            <button type="button" id="eventImageDeleteBtn" style="padding: 8px 15px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;">🗑️ Elimina</button>
+                        </div>
+                        <input type="file" id="eventImage" accept="image/*" style="display: none;">
                     </div>
                 </div>
 
@@ -236,11 +244,13 @@
     <!-- Edit Modal -->
     <div class="modal" id="editModal">
         <div class="modal-content">
-            <div class="modal-header">✏️ Modifica evento</div>
-            <div class="modal-tabs">
-                <button class="modal-tab active" data-tab="edit-evento-tab">📌 Evento</button>
-                <button class="modal-tab" data-tab="edit-participants-tab">👥 Partecipanti</button>
-                <button class="modal-tab" data-tab="edit-details-tab">📍 Dettagli</button>
+            <div id="eventCoverContainer" style="background: #764ba2; margin: 0; padding: 20px; min-height: 180px; width: 100%; display: flex; flex-direction: column; justify-content: flex-end; border-radius: 16px 16px 0 0; overflow: hidden; box-sizing: border-box;">
+                <div class="modal-header" style="color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">✏️ Modifica evento</div>
+                <div class="modal-tabs" style="margin-top: 15px;">
+                    <button class="modal-tab active" data-tab="edit-evento-tab" style="background: rgba(255,255,255,0.9); color: #667eea;">📌 Evento</button>
+                    <button class="modal-tab" data-tab="edit-participants-tab" style="background: rgba(255,255,255,0.7); color: #333;">👥 Partecipanti</button>
+                    <button class="modal-tab" data-tab="edit-details-tab" style="background: rgba(255,255,255,0.7); color: #333;">📍 Dettagli</button>
+                </div>
             </div>
             <form id="editForm">
                 <!-- Tab: Evento -->
@@ -340,8 +350,12 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="editImage">🖼️ Immagine</label>
-                        <input type="file" id="editImage" accept="image/*">
+                        <label for="editImage" style="margin-bottom: 8px; display: block;">🖼️ Immagine</label>
+                        <div id="editImageContainer" style="display: flex; gap: 10px; align-items: center;">
+                            <button type="button" id="editImageUploadBtn" style="padding: 8px 15px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer;">📤 Carica</button>
+                            <button type="button" id="editImageDeleteBtn" style="padding: 8px 15px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;">🗑️ Elimina</button>
+                        </div>
+                        <input type="file" id="editImage" accept="image/*" style="display: none;">
                     </div>
                 </div>
 
@@ -360,6 +374,23 @@
             <div id="popupIcon" style="font-size: 48px; margin-bottom: 15px;"></div>
             <p id="popupMessage" style="font-size: 1rem; color: #333; margin-bottom: 20px;"></p>
             <button id="popupCloseBtn" style="padding: 10px 30px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem;">Ok</button>
+        </div>
+    </div>
+
+    <!-- Cropper Modal -->
+    <div id="cropperModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.9); z-index: 5001; align-items: center; justify-content: center; flex-direction: column;">
+        <div style="width: 100%; height: 100%; display: flex; flex-direction: column;">
+            <div style="padding: 20px; color: white; text-align: center;">
+                <h2 style="margin: 0;">✂️ Ritaglia immagine</h2>
+                <p style="margin: 5px 0 0 0; opacity: 0.8;">Seleziona la parte che vuoi come copertina</p>
+            </div>
+            <div style="flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; position: relative; width: 100%;">
+                <img id="cropperImage" style="width: 100%; height: 100%; object-fit: contain;">
+            </div>
+            <div style="padding: 20px; display: flex; gap: 10px; justify-content: center; background: rgba(0, 0, 0, 0.5);">
+                <button id="cropSaveBtn" style="flex: 1; max-width: 300px; padding: 12px 20px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem;">✅ Salva Crop</button>
+                <button id="cropCancelBtn" style="flex: 1; max-width: 300px; padding: 12px 20px; background: #ccc; color: #333; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem;">Annulla</button>
+            </div>
         </div>
     </div>
 
