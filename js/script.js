@@ -6,6 +6,7 @@ class BacheaCalendar {
         this.notes = this.loadNotes();
         this.isSyncing = false;
         this.editingNote = null; // Per tracciare quale nota stiamo editando
+        this.isListView = false; // Toggle tra calendario e lista
         this.init();
     }
 
@@ -48,6 +49,9 @@ class BacheaCalendar {
         // Settings
         document.getElementById('settingsBtn').addEventListener('click', () => this.openSettings());
         document.getElementById('closeSettingsBtn').addEventListener('click', () => this.closeSettings());
+
+        // View Toggle
+        document.getElementById('viewToggleBtn').addEventListener('click', () => this.toggleView());
 
         // Edit Modal
         document.getElementById('closeEditBtn').addEventListener('click', () => this.closeEditModal());
@@ -254,6 +258,77 @@ class BacheaCalendar {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    // View Toggle
+    toggleView() {
+        this.isListView = !this.isListView;
+        const viewToggleBtn = document.getElementById('viewToggleBtn');
+        const listView = document.getElementById('listView');
+        const calendarView = document.getElementById('calendarView');
+
+        if (this.isListView) {
+            viewToggleBtn.textContent = '📅 Calendario';
+            viewToggleBtn.classList.add('active');
+            listView.style.display = 'block';
+            calendarView.style.display = 'none';
+            this.renderList();
+        } else {
+            viewToggleBtn.textContent = '📋 Lista';
+            viewToggleBtn.classList.remove('active');
+            listView.style.display = 'none';
+            calendarView.style.display = 'block';
+        }
+    }
+
+    renderList() {
+        const eventsList = document.getElementById('eventsList');
+        const allEvents = [];
+
+        for (const [dateKey, eventsArray] of Object.entries(this.notes)) {
+            eventsArray.forEach((event, index) => {
+                allEvents.push({
+                    dateKey,
+                    index,
+                    date: new Date(dateKey),
+                    ...event
+                });
+            });
+        }
+
+        allEvents.sort((a, b) => a.date - b.date);
+
+        if (allEvents.length === 0) {
+            eventsList.innerHTML = '<div class="empty-list">Nessun evento programmato 📭</div>';
+            return;
+        }
+
+        eventsList.innerHTML = '';
+        allEvents.forEach(event => {
+            const dateStr = event.date.toLocaleDateString('it-IT', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+
+            const eventEl = document.createElement('div');
+            eventEl.className = `event-item ${event.color}`;
+
+            eventEl.innerHTML = `
+                <div class="event-date">${dateStr.charAt(0).toUpperCase() + dateStr.slice(1)}</div>
+                <div class="event-title">${this.escapeHtml(event.title)}</div>
+                ${event.time ? `<div class="event-time">🕐 ${this.escapeHtml(event.time)}</div>` : ''}
+                ${event.location ? `<div class="event-location">📍 ${this.escapeHtml(event.location)}</div>` : ''}
+                ${event.notes ? `<div class="event-notes">${this.escapeHtml(event.notes).replace(/\n/g, '<br>')}</div>` : ''}
+            `;
+
+            eventEl.addEventListener('click', () => {
+                this.openEditModal(event.dateKey, event.index);
+            });
+
+            eventsList.appendChild(eventEl);
+        });
     }
 
     // Settings

@@ -573,20 +573,311 @@ footer {
     box-shadow: 0 0 0 2px white, 0 0 0 4px #333;
 }
 
+/* Vista Lista */
+.list-view {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+    padding: 20px;
+}
+
+.events-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.event-item {
+    padding: 16px;
+    border-left: 5px solid #667eea;
+    background: #f9f9f9;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.event-item:hover {
+    background: #f0f0f0;
+    transform: translateX(5px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.event-date {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #667eea;
+    margin-bottom: 6px;
+}
+
+.event-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 6px;
+}
+
+.event-time {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 4px;
+}
+
+.event-location {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 4px;
+}
+
+.event-notes {
+    font-size: 0.85rem;
+    color: #999;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid #eee;
+}
+
+.event-item.color-yellow {
+    border-left-color: #ffd54f;
+}
+
+.event-item.color-pink {
+    border-left-color: #ff6b9d;
+}
+
+.event-item.color-green {
+    border-left-color: #81c784;
+}
+
+.event-item.color-blue {
+    border-left-color: #64b5f6;
+}
+
+.event-item.color-purple {
+    border-left-color: #ba68c8;
+}
+
+.event-item.color-orange {
+    border-left-color: #ffb74d;
+}
+
+.empty-list {
+    text-align: center;
+    padding: 40px 20px;
+    color: #999;
+    font-size: 1.1rem;
+}
+
+#viewToggleBtn {
+    padding: 10px 16px;
+    background: white;
+    color: #667eea;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+#viewToggleBtn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+#viewToggleBtn.active {
+    background: #667eea;
+    color: white;
+}
+
 @media (max-width: 768px) {
+    body {
+        padding: 10px;
+    }
+
+    .container {
+        max-width: 100%;
+    }
+
     .calendar-wrapper {
-        padding: 20px;
+        padding: 12px;
+        border-radius: 12px;
+    }
+
+    header {
+        margin-bottom: 15px;
     }
 
     h1 {
-        font-size: 1.8rem;
+        font-size: 1.4rem;
+        margin-bottom: 5px;
     }
 
-    .day {
-        min-height: 100px;
+    .subtitle {
+        font-size: 0.85rem;
+    }
+
+    .header-buttons {
+        position: static;
+        margin-top: 10px;
+        justify-content: center;
+    }
+
+    #settingsBtn {
+        padding: 10px 15px;
+        font-size: 0.9rem;
+    }
+
+    .calendar-header {
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+
+    .month-year {
+        font-size: 1.3rem;
+    }
+
+    .nav-buttons {
+        justify-content: center;
+        width: 100%;
+    }
+
+    .btn-nav {
+        padding: 8px 12px;
+        font-size: 0.8rem;
+    }
+
+    .btn-today {
+        padding: 8px 12px;
+        font-size: 0.8rem;
+    }
+
+    .weekdays {
+        gap: 3px;
+        margin-bottom: 8px;
+    }
+
+    .weekday {
+        padding: 6px 2px;
+        font-size: 0.7rem;
     }
 
     .days-grid {
-        min-height: 350px;
+        gap: 3px;
+        min-height: 300px;
+    }
+
+    .day {
+        padding: 6px;
+        min-height: 70px;
+        border-radius: 6px;
+    }
+
+    .day-number {
+        font-size: 0.75rem;
+        margin-bottom: 3px;
+    }
+
+    .notes-container {
+        gap: 3px;
+    }
+
+    .note {
+        padding: 4px 6px;
+        font-size: 0.65rem;
+    }
+
+    .note-text {
+        font-size: 0.65rem;
+        line-height: 1.15;
+    }
+
+    .note-text strong {
+        font-size: 0.7rem;
+    }
+
+    .note-delete {
+        width: 14px;
+        height: 14px;
+        font-size: 9px;
+    }
+
+    .add-note-btn {
+        width: 20px;
+        height: 20px;
+        font-size: 12px;
+        bottom: 2px;
+        right: 2px;
+    }
+
+    .modal-content {
+        padding: 16px;
+        width: 92%;
+    }
+
+    .modal-header {
+        font-size: 1.2rem;
+        margin-bottom: 12px;
+    }
+
+    .form-group {
+        margin-bottom: 12px;
+    }
+
+    .form-group label {
+        font-size: 0.9rem;
+        margin-bottom: 5px;
+    }
+
+    .form-group textarea,
+    .form-group input[type="text"] {
+        padding: 8px;
+        font-size: 1rem;
+    }
+
+    .form-group textarea {
+        min-height: 50px;
+    }
+
+    .color-picker {
+        gap: 6px;
+    }
+
+    .color-option {
+        width: 30px;
+        height: 30px;
+    }
+
+    .modal-buttons {
+        gap: 6px;
+        flex-direction: column;
+    }
+
+    .btn-save,
+    .btn-cancel {
+        padding: 10px;
+        font-size: 0.9rem;
+        width: 100%;
+    }
+
+    footer {
+        font-size: 0.75rem;
+        margin-top: 15px;
+        padding: 15px 0;
+    }
+
+    .settings-content {
+        width: 92%;
+        padding: 16px;
+    }
+
+    .settings-header {
+        font-size: 1.2rem;
+    }
+
+    .settings-input-group input {
+        font-size: 1rem;
+        padding: 8px;
     }
 }

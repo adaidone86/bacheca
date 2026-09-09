@@ -11,13 +11,18 @@
     <div class="container">
         <header>
             <h1>📅 Bacheca: Ma io che cazzo ne so, scusa?</h1>
-            <p class="subtitle">Aggiungi le tue proposte di cose da fare cliccando su un giorno!</p>
+            <p class="subtitle">Aggiungi le tue proposte di cose da fare!</p>
             <div class="header-buttons">
+                <button id="viewToggleBtn" class="view-toggle">📋 Lista</button>
                 <button id="settingsBtn">⚙️ Impostazioni</button>
             </div>
         </header>
 
-        <div class="calendar-wrapper">
+        <div id="listView" class="list-view" style="display: none;">
+            <div id="eventsList" class="events-list"></div>
+        </div>
+
+        <div id="calendarView" class="calendar-wrapper">
             <div class="calendar-header">
                 <button class="btn-nav" id="prevBtn">← Mese precedente</button>
                 <div class="month-year" id="monthYear"></div>
