@@ -421,7 +421,7 @@ footer {
     gap: 10px;
 }
 
-#settingsBtn, #syncBtn {
+#settingsBtn, #syncBtn, #infoBtn {
     padding: 10px 16px;
     background: white;
     color: #667eea;
@@ -434,12 +434,12 @@ footer {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-#settingsBtn:hover, #syncBtn:hover {
+#settingsBtn:hover, #syncBtn:hover, #infoBtn:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-#settingsBtn:disabled, #syncBtn:disabled {
+#settingsBtn:disabled, #syncBtn:disabled, #infoBtn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
 }
@@ -761,6 +761,91 @@ footer {
     font-weight: 600;
 }
 
+.info-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+}
+
+.info-modal.active {
+    display: flex;
+}
+
+.info-content {
+    background: white;
+    border-radius: 16px;
+    padding: 30px;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    animation: slideDown 0.3s ease;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.info-header {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 20px;
+    color: #667eea;
+    flex-shrink: 0;
+}
+
+.info-body {
+    font-size: 0.95rem;
+    color: #555;
+    line-height: 1.8;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    flex: 1;
+    overflow-y: auto;
+    margin-bottom: 20px;
+    padding-right: 5px;
+}
+
+.info-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.info-body::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.info-body::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 10px;
+}
+
+.info-body::-webkit-scrollbar-thumb:hover {
+    background: #999;
+}
+
+.info-buttons {
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.btn-info-close {
+    flex: 1;
+    padding: 12px;
+    background: #f0f0f0;
+    color: #333;
+}
+
+.btn-info-close:hover {
+    background: #e0e0e0;
+}
+
 .gif-modal {
     display: none;
     position: fixed;
@@ -825,7 +910,7 @@ footer {
         justify-content: center;
     }
 
-    #settingsBtn {
+    #settingsBtn, #infoBtn {
         padding: 10px 15px;
         font-size: 0.9rem;
     }
@@ -976,6 +1061,28 @@ footer {
 
     .settings-header {
         font-size: 1.2rem;
+    }
+
+    .info-content {
+        width: 95%;
+        padding: 12px;
+        max-height: 90vh;
+    }
+
+    .info-header {
+        font-size: 1.1rem;
+        margin-bottom: 12px;
+    }
+
+    .info-body {
+        font-size: 0.8rem;
+        line-height: 1.6;
+        margin-bottom: 12px;
+    }
+
+    .btn-info-close {
+        padding: 10px;
+        font-size: 0.9rem;
     }
 
     .settings-input-group input {

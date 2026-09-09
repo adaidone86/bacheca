@@ -18,11 +18,12 @@
 
     <div id="mainContainer" class="container">
         <header>
-            <h1 id="titleHeader" style="cursor: pointer;">📅 Bacheca: Ma io che cazzo ne so, scusi?</h1>
-            <p class="subtitle">Aggiungi le tue proposte di cose da fare!</p>
+            <h1 id="titleHeader" style="cursor: pointer;"></h1>
+            <p class="subtitle" id="subtitleHeader"></p>
             <div class="header-buttons">
                 <button id="viewToggleBtn" class="view-toggle">📋 Lista</button>
                 <button id="settingsBtn">⚙️ Impostazioni</button>
+                <button id="infoBtn">ℹ️ Info</button>
             </div>
         </header>
 
@@ -139,6 +140,17 @@
 
             <div class="settings-buttons">
                 <button type="button" class="btn-settings-cancel" id="closeSettingsBtn" style="width: 100%;">Chiudi</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info Modal -->
+    <div class="info-modal" id="infoModal">
+        <div class="info-content">
+            <div class="info-header">ℹ️ Informazioni</div>
+            <div class="info-body" id="infoBody"></div>
+            <div class="info-buttons">
+                <button type="button" class="btn-info-close" id="closeInfoBtn">Chiudi</button>
             </div>
         </div>
     </div>

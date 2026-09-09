@@ -15,6 +15,7 @@ class BacheaCalendar {
         this.setupEventListeners();
         this.detectDevice();
         this.loadVersion();
+        this.loadTitle();
         // Carica da GitHub PRIMA di renderizzare
         this.loadFromGitHub().then(() => {
             this.render();
@@ -37,6 +38,23 @@ class BacheaCalendar {
             .catch(error => {
                 // Errore nel caricamento del file - nascondi il sito
                 this.showError();
+            });
+    }
+
+    loadTitle() {
+        fetch('./descrizioni/titolo')
+            .then(response => response.text())
+            .then(content => {
+                const lines = content.trim().split('\n');
+                if (lines[0]) {
+                    document.getElementById('titleHeader').textContent = lines[0];
+                }
+                if (lines[1]) {
+                    document.getElementById('subtitleHeader').textContent = lines[1];
+                }
+            })
+            .catch(error => {
+                // Se il file non esiste, usa i titoli di default (già presenti in HTML)
             });
     }
 
@@ -111,6 +129,13 @@ class BacheaCalendar {
         // Settings
         document.getElementById('settingsBtn').addEventListener('click', () => this.openSettings());
         document.getElementById('closeSettingsBtn').addEventListener('click', () => this.closeSettings());
+
+        // Info
+        document.getElementById('infoBtn').addEventListener('click', () => this.openInfo());
+        document.getElementById('closeInfoBtn').addEventListener('click', () => this.closeInfo());
+        document.getElementById('infoModal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('infoModal')) this.closeInfo();
+        });
 
         // Color filters
         document.querySelectorAll('.color-filter').forEach(checkbox => {
@@ -424,6 +449,23 @@ class BacheaCalendar {
 
     closeSettings() {
         document.getElementById('settingsModal').classList.remove('active');
+    }
+
+    openInfo() {
+        document.getElementById('infoModal').classList.add('active');
+        // Carica il file info
+        fetch('./descrizioni/info')
+            .then(response => response.text())
+            .then(content => {
+                document.getElementById('infoBody').textContent = content;
+            })
+            .catch(error => {
+                document.getElementById('infoBody').textContent = 'Errore nel caricamento del file informazioni.';
+            });
+    }
+
+    closeInfo() {
+        document.getElementById('infoModal').classList.remove('active');
     }
 
     toggleGifModal() {
