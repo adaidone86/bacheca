@@ -455,6 +455,7 @@ class BacheaCalendar {
             viewToggleBtn.classList.remove('active');
             listView.style.display = 'none';
             calendarView.style.display = 'block';
+            this.renderCalendar();
         }
     }
 
