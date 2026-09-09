@@ -18,7 +18,7 @@
 
     <div id="mainContainer" class="container">
         <header>
-            <h1>📅 Bacheca: Ma io che cazzo ne so, scusa?</h1>
+            <h1 id="titleHeader" style="cursor: pointer;">📅 Bacheca: Ma io che cazzo ne so, scusi?</h1>
             <p class="subtitle">Aggiungi le tue proposte di cose da fare!</p>
             <div class="header-buttons">
                 <button id="viewToggleBtn" class="view-toggle">📋 Lista</button>
@@ -105,15 +105,48 @@
     <div class="settings-modal" id="settingsModal">
         <div class="settings-content">
             <div class="settings-header">⚙️ Impostazioni</div>
-            <p class="settings-subtitle">Presto disponibili nuove opzioni</p>
+            <p class="settings-subtitle">Filtra eventi per colore</p>
 
-            <div style="text-align: center; padding: 30px; color: #999;">
-                ✨ In arrivo...
+            <div class="settings-input-group">
+                <label>🎨 Categorie di Eventi</label>
+                <div class="color-filter-group">
+                    <label class="color-checkbox">
+                        <input type="checkbox" class="color-filter" data-color="color-yellow" checked>
+                        <span class="color-filter-label" style="background: #ffd54f; color: #333;">🍽️ Gastronomia/Cibo</span>
+                    </label>
+                    <label class="color-checkbox">
+                        <input type="checkbox" class="color-filter" data-color="color-pink" checked>
+                        <span class="color-filter-label" style="background: #ff6b9d; color: white;">👥 Serate/Sociali</span>
+                    </label>
+                    <label class="color-checkbox">
+                        <input type="checkbox" class="color-filter" data-color="color-green" checked>
+                        <span class="color-filter-label" style="background: #81c784; color: white;">⛹️ Sport/Attività</span>
+                    </label>
+                    <label class="color-checkbox">
+                        <input type="checkbox" class="color-filter" data-color="color-blue" checked>
+                        <span class="color-filter-label" style="background: #64b5f6; color: white;">🎮 Intrattenimento</span>
+                    </label>
+                    <label class="color-checkbox">
+                        <input type="checkbox" class="color-filter" data-color="color-purple" checked>
+                        <span class="color-filter-label" style="background: #ba68c8; color: white;">🎵 Cultura/Musica</span>
+                    </label>
+                    <label class="color-checkbox">
+                        <input type="checkbox" class="color-filter" data-color="color-orange" checked>
+                        <span class="color-filter-label" style="background: #ffb74d; color: white;">🏞️ Escursioni/Turismo</span>
+                    </label>
+                </div>
             </div>
 
             <div class="settings-buttons">
                 <button type="button" class="btn-settings-cancel" id="closeSettingsBtn" style="width: 100%;">Chiudi</button>
             </div>
+        </div>
+    </div>
+
+    <!-- GIF Modal -->
+    <div class="gif-modal" id="gifModal">
+        <div class="gif-container">
+            <img src="immagini/tenor.gif" alt="Reazione gif">
         </div>
     </div>
 

@@ -50,6 +50,21 @@ bacheca/
 - **Cambia mese**: Usa i pulsanti di navigazione
 - **Torna a oggi**: Clicca il pulsante "Oggi"
 
+## 🎨 Categorie di Eventi per Colore
+
+Ogni colore rappresenta una categoria di evento. Usa il colore appropriato quando aggiungi una proposta:
+
+| Colore | Categoria | Emoji | Esempi |
+|--------|-----------|-------|--------|
+| 🟨 Giallo | 🍽️ Gastronomia/Cibo | 🍴 | Sagre, cene, aperitivi |
+| 🔴 Rosa | 👥 Serate/Sociali | 🎉 | Party, serate ragazze, incontri |
+| 🟩 Verde | ⛹️ Sport/Attività Fisica | 🏃 | Trekking, running, palestra |
+| 🟦 Blu | 🎮 Intrattenimento/Giochi | 🎯 | Gigacon, board game, cinema |
+| 🟪 Viola | 🎵 Cultura/Arte/Musica | 🎭 | Concerti, mostre, teatro |
+| 🟧 Arancione | 🏞️ Escursioni/Turismo | 🧳 | Gite, escursioni, weekend |
+
+**💡 Puoi filtrare gli eventi per colore** usando le impostazioni (⚙️) per vedere solo le categorie che ti interessano!
+
 ## 🎨 Personalizzazione
 
 ### Cambiar colori del tema
@@ -59,8 +74,8 @@ Modifica le variabili CSS in `index.html`:
 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 ```
 
-### Aggiungi più colori ai post-it
-Nel file HTML, aggiungi una nuova classe CSS `.color-*` e un nuovo elemento nel color picker.
+### Modificare le categorie di colore
+Per cambiare l'associazione colore-categoria, semplicemente usa i colori diversamente quando aggiungi gli eventi. Non c'è configurazione da cambiare nel codice — il colore è una proprietà dell'evento!
 
 ## 💾 Come funzionano i dati
 

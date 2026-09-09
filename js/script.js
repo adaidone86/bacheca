@@ -7,6 +7,7 @@ class BacheaCalendar {
         this.isSyncing = false;
         this.editingNote = null; // Per tracciare quale nota stiamo editando
         this.isListView = false; // Toggle tra calendario e lista
+        this.visibleColors = this.loadColorFilters(); // Colori visibili
         this.init();
     }
 
@@ -111,6 +112,11 @@ class BacheaCalendar {
         document.getElementById('settingsBtn').addEventListener('click', () => this.openSettings());
         document.getElementById('closeSettingsBtn').addEventListener('click', () => this.closeSettings());
 
+        // Color filters
+        document.querySelectorAll('.color-filter').forEach(checkbox => {
+            checkbox.addEventListener('change', () => this.handleColorFilterChange());
+        });
+
         // View Toggle
         document.getElementById('viewToggleBtn').addEventListener('click', () => this.toggleView());
 
@@ -120,6 +126,12 @@ class BacheaCalendar {
         document.getElementById('saveEditBtn').addEventListener('click', () => this.saveEditedNote());
         document.getElementById('editModal').addEventListener('click', (e) => {
             if (e.target === document.getElementById('editModal')) this.closeEditModal();
+        });
+
+        // GIF Modal
+        document.getElementById('titleHeader').addEventListener('click', () => this.toggleGifModal());
+        document.getElementById('gifModal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('gifModal')) this.toggleGifModal();
         });
     }
 
@@ -188,11 +200,16 @@ class BacheaCalendar {
                 <button class="add-note-btn" type="button">+</button>
             `;
 
-            // Aggiungi le note al giorno
+            // Aggiungi le note al giorno (solo se il colore è visibile)
             const notesContainer = dayEl.querySelector(`#notes-${dateKey}`);
-            if (dayNotes.length > 0) {
+            const visibleNotes = dayNotes.filter(note => this.isColorVisible(note.color));
+
+            if (visibleNotes.length > 0) {
                 notesContainer.innerHTML = '';
                 dayNotes.forEach((note, index) => {
+                    // Mostra solo se il colore è visibile
+                    if (!this.isColorVisible(note.color)) return;
+
                     const noteEl = document.createElement('div');
                     noteEl.className = `note ${note.color}`;
                     noteEl.style.cursor = 'pointer';
@@ -359,13 +376,16 @@ class BacheaCalendar {
 
         allEvents.sort((a, b) => a.date - b.date);
 
-        if (allEvents.length === 0) {
+        // Filtra per colore visibile
+        const visibleEvents = allEvents.filter(event => this.isColorVisible(event.color));
+
+        if (visibleEvents.length === 0) {
             eventsList.innerHTML = '<div class="empty-list">Nessun evento programmato 📭</div>';
             return;
         }
 
         eventsList.innerHTML = '';
-        allEvents.forEach(event => {
+        visibleEvents.forEach(event => {
             const dateStr = event.date.toLocaleDateString('it-IT', {
                 weekday: 'long',
                 year: 'numeric',
@@ -395,10 +415,57 @@ class BacheaCalendar {
     // Settings
     openSettings() {
         document.getElementById('settingsModal').classList.add('active');
+        // Aggiorna lo stato dei checkbox
+        document.querySelectorAll('.color-filter').forEach(checkbox => {
+            const color = checkbox.dataset.color;
+            checkbox.checked = this.visibleColors[color] !== false;
+        });
     }
 
     closeSettings() {
         document.getElementById('settingsModal').classList.remove('active');
+    }
+
+    toggleGifModal() {
+        const gifModal = document.getElementById('gifModal');
+        gifModal.classList.toggle('active');
+    }
+
+    loadColorFilters() {
+        const saved = localStorage.getItem('colorFilters');
+        if (saved) {
+            return JSON.parse(saved);
+        }
+        // Default: tutti i colori visibili
+        return {
+            'color-yellow': true,
+            'color-pink': true,
+            'color-green': true,
+            'color-blue': true,
+            'color-purple': true,
+            'color-orange': true
+        };
+    }
+
+    saveColorFilters() {
+        localStorage.setItem('colorFilters', JSON.stringify(this.visibleColors));
+    }
+
+    handleColorFilterChange() {
+        document.querySelectorAll('.color-filter').forEach(checkbox => {
+            const color = checkbox.dataset.color;
+            this.visibleColors[color] = checkbox.checked;
+        });
+        this.saveColorFilters();
+        // Ricarica il calendario e la lista
+        this.renderCalendar();
+        if (this.isListView) {
+            this.renderList();
+        }
+    }
+
+    isColorVisible(color) {
+        return this.visibleColors[color] !== false;
     }
 
     // Edit Modal
