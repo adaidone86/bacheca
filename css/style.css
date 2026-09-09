@@ -44,20 +44,32 @@ h1 {
 
 .calendar-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     margin-bottom: 30px;
     flex-wrap: wrap;
     gap: 15px;
 }
 
+#prevBtn {
+    order: 1;
+}
+
+.btn-today {
+    order: 2;
+}
+
+#nextBtn {
+    order: 3;
+}
+
 .month-year {
     font-size: 1.8rem;
     font-weight: 600;
     color: #667eea;
-    flex: 1;
+    flex-basis: 100%;
     text-align: center;
-    min-width: 200px;
+    order: 4;
 }
 
 .nav-buttons {
@@ -930,13 +942,14 @@ footer {
     }
 
     .calendar-header {
-        flex-direction: column;
-        gap: 8px;
+        justify-content: center;
+        gap: 6px;
         margin-bottom: 12px;
     }
 
     .month-year {
-        font-size: 1.3rem;
+        font-size: 1.1rem;
+        margin-top: 8px;
     }
 
     .nav-buttons {
@@ -945,13 +958,15 @@ footer {
     }
 
     .btn-nav {
-        padding: 8px 12px;
-        font-size: 0.8rem;
+        padding: 6px 8px;
+        font-size: 0.7rem;
+        white-space: nowrap;
     }
 
     .btn-today {
-        padding: 8px 12px;
-        font-size: 0.8rem;
+        padding: 6px 8px;
+        font-size: 0.7rem;
+        white-space: nowrap;
     }
 
     .weekdays {

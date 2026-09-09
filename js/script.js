@@ -590,20 +590,14 @@ class BacheaCalendar {
             }
             this.isSyncing = true;
 
-            // Carica i dati da Firebase
+            // Carica i dati da Firebase per il caricamento iniziale
             database.ref('events').once('value', (snapshot) => {
-                if (snapshot.exists()) {
-                    const firebaseNotes = snapshot.val();
-                    // Se this.notes è vuoto (caricamento iniziale), usa i dati da Firebase
-                    if (Object.keys(this.notes).length === 0) {
-                        this.notes = firebaseNotes;
-                    } else {
-                        // Altrimenti, fai il merge (i dati locali hanno priorità)
-                        this.notes = { ...firebaseNotes, ...this.notes };
-                    }
+                // Se this.notes è vuoto (caricamento iniziale), usa i dati da Firebase
+                if (Object.keys(this.notes).length === 0 && snapshot.exists()) {
+                    this.notes = snapshot.val();
                 }
 
-                // Salva i dati su Firebase (solo se non è vuoto)
+                // Salva i dati locali su Firebase (sovrascrivi completamente)
                 if (Object.keys(this.notes).length > 0) {
                     database.ref('events').set(this.notes, (error) => {
                         this.isSyncing = false;
