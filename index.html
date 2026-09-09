@@ -162,8 +162,8 @@
                 </div>
 
                 <div class="modal-buttons">
-                    <button type="submit" class="btn-save">Aggiungi</button>
-                    <button type="button" class="btn-cancel" id="closeBtn">Annulla</button>
+                    <button type="submit" class="btn-save" style="background: #4CAF50; color: white;">Aggiungi</button>
+                    <button type="button" class="btn-cancel" id="closeBtn" style="background: #ccc; color: #333;">Annulla</button>
                 </div>
             </form>
         </div>
@@ -324,8 +324,19 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="editLink">🔗 Link</label>
-                        <input type="url" id="editLink" placeholder="Es: https://example.com">
+                        <label for="editLink" style="margin-bottom: 8px; display: block;">🔗 Link</label>
+                        <div id="editLinkContainer" style="display: flex; gap: 10px; align-items: center;">
+                            <button type="button" id="editLinkOpenBtn" style="padding: 8px 15px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer;">🌐 Vai sul sito</button>
+                            <button type="button" id="editLinkModifyBtn" style="padding: 8px 15px; background: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer;">✏️ Modifica</button>
+                        </div>
+                        <div id="editLinkInputContainer" style="display: none; flex-direction: column; gap: 8px;">
+                            <input type="url" id="editLink" placeholder="Es: https://example.com" style="width: 100%; padding: 12px; border: 2px solid #eee; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
+                            <div style="display: flex; gap: 8px;">
+                                <button type="button" id="editLinkSaveBtn" style="flex: 1; padding: 8px 15px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">Salva Link</button>
+                                <button type="button" id="editLinkDeleteBtn" style="flex: 1; padding: 8px 15px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">🗑️ Elimina Link</button>
+                                <button type="button" id="editLinkCancelBtn" style="flex: 1; padding: 8px 15px; background: #ccc; color: #333; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">Annulla</button>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="form-group">
@@ -335,13 +346,35 @@
                 </div>
 
                 <div class="modal-buttons">
-                    <button type="button" class="btn-save" id="saveEditBtn">Salva</button>
-                    <button type="button" class="btn-cancel" id="deleteNoteBtn" style="background: #ff6b9d; color: white;">🗑️ Elimina</button>
-                    <button type="button" class="btn-cancel" id="closeEditBtn">Chiudi</button>
+                    <button type="button" class="btn-save" id="saveEditBtn" style="background: #4CAF50; color: white;">Salva</button>
+                    <button type="button" class="btn-cancel" id="deleteNoteBtn" style="background: #f44336; color: white;">🗑️ Elimina</button>
+                    <button type="button" class="btn-cancel" id="closeEditBtn" style="background: #ccc; color: #333;">Chiudi</button>
                 </div>
             </form>
         </div>
     </div>
+
+    <!-- Popup personalizzato -->
+    <div id="customPopup" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 5000; align-items: center; justify-content: center;">
+        <div style="background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); text-align: center; max-width: 400px; animation: slideIn 0.3s ease;">
+            <div id="popupIcon" style="font-size: 48px; margin-bottom: 15px;"></div>
+            <p id="popupMessage" style="font-size: 1rem; color: #333; margin-bottom: 20px;"></p>
+            <button id="popupCloseBtn" style="padding: 10px 30px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem;">Ok</button>
+        </div>
+    </div>
+
+    <style>
+        @keyframes slideIn {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+    </style>
 
     <script src="js/script.js"></script>
 </body>

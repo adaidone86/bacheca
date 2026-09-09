@@ -23,7 +23,32 @@ class BacheaCalendar {
         this.editingNote = null; // Per tracciare quale nota stiamo editando
         this.isListView = false; // Toggle tra calendario e lista
         this.visibleColors = this.loadColorFilters(); // Colori visibili
+        this.setupCustomPopup();
         this.init();
+    }
+
+    setupCustomPopup() {
+        document.getElementById('popupCloseBtn').addEventListener('click', () => {
+            document.getElementById('customPopup').style.display = 'none';
+        });
+    }
+
+    showSuccessPopup(message) {
+        const popup = document.getElementById('customPopup');
+        const icon = document.getElementById('popupIcon');
+        const messageEl = document.getElementById('popupMessage');
+        icon.textContent = '✅';
+        messageEl.textContent = message;
+        popup.style.display = 'flex';
+    }
+
+    showErrorPopup(message) {
+        const popup = document.getElementById('customPopup');
+        const icon = document.getElementById('popupIcon');
+        const messageEl = document.getElementById('popupMessage');
+        icon.textContent = '❌';
+        messageEl.textContent = message;
+        popup.style.display = 'flex';
     }
 
     init() {
@@ -262,6 +287,46 @@ class BacheaCalendar {
             if (e.target === document.getElementById('editModal')) this.closeEditModal();
         });
 
+        // Edit Link buttons
+        document.getElementById('editLinkOpenBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            if (this.currentEditingLink) {
+                window.open(this.currentEditingLink, '_blank');
+            }
+        });
+
+        document.getElementById('editLinkModifyBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('editLinkContainer').style.display = 'none';
+            document.getElementById('editLinkInputContainer').style.display = 'flex';
+        });
+
+        document.getElementById('editLinkSaveBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            const newLink = document.getElementById('editLink').value.trim();
+            if (newLink) {
+                this.renderEditLink(newLink);
+            } else {
+                this.showErrorPopup('Inserisci un link valido oppure annulla');
+            }
+        });
+
+        document.getElementById('editLinkDeleteBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            if (this.editingNote) {
+                const { dateKey, noteIndex } = this.editingNote;
+                this.notes[dateKey][noteIndex].link = '';
+                this.renderEditLink('');
+                this.showSuccessPopup('Link eliminato');
+            }
+        });
+
+        document.getElementById('editLinkCancelBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            const currentLink = this.editingNote ? this.notes[this.editingNote.dateKey][this.editingNote.noteIndex].link : '';
+            this.renderEditLink(currentLink);
+        });
+
         // GIF Modal
         document.getElementById('titleLine2').addEventListener('click', () => {
             const text = document.getElementById('titleLine2').textContent;
@@ -416,7 +481,7 @@ class BacheaCalendar {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         if (date <= today) {
-            alert('❌ Puoi aggiungere eventi solo da domani in poi');
+            this.showErrorPopup('Puoi aggiungere eventi solo da domani in poi');
             return;
         }
 
@@ -525,6 +590,31 @@ class BacheaCalendar {
         });
     }
 
+    renderEditLink(link) {
+        const linkContainer = document.getElementById('editLinkContainer');
+        const linkInputContainer = document.getElementById('editLinkInputContainer');
+        const linkInput = document.getElementById('editLink');
+        const openBtn = document.getElementById('editLinkOpenBtn');
+        this.currentEditingLink = link;
+
+        // Mostra sempre il container con i button
+        linkContainer.style.display = 'flex';
+        linkInputContainer.style.display = 'none';
+        linkInput.value = link || '';
+
+        if (link && link.trim()) {
+            openBtn.disabled = false;
+            openBtn.style.background = '#2196F3';
+            openBtn.style.cursor = 'pointer';
+            openBtn.style.opacity = '1';
+        } else {
+            openBtn.disabled = true;
+            openBtn.style.background = '#ccc';
+            openBtn.style.cursor = 'not-allowed';
+            openBtn.style.opacity = '0.6';
+        }
+    }
+
     addNote(e) {
         e.preventDefault();
         const title = document.getElementById('eventTitle').value.trim();
@@ -553,7 +643,7 @@ class BacheaCalendar {
         this.autoSync(); // Sincronizza con Firebase
         this.closeModal();
         this.render(); // Usa render() per renderizzare la vista corretta
-        setTimeout(() => alert('✅ Evento aggiunto con successo!'), 100);
+        setTimeout(() => this.showSuccessPopup('Evento aggiunto con successo!'), 100);
     }
 
     deleteNote(dateKey, index) {
@@ -854,6 +944,9 @@ class BacheaCalendar {
         document.getElementById('editNotes').value = note.notes || '';
         document.getElementById('editLink').value = note.link || '';
 
+        // Gestisci visualizzazione link
+        this.renderEditLink(note.link);
+
         // Set partecipanti
         this.editParticipantsList = note.participants ? [...note.participants] : [];
         const hasParticipants = this.editParticipantsList.length > 0;
@@ -922,7 +1015,7 @@ class BacheaCalendar {
         this.autoSync(); // Sincronizza con Firebase
         this.closeEditModal();
         this.render(); // Usa render() per renderizzare la vista corretta (calendario o lista)
-        setTimeout(() => alert('✅ Evento modificato con successo!'), 100);
+        setTimeout(() => this.showSuccessPopup('Evento modificato con successo!'), 100);
     }
 
     deleteCurrentNote() {
@@ -932,7 +1025,7 @@ class BacheaCalendar {
         const { dateKey, noteIndex } = this.editingNote;
         this.deleteNote(dateKey, noteIndex); // Elimina e sincronizza Firebase
         this.closeEditModal(); // Chiude il popup
-        setTimeout(() => alert('✅ Evento eliminato con successo!'), 100);
+        setTimeout(() => this.showSuccessPopup('Evento eliminato con successo!'), 100);
     }
 
     async loadFromGitHub() {
