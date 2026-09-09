@@ -21,7 +21,12 @@ class BacheaCalendar {
 
     detectDevice() {
         // Rileva se è mobile o desktop
-        const isMobile = window.innerWidth < 768;
+        // Controlla sia la larghezza che l'user-agent per affidabilità
+        const screenWidth = window.innerWidth;
+        const isMobileByWidth = screenWidth < 768;
+        const isMobileByAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+        const isMobile = isMobileByWidth || isMobileByAgent;
 
         if (isMobile) {
             // Su mobile: attiva vista lista
