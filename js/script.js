@@ -234,7 +234,13 @@ class BacheaCalendar {
 
         daysArray.forEach(dayObj => {
             const dayEl = document.createElement('div');
-            dayEl.className = `day ${!dayObj.isCurrentMonth ? 'other-month' : ''}`;
+
+            // Controlla se il giorno è oggi o nel passato
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const isDisabledDay = dayObj.isCurrentMonth && dayObj.date <= today;
+
+            dayEl.className = `day ${!dayObj.isCurrentMonth || isDisabledDay ? 'other-month' : ''}`;
 
             const dateKey = this.getDateKey(dayObj.date);
             const dayNotes = this.notes[dateKey] || [];
@@ -255,40 +261,75 @@ class BacheaCalendar {
                 notesContainer.innerHTML = '';
                 // Ordina gli eventi per orario
                 const sortedNotes = this.sortByTime(dayNotes);
+
+                // Determina se il giorno è nel passato
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const isPastDay = dayObj.date < today;
+
                 sortedNotes.forEach((note, index) => {
                     // Mostra solo se il colore è visibile
                     if (!this.isColorVisible(note.color)) return;
 
                     const noteEl = document.createElement('div');
                     noteEl.className = `note ${note.color}`;
-                    noteEl.style.cursor = 'pointer';
+
+                    // Se è un evento passato, rendilo grigio e non cliccabile
+                    // Se è oggi, mantieni il colore (acceso)
+                    if (isPastDay) {
+                        noteEl.classList.add('past-event');
+                        noteEl.style.opacity = '0.5';
+                        noteEl.style.cursor = 'default';
+                    } else {
+                        noteEl.style.cursor = 'pointer';
+                    }
 
                     noteEl.innerHTML = `
                         <span class="note-text">${this.escapeHtml(note.title)}</span>
                         <button class="note-delete" type="button">✕</button>
                     `;
 
-                    // Click per aprire il dettaglio
-                    noteEl.querySelector('.note-text').addEventListener('click', () => {
-                        this.openEditModal(dateKey, index);
-                    });
+                    // Click per aprire il dettaglio (solo se non è passato)
+                    if (!isPastDay) {
+                        noteEl.querySelector('.note-text').addEventListener('click', () => {
+                            this.openEditModal(dateKey, index);
+                        });
 
-                    // Delete button
-                    noteEl.querySelector('.note-delete').addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        this.deleteNote(dateKey, index);
-                    });
+                        // Delete button
+                        noteEl.querySelector('.note-delete').addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            this.deleteNote(dateKey, index);
+                        });
+                    } else {
+                        // Per eventi passati, disabilita il delete button
+                        noteEl.querySelector('.note-delete').style.display = 'none';
+                    }
 
                     notesContainer.appendChild(noteEl);
                 });
             }
 
-            dayEl.addEventListener('click', () => this.openModal(dayObj.date));
+            // Aggiungi listener di click solo se il giorno non è passato
+            if (!isDisabledDay) {
+                dayEl.addEventListener('click', () => this.openModal(dayObj.date));
+                dayEl.style.cursor = 'pointer';
+            } else {
+                dayEl.style.cursor = 'default';
+            }
+
             daysGrid.appendChild(dayEl);
         });
     }
 
     openModal(date) {
+        // Controlla se la data è oggi o nel passato
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (date <= today) {
+            alert('❌ Puoi aggiungere eventi solo da domani in poi');
+            return;
+        }
+
         this.selectedDate = date;
         // Pulisci tutti i campi del form
         document.getElementById('eventTitle').value = '';
@@ -344,7 +385,7 @@ class BacheaCalendar {
         this.saveNotes();
         this.autoSync(); // Sincronizza con Firebase
         this.closeModal();
-        this.renderCalendar();
+        this.render(); // Usa render() per renderizzare la vista corretta
         setTimeout(() => alert('✅ Evento aggiunto con successo!'), 100);
     }
 
@@ -357,7 +398,7 @@ class BacheaCalendar {
             this.saveNotes();
             this.closeModal(); // Chiudi il modal di aggiunta se aperto
             this.autoSync(); // Sincronizza con Firebase
-            this.renderCalendar();
+            this.render(); // Usa render() per renderizzare la vista corretta
         }
     }
 
@@ -482,8 +523,13 @@ class BacheaCalendar {
             return this.extractHours(a.time) - this.extractHours(b.time);
         });
 
+        // Filtra: mostra solo eventi di oggi e futuri (nasconde eventi passati)
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const futureEvents = allEvents.filter(event => event.date >= today);
+
         // Filtra per colore visibile
-        const visibleEvents = allEvents.filter(event => this.isColorVisible(event.color));
+        const visibleEvents = futureEvents.filter(event => this.isColorVisible(event.color));
 
         if (visibleEvents.length === 0) {
             eventsList.innerHTML = '<div class="empty-list">Nessun evento programmato 📭</div>';
@@ -671,7 +717,7 @@ class BacheaCalendar {
         this.saveNotes();
         this.autoSync(); // Sincronizza con Firebase
         this.closeEditModal();
-        this.renderCalendar();
+        this.render(); // Usa render() per renderizzare la vista corretta (calendario o lista)
         setTimeout(() => alert('✅ Evento modificato con successo!'), 100);
     }
 
