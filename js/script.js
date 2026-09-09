@@ -65,10 +65,13 @@ class BacheaCalendar {
             .then(content => {
                 const lines = content.trim().split('\n');
                 if (lines[0]) {
-                    document.getElementById('titleHeader').textContent = lines[0];
+                    document.getElementById('titleLine1').textContent = lines[0];
                 }
                 if (lines[1]) {
-                    document.getElementById('subtitleHeader').textContent = lines[1];
+                    document.getElementById('titleLine2').textContent = lines[1];
+                }
+                if (lines[2]) {
+                    document.getElementById('titleLine3').textContent = lines[2];
                 }
             })
             .catch(error => {
@@ -121,7 +124,10 @@ class BacheaCalendar {
         document.getElementById('nextBtn').addEventListener('click', () => this.nextMonth());
         document.querySelector('.btn-today').addEventListener('click', () => this.today());
 
-        document.getElementById('closeBtn').addEventListener('click', () => this.closeModal());
+        document.getElementById('closeBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.closeModal();
+        });
         document.getElementById('modal').addEventListener('click', (e) => {
             if (e.target === document.getElementById('modal')) this.closeModal();
         });
@@ -136,20 +142,88 @@ class BacheaCalendar {
         });
 
         // Seleziona colore form modifica evento
-        document.querySelectorAll('.edit-color-select').forEach(option => {
+        document.querySelectorAll('input[name="editEventColor"]').forEach(option => {
             option.addEventListener('change', (e) => {
                 this.selectedColor = e.target.dataset.color;
             });
         });
 
-        // Checkbox partecipanti form aggiunta
-        document.getElementById('eventHasParticipants').addEventListener('change', (e) => {
-            document.getElementById('eventParticipantsGroup').style.display = e.target.checked ? 'block' : 'none';
+        // Tab navigation
+        document.querySelectorAll('.modal-tab').forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                const tabName = e.target.dataset.tab;
+                const modal = e.target.closest('.modal-content');
+
+                // Rimuovi active da tutti i tab e contenuti
+                modal.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+                modal.querySelectorAll('.modal-tab-content').forEach(c => c.classList.remove('active'));
+
+                // Aggiungi active al tab cliccato e al suo contenuto
+                e.target.classList.add('active');
+                modal.querySelector(`#${tabName}`).classList.add('active');
+            });
         });
 
-        // Checkbox partecipanti form modifica
+        // Gestione partecipanti form aggiunta
+        this.eventParticipantsList = [];
+
+        document.getElementById('eventHasParticipants').addEventListener('change', (e) => {
+            document.getElementById('eventParticipantsGroup').style.display = e.target.checked ? 'block' : 'none';
+            if (e.target.checked) {
+                this.renderEventParticipants();
+            }
+        });
+
+        document.getElementById('eventAddParticipantBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('eventParticipantsInputGroup').style.display = 'flex';
+            document.getElementById('eventParticipantInput').focus();
+        });
+
+        document.getElementById('eventParticipantSaveBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            const name = document.getElementById('eventParticipantInput').value.trim();
+            if (name) {
+                this.eventParticipantsList.push(name);
+                document.getElementById('eventParticipantInput').value = '';
+                document.getElementById('eventParticipantsInputGroup').style.display = 'none';
+                this.renderEventParticipants();
+            }
+        });
+
+        // Gestione partecipanti form modifica
+        this.editParticipantsList = [];
+
         document.getElementById('editHasParticipants').addEventListener('change', (e) => {
             document.getElementById('editParticipantsGroup').style.display = e.target.checked ? 'block' : 'none';
+            if (e.target.checked) {
+                this.renderEditParticipants();
+            }
+        });
+
+        document.getElementById('editAddParticipantBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('editParticipantsInputGroup').style.display = 'flex';
+            document.getElementById('editParticipantInput').focus();
+        });
+
+        document.getElementById('editParticipantSaveBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            const name = document.getElementById('editParticipantInput').value.trim();
+            if (name) {
+                this.editParticipantsList.push(name);
+                document.getElementById('editParticipantInput').value = '';
+                document.getElementById('editParticipantsInputGroup').style.display = 'none';
+                this.renderEditParticipants();
+
+                // Salva immediatamente su Firebase
+                if (this.editingNote) {
+                    const { dateKey, noteIndex } = this.editingNote;
+                    this.notes[dateKey][noteIndex].participants = this.editParticipantsList;
+                    this.saveNotes();
+                    this.autoSync();
+                }
+            }
         });
 
         // Settings
@@ -172,15 +246,29 @@ class BacheaCalendar {
         document.getElementById('viewToggleBtn').addEventListener('click', () => this.toggleView());
 
         // Edit Modal
-        document.getElementById('closeEditBtn').addEventListener('click', () => this.closeEditModal());
-        document.getElementById('deleteNoteBtn').addEventListener('click', () => this.deleteCurrentNote());
-        document.getElementById('saveEditBtn').addEventListener('click', () => this.saveEditedNote());
+        document.getElementById('closeEditBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.closeEditModal();
+        });
+        document.getElementById('deleteNoteBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.deleteCurrentNote();
+        });
+        document.getElementById('saveEditBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.saveEditedNote();
+        });
         document.getElementById('editModal').addEventListener('click', (e) => {
             if (e.target === document.getElementById('editModal')) this.closeEditModal();
         });
 
         // GIF Modal
-        document.getElementById('titleHeader').addEventListener('click', () => this.toggleGifModal());
+        document.getElementById('titleLine2').addEventListener('click', () => {
+            const text = document.getElementById('titleLine2').textContent;
+            if (text === 'Ma io che cazzo ne so, scusi?') {
+                this.toggleGifModal();
+            }
+        });
         document.getElementById('gifModal').addEventListener('click', (e) => {
             if (e.target === document.getElementById('gifModal')) this.toggleGifModal();
         });
@@ -298,7 +386,8 @@ class BacheaCalendar {
 
                     // Click per aprire il dettaglio (solo se non è passato)
                     if (!isPastDay) {
-                        noteEl.querySelector('.note-text').addEventListener('click', () => {
+                        noteEl.querySelector('.note-text').addEventListener('click', (e) => {
+                            e.stopPropagation();
                             this.openEditModal(dateKey, index);
                         });
                     }
@@ -337,15 +426,20 @@ class BacheaCalendar {
         document.getElementById('eventTime').value = '';
         document.getElementById('eventLocation').value = '';
         document.getElementById('eventNotes').value = '';
+        document.getElementById('eventLink').value = '';
+        document.getElementById('eventImage').value = '';
         document.getElementById('eventHasParticipants').checked = false;
-        document.getElementById('eventParticipants').value = '';
         document.getElementById('eventParticipantsGroup').style.display = 'none';
+        document.getElementById('eventParticipantsInputGroup').style.display = 'none';
+        document.getElementById('eventParticipantInput').value = '';
+        this.eventParticipantsList = [];
 
-        // Seleziona il colore giallo di default
-        document.querySelector('input[name="eventColor"][data-color="color-yellow"]').checked = true;
-        this.selectedColor = 'color-yellow';
+        // Seleziona il colore neutro di default
+        document.querySelector('input[name="eventColor"][data-color="color-neutral"]').checked = true;
+        this.selectedColor = 'color-neutral';
 
         document.getElementById('modal').classList.add('active');
+        document.getElementById('modal').style.display = 'flex';
         document.getElementById('eventTitle').focus();
 
         const dateStr = date.toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -358,9 +452,77 @@ class BacheaCalendar {
         document.getElementById('eventTime').value = '';
         document.getElementById('eventLocation').value = '';
         document.getElementById('eventNotes').value = '';
+        document.getElementById('eventLink').value = '';
+        document.getElementById('eventHasParticipants').checked = false;
+        document.getElementById('eventParticipantsGroup').style.display = 'none';
+        document.getElementById('eventParticipantsInputGroup').style.display = 'none';
+        document.getElementById('eventParticipantInput').value = '';
+        this.eventParticipantsList = [];
+
+        // Resetta i tab del modal di aggiunta
+        const modal = document.getElementById('modal');
+        modal.querySelectorAll('.modal-tab').forEach(tab => tab.classList.remove('active'));
+        modal.querySelectorAll('.modal-tab-content').forEach(content => content.classList.remove('active'));
+        // Attiva il primo tab
+        modal.querySelector('.modal-tab').classList.add('active');
+        modal.querySelector('.modal-tab-content').classList.add('active');
 
         document.getElementById('modal').classList.remove('active');
+        document.getElementById('modal').style.display = 'none';
         this.selectedDate = null;
+    }
+
+    renderEventParticipants() {
+        const listEl = document.getElementById('eventParticipantsList');
+        listEl.innerHTML = '';
+
+        this.eventParticipantsList.forEach((participant, index) => {
+            const itemEl = document.createElement('div');
+            itemEl.className = 'participant-item';
+            itemEl.innerHTML = `
+                <span>${this.escapeHtml(participant)}</span>
+                <button type="button" class="btn-remove-participant" data-index="${index}">🗑️ Elimina</button>
+            `;
+
+            itemEl.querySelector('.btn-remove-participant').addEventListener('click', (e) => {
+                e.preventDefault();
+                this.eventParticipantsList.splice(index, 1);
+                this.renderEventParticipants();
+            });
+
+            listEl.appendChild(itemEl);
+        });
+    }
+
+    renderEditParticipants() {
+        const listEl = document.getElementById('editParticipantsList');
+        if (!listEl) return;
+        listEl.innerHTML = '';
+
+        this.editParticipantsList.forEach((participant, index) => {
+            const itemEl = document.createElement('div');
+            itemEl.className = 'participant-item';
+            itemEl.innerHTML = `
+                <span>${this.escapeHtml(participant)}</span>
+                <button type="button" class="btn-remove-participant" data-index="${index}">🗑️ Elimina</button>
+            `;
+
+            itemEl.querySelector('.btn-remove-participant').addEventListener('click', (e) => {
+                e.preventDefault();
+                this.editParticipantsList.splice(index, 1);
+                this.renderEditParticipants();
+
+                // Salva immediatamente su Firebase
+                if (this.editingNote) {
+                    const { dateKey, noteIndex } = this.editingNote;
+                    this.notes[dateKey][noteIndex].participants = this.editParticipantsList;
+                    this.saveNotes();
+                    this.autoSync();
+                }
+            });
+
+            listEl.appendChild(itemEl);
+        });
     }
 
     addNote(e) {
@@ -376,13 +538,6 @@ class BacheaCalendar {
         // Genera un ID unico
         const id = 'evt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
-        // Estrai partecipanti se checkbox spuntato
-        let participants = [];
-        if (document.getElementById('eventHasParticipants').checked) {
-            const participantsText = document.getElementById('eventParticipants').value.trim();
-            participants = participantsText.split('\n').map(p => p.trim()).filter(p => p);
-        }
-
         this.notes[dateKey].push({
             id: id,
             title: title,
@@ -390,7 +545,8 @@ class BacheaCalendar {
             location: document.getElementById('eventLocation').value.trim(),
             notes: document.getElementById('eventNotes').value.trim(),
             color: this.selectedColor,
-            participants: participants
+            link: document.getElementById('eventLink').value.trim(),
+            participants: this.eventParticipantsList
         });
 
         this.saveNotes();
@@ -684,6 +840,10 @@ class BacheaCalendar {
 
     // Edit Modal
     openEditModal(dateKey, noteIndex) {
+        // Chiudi il modal di aggiunta se aperto
+        document.getElementById('modal').classList.remove('active');
+        document.getElementById('modal').style.display = 'none';
+
         this.editingNote = { dateKey, noteIndex };
         const note = this.notes[dateKey][noteIndex];
 
@@ -691,12 +851,16 @@ class BacheaCalendar {
         document.getElementById('editTime').value = note.time || '';
         document.getElementById('editLocation').value = note.location || '';
         document.getElementById('editNotes').value = note.notes || '';
+        document.getElementById('editLink').value = note.link || '';
 
         // Set partecipanti
-        const hasParticipants = note.participants && note.participants.length > 0;
+        this.editParticipantsList = note.participants ? [...note.participants] : [];
+        const hasParticipants = this.editParticipantsList.length > 0;
         document.getElementById('editHasParticipants').checked = hasParticipants;
         document.getElementById('editParticipantsGroup').style.display = hasParticipants ? 'block' : 'none';
-        document.getElementById('editParticipants').value = hasParticipants ? note.participants.join('\n') : '';
+        if (hasParticipants) {
+            this.renderEditParticipants();
+        }
 
         // Set colore - mantieni il colore originale come default
         this.selectedColor = note.color || 'color-yellow';
@@ -706,10 +870,32 @@ class BacheaCalendar {
         }
 
         document.getElementById('editModal').classList.add('active');
+        document.getElementById('editModal').style.display = 'flex';
     }
 
     closeEditModal() {
+        // Pulisci i campi del form
+        document.getElementById('editTitle').value = '';
+        document.getElementById('editTime').value = '';
+        document.getElementById('editLocation').value = '';
+        document.getElementById('editNotes').value = '';
+        document.getElementById('editLink').value = '';
+        document.getElementById('editHasParticipants').checked = false;
+        document.getElementById('editParticipantsGroup').style.display = 'none';
+        document.getElementById('editParticipantsInputGroup').style.display = 'none';
+        document.getElementById('editParticipantInput').value = '';
+        this.editParticipantsList = [];
+
+        // Resetta i tab del modal di modifica
+        const editModal = document.getElementById('editModal');
+        editModal.querySelectorAll('.modal-tab').forEach(tab => tab.classList.remove('active'));
+        editModal.querySelectorAll('.modal-tab-content').forEach(content => content.classList.remove('active'));
+        // Attiva il primo tab
+        editModal.querySelector('.modal-tab').classList.add('active');
+        editModal.querySelector('.modal-tab-content').classList.add('active');
+
         document.getElementById('editModal').classList.remove('active');
+        document.getElementById('editModal').style.display = 'none';
         this.closeModal(); // Chiudi anche il modal di aggiunta se aperto
         this.editingNote = null;
     }
@@ -720,13 +906,6 @@ class BacheaCalendar {
         const { dateKey, noteIndex } = this.editingNote;
         const eventId = this.notes[dateKey][noteIndex].id;
 
-        // Estrai partecipanti se checkbox spuntato
-        let participants = [];
-        if (document.getElementById('editHasParticipants').checked) {
-            const participantsText = document.getElementById('editParticipants').value.trim();
-            participants = participantsText.split('\n').map(p => p.trim()).filter(p => p);
-        }
-
         this.notes[dateKey][noteIndex] = {
             id: eventId, // Mantieni l'ID originale
             title: document.getElementById('editTitle').value.trim(),
@@ -734,7 +913,8 @@ class BacheaCalendar {
             location: document.getElementById('editLocation').value.trim(),
             notes: document.getElementById('editNotes').value.trim(),
             color: this.selectedColor,
-            participants: participants
+            link: document.getElementById('editLink').value.trim(),
+            participants: this.editParticipantsList
         };
 
         this.saveNotes();

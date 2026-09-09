@@ -224,6 +224,11 @@ button {
     background: rgba(255, 255, 255, 1);
 }
 
+.color-neutral {
+    background: #999;
+    color: white;
+}
+
 .color-yellow {
     background: #ffd54f;
     color: #333;
@@ -294,6 +299,10 @@ button {
     display: flex;
 }
 
+#editModal {
+    z-index: 1100;
+}
+
 .modal-content {
     background: white;
     border-radius: 16px;
@@ -320,6 +329,54 @@ button {
     font-weight: 600;
     margin-bottom: 20px;
     color: #667eea;
+}
+
+.modal-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #eee;
+}
+
+.modal-tab {
+    flex: 1;
+    padding: 10px 12px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: #999;
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.modal-tab:hover {
+    color: #667eea;
+}
+
+.modal-tab.active {
+    color: #667eea;
+    border-bottom-color: #667eea;
+    font-weight: 600;
+}
+
+.modal-tab-content {
+    display: none;
+}
+
+.modal-tab-content.active {
+    display: block;
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
 }
 
 .form-group {
@@ -655,6 +712,64 @@ footer {
     padding-top: 8px;
     border-top: 1px solid #eee;
     font-weight: 500;
+}
+
+.participants-list {
+    margin-bottom: 12px;
+}
+
+.participant-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: #f5f5f5;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    font-size: 0.9rem;
+}
+
+.participant-item button {
+    background: #ff6b9d;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.participant-item button:hover {
+    background: #ff5483;
+}
+
+.participants-input-group {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.btn-add-participant {
+    background: #667eea !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 6px !important;
+    padding: 10px !important;
+    cursor: pointer !important;
+    font-weight: 500 !important;
+}
+
+.btn-add-participant:hover {
+    background: #5568d3 !important;
+}
+
+.btn-participant-save {
+    background: #667eea !important;
+    color: white !important;
+}
+
+.btn-participant-save:hover {
+    background: #5568d3 !important;
 }
 
 .event-item.color-yellow {

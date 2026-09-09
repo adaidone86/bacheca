@@ -20,8 +20,9 @@
 
     <div id="mainContainer" class="container">
         <header>
-            <h1 id="titleHeader" style="cursor: pointer;"></h1>
-            <p class="subtitle" id="subtitleHeader"></p>
+            <h1 id="titleLine1" style="cursor: pointer;"></h1>
+            <h1 id="titleLine2" style="cursor: pointer;"></h1>
+            <p class="subtitle" id="titleLine3"></p>
             <div class="header-buttons">
                 <button id="viewToggleBtn" class="view-toggle">📋 Lista</button>
                 <button id="settingsBtn">⚙️ Impostazioni</button>
@@ -63,66 +64,100 @@
     <div class="modal" id="modal">
         <div class="modal-content">
             <div class="modal-header" id="modalTitle">Aggiungi un evento</div>
+            <div class="modal-tabs">
+                <button class="modal-tab active" data-tab="evento-tab">📌 Evento</button>
+                <button class="modal-tab" data-tab="participants-tab">👥 Partecipanti</button>
+                <button class="modal-tab" data-tab="details-tab">📍 Dettagli</button>
+            </div>
             <form id="noteForm">
-                <div class="form-group">
-                    <label for="eventTitle">📌 Nome evento</label>
-                    <input type="text" id="eventTitle" placeholder="Es: SAGRA DEL TORTELLO" required>
+                <!-- Tab: Evento -->
+                <div id="evento-tab" class="modal-tab-content active">
+                    <div class="form-group">
+                        <label for="eventTitle">📌 Nome evento</label>
+                        <input type="text" id="eventTitle" placeholder="Es: SAGRA DEL TORTELLO" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="eventTime">🕐 Ora</label>
+                        <input type="time" id="eventTime" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="eventLocation">📍 Luogo</label>
+                        <input type="text" id="eventLocation" placeholder="Es: O.Live – Parco dell'Oliveta (Sesto)" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="eventNotes">📝 Note aggiuntive</label>
+                        <textarea id="eventNotes" placeholder="Es: con cena cantata! 📞 Prenotazione: 393 336 4633" required></textarea>
+                    </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="eventTime">🕐 Ora</label>
-                    <input type="time" id="eventTime">
+                <!-- Tab: Partecipanti -->
+                <div id="participants-tab" class="modal-tab-content">
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="eventHasParticipants">
+                            👥 Aggiungi partecipanti
+                        </label>
+                    </div>
+
+                    <div class="form-group" id="eventParticipantsGroup" style="display: none;">
+                        <div id="eventParticipantsList" class="participants-list"></div>
+
+                        <div class="participants-input-group" id="eventParticipantsInputGroup" style="display: none;">
+                            <input type="text" id="eventParticipantInput" placeholder="Nome partecipante" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+                            <button type="button" class="btn-participant-save" id="eventParticipantSaveBtn" style="padding: 8px 12px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; margin-left: 8px;">Salva</button>
+                        </div>
+
+                        <button type="button" class="btn-add-participant" id="eventAddParticipantBtn" style="width: 100%; padding: 10px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; margin-top: 8px;">+ Aggiungi partecipante</button>
+                    </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="eventLocation">📍 Luogo</label>
-                    <input type="text" id="eventLocation" placeholder="Es: O.Live – Parco dell'Oliveta (Sesto)">
-                </div>
+                <!-- Tab: Dettagli -->
+                <div id="details-tab" class="modal-tab-content">
+                    <div class="form-group">
+                        <label>🎨 Categoria evento</label>
+                        <div class="color-filter-group">
+                            <label class="color-radio">
+                                <input type="radio" name="eventColor" class="color-select" data-color="color-neutral" checked>
+                                <span class="color-filter-label" style="background: #999; color: white;">⚪ Senza categoria</span>
+                            </label>
+                            <label class="color-radio">
+                                <input type="radio" name="eventColor" class="color-select" data-color="color-yellow">
+                                <span class="color-filter-label" style="background: #ffd54f; color: #333;">🍽️ Gastronomia/Cibo</span>
+                            </label>
+                            <label class="color-radio">
+                                <input type="radio" name="eventColor" class="color-select" data-color="color-pink">
+                                <span class="color-filter-label" style="background: #ff6b9d; color: white;">👥 Serate/Sociali</span>
+                            </label>
+                            <label class="color-radio">
+                                <input type="radio" name="eventColor" class="color-select" data-color="color-green">
+                                <span class="color-filter-label" style="background: #81c784; color: white;">⛹️ Sport/Attività</span>
+                            </label>
+                            <label class="color-radio">
+                                <input type="radio" name="eventColor" class="color-select" data-color="color-blue">
+                                <span class="color-filter-label" style="background: #64b5f6; color: white;">🎮 Intrattenimento</span>
+                            </label>
+                            <label class="color-radio">
+                                <input type="radio" name="eventColor" class="color-select" data-color="color-purple">
+                                <span class="color-filter-label" style="background: #ba68c8; color: white;">🎵 Cultura/Musica</span>
+                            </label>
+                            <label class="color-radio">
+                                <input type="radio" name="eventColor" class="color-select" data-color="color-orange">
+                                <span class="color-filter-label" style="background: #ffb74d; color: white;">🏞️ Escursioni/Turismo</span>
+                            </label>
+                        </div>
+                    </div>
 
-                <div class="form-group">
-                    <label for="eventNotes">📝 Note aggiuntive</label>
-                    <textarea id="eventNotes" placeholder="Es: con cena cantata! 📞 Prenotazione: 393 336 4633"></textarea>
-                </div>
+                    <div class="form-group">
+                        <label for="eventLink">🔗 Link</label>
+                        <input type="url" id="eventLink" placeholder="Es: https://example.com">
+                    </div>
 
-                <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="eventHasParticipants">
-                        👥 Aggiungi partecipanti
-                    </label>
-                </div>
-
-                <div class="form-group" id="eventParticipantsGroup" style="display: none;">
-                    <label for="eventParticipants">Nomi dei partecipanti</label>
-                    <textarea id="eventParticipants" placeholder="Es: Mario, Luigi, Peach (uno per riga)"></textarea>
-                </div>
-
-                <div class="form-group">
-                    <label>🎨 Categoria evento</label>
-                    <div class="color-filter-group">
-                        <label class="color-radio">
-                            <input type="radio" name="eventColor" class="color-select" data-color="color-yellow" checked>
-                            <span class="color-filter-label" style="background: #ffd54f; color: #333;">🍽️ Gastronomia/Cibo</span>
-                        </label>
-                        <label class="color-radio">
-                            <input type="radio" name="eventColor" class="color-select" data-color="color-pink">
-                            <span class="color-filter-label" style="background: #ff6b9d; color: white;">👥 Serate/Sociali</span>
-                        </label>
-                        <label class="color-radio">
-                            <input type="radio" name="eventColor" class="color-select" data-color="color-green">
-                            <span class="color-filter-label" style="background: #81c784; color: white;">⛹️ Sport/Attività</span>
-                        </label>
-                        <label class="color-radio">
-                            <input type="radio" name="eventColor" class="color-select" data-color="color-blue">
-                            <span class="color-filter-label" style="background: #64b5f6; color: white;">🎮 Intrattenimento</span>
-                        </label>
-                        <label class="color-radio">
-                            <input type="radio" name="eventColor" class="color-select" data-color="color-purple">
-                            <span class="color-filter-label" style="background: #ba68c8; color: white;">🎵 Cultura/Musica</span>
-                        </label>
-                        <label class="color-radio">
-                            <input type="radio" name="eventColor" class="color-select" data-color="color-orange">
-                            <span class="color-filter-label" style="background: #ffb74d; color: white;">🏞️ Escursioni/Turismo</span>
-                        </label>
+                    <div class="form-group">
+                        <label for="eventImage">🖼️ Immagine</label>
+                        <input type="file" id="eventImage" accept="image/*">
                     </div>
                 </div>
 
@@ -198,66 +233,100 @@
     <div class="modal" id="editModal">
         <div class="modal-content">
             <div class="modal-header">✏️ Modifica evento</div>
+            <div class="modal-tabs">
+                <button class="modal-tab active" data-tab="edit-evento-tab">📌 Evento</button>
+                <button class="modal-tab" data-tab="edit-participants-tab">👥 Partecipanti</button>
+                <button class="modal-tab" data-tab="edit-details-tab">📍 Dettagli</button>
+            </div>
             <form id="editForm">
-                <div class="form-group">
-                    <label for="editTitle">📌 Nome evento</label>
-                    <input type="text" id="editTitle" required>
+                <!-- Tab: Evento -->
+                <div id="edit-evento-tab" class="modal-tab-content active">
+                    <div class="form-group">
+                        <label for="editTitle">📌 Nome evento</label>
+                        <input type="text" id="editTitle" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editTime">🕐 Ora</label>
+                        <input type="time" id="editTime">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editLocation">📍 Luogo</label>
+                        <input type="text" id="editLocation">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editNotes">📝 Note aggiuntive</label>
+                        <textarea id="editNotes"></textarea>
+                    </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="editTime">🕐 Ora</label>
-                    <input type="time" id="editTime">
+                <!-- Tab: Partecipanti -->
+                <div id="edit-participants-tab" class="modal-tab-content">
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="editHasParticipants">
+                            👥 Aggiungi partecipanti
+                        </label>
+                    </div>
+
+                    <div class="form-group" id="editParticipantsGroup" style="display: none;">
+                        <div id="editParticipantsList" class="participants-list"></div>
+
+                        <div class="participants-input-group" id="editParticipantsInputGroup" style="display: none;">
+                            <input type="text" id="editParticipantInput" placeholder="Nome partecipante" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
+                            <button type="button" class="btn-participant-save" id="editParticipantSaveBtn" style="padding: 8px 12px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; margin-left: 8px;">Salva</button>
+                        </div>
+
+                        <button type="button" class="btn-add-participant" id="editAddParticipantBtn" style="width: 100%; padding: 10px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; margin-top: 8px;">+ Aggiungi partecipante</button>
+                    </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="editLocation">📍 Luogo</label>
-                    <input type="text" id="editLocation">
-                </div>
+                <!-- Tab: Dettagli -->
+                <div id="edit-details-tab" class="modal-tab-content">
+                    <div class="form-group">
+                        <label>🎨 Categoria evento</label>
+                        <div class="color-filter-group">
+                            <label class="color-radio">
+                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-neutral">
+                                <span class="color-filter-label" style="background: #999; color: white;">⚪ Senza categoria</span>
+                            </label>
+                            <label class="color-radio">
+                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-yellow">
+                                <span class="color-filter-label" style="background: #ffd54f; color: #333;">🍽️ Gastronomia/Cibo</span>
+                            </label>
+                            <label class="color-radio">
+                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-pink">
+                                <span class="color-filter-label" style="background: #ff6b9d; color: white;">👥 Serate/Sociali</span>
+                            </label>
+                            <label class="color-radio">
+                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-green">
+                                <span class="color-filter-label" style="background: #81c784; color: white;">⛹️ Sport/Attività</span>
+                            </label>
+                            <label class="color-radio">
+                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-blue">
+                                <span class="color-filter-label" style="background: #64b5f6; color: white;">🎮 Intrattenimento</span>
+                            </label>
+                            <label class="color-radio">
+                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-purple">
+                                <span class="color-filter-label" style="background: #ba68c8; color: white;">🎵 Cultura/Musica</span>
+                            </label>
+                            <label class="color-radio">
+                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-orange">
+                                <span class="color-filter-label" style="background: #ffb74d; color: white;">🏞️ Escursioni/Turismo</span>
+                            </label>
+                        </div>
+                    </div>
 
-                <div class="form-group">
-                    <label for="editNotes">📝 Note aggiuntive</label>
-                    <textarea id="editNotes"></textarea>
-                </div>
+                    <div class="form-group">
+                        <label for="editLink">🔗 Link</label>
+                        <input type="url" id="editLink" placeholder="Es: https://example.com">
+                    </div>
 
-                <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="editHasParticipants">
-                        👥 Aggiungi partecipanti
-                    </label>
-                </div>
-
-                <div class="form-group" id="editParticipantsGroup" style="display: none;">
-                    <label for="editParticipants">Nomi dei partecipanti</label>
-                    <textarea id="editParticipants" placeholder="Es: Mario, Luigi, Peach (uno per riga)"></textarea>
-                </div>
-
-                <div class="form-group">
-                    <label>🎨 Categoria evento</label>
-                    <div class="color-filter-group">
-                        <label class="color-radio">
-                            <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-yellow">
-                            <span class="color-filter-label" style="background: #ffd54f; color: #333;">🍽️ Gastronomia/Cibo</span>
-                        </label>
-                        <label class="color-radio">
-                            <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-pink">
-                            <span class="color-filter-label" style="background: #ff6b9d; color: white;">👥 Serate/Sociali</span>
-                        </label>
-                        <label class="color-radio">
-                            <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-green">
-                            <span class="color-filter-label" style="background: #81c784; color: white;">⛹️ Sport/Attività</span>
-                        </label>
-                        <label class="color-radio">
-                            <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-blue">
-                            <span class="color-filter-label" style="background: #64b5f6; color: white;">🎮 Intrattenimento</span>
-                        </label>
-                        <label class="color-radio">
-                            <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-purple">
-                            <span class="color-filter-label" style="background: #ba68c8; color: white;">🎵 Cultura/Musica</span>
-                        </label>
-                        <label class="color-radio">
-                            <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-orange">
-                            <span class="color-filter-label" style="background: #ffb74d; color: white;">🏞️ Escursioni/Turismo</span>
-                        </label>
+                    <div class="form-group">
+                        <label for="editImage">🖼️ Immagine</label>
+                        <input type="file" id="editImage" accept="image/*">
                     </div>
                 </div>
 
