@@ -4,22 +4,17 @@ class BacheaCalendar {
         this.selectedDate = null;
         this.selectedColor = 'color-yellow';
         this.notes = this.loadNotes();
-        this.gistToken = localStorage.getItem('gistToken') || null;
-        this.gistId = localStorage.getItem('gistId') || null;
         this.isSyncing = false;
+        this.editingNote = null; // Per tracciare quale nota stiamo editando
         this.init();
     }
 
     init() {
         this.setupEventListeners();
-        // Carica da Gist PRIMA di renderizzare
-        if (this.gistToken && this.gistId) {
-            this.loadFromGist().then(() => {
-                this.render();
-            });
-        } else {
+        // Carica da GitHub PRIMA di renderizzare
+        this.loadFromGitHub().then(() => {
             this.render();
-        }
+        });
     }
 
     setupEventListeners() {
@@ -42,11 +37,25 @@ class BacheaCalendar {
             });
         });
 
-        // Gist setup
+        document.querySelectorAll('.edit-color-option').forEach(option => {
+            option.addEventListener('click', (e) => {
+                document.querySelectorAll('.edit-color-option').forEach(o => o.classList.remove('selected'));
+                e.target.classList.add('selected');
+                this.selectedColor = e.target.dataset.color;
+            });
+        });
+
+        // Settings
         document.getElementById('settingsBtn').addEventListener('click', () => this.openSettings());
         document.getElementById('closeSettingsBtn').addEventListener('click', () => this.closeSettings());
-        document.getElementById('saveSettingsBtn').addEventListener('click', () => this.saveSettings());
-        document.getElementById('syncBtn').addEventListener('click', () => this.syncGist());
+
+        // Edit Modal
+        document.getElementById('closeEditBtn').addEventListener('click', () => this.closeEditModal());
+        document.getElementById('deleteNoteBtn').addEventListener('click', () => this.deleteCurrentNote());
+        document.getElementById('saveEditBtn').addEventListener('click', () => this.saveEditedNote());
+        document.getElementById('editModal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('editModal')) this.closeEditModal();
+        });
     }
 
     render() {
@@ -121,14 +130,24 @@ class BacheaCalendar {
                 dayNotes.forEach((note, index) => {
                     const noteEl = document.createElement('div');
                     noteEl.className = `note ${note.color}`;
+                    noteEl.style.cursor = 'pointer';
+
                     noteEl.innerHTML = `
-                        <span class="note-text">${this.escapeHtml(note.text)}</span>
+                        <span class="note-text">${this.escapeHtml(note.title)}</span>
                         <button class="note-delete" type="button">✕</button>
                     `;
+
+                    // Click per aprire il dettaglio
+                    noteEl.querySelector('.note-text').addEventListener('click', () => {
+                        this.openEditModal(dateKey, index);
+                    });
+
+                    // Delete button
                     noteEl.querySelector('.note-delete').addEventListener('click', (e) => {
                         e.stopPropagation();
                         this.deleteNote(dateKey, index);
                     });
+
                     notesContainer.appendChild(noteEl);
                 });
             }
@@ -155,8 +174,8 @@ class BacheaCalendar {
 
     addNote(e) {
         e.preventDefault();
-        const text = document.getElementById('noteText').value.trim();
-        if (!text || !this.selectedDate) return;
+        const title = document.getElementById('eventTitle').value.trim();
+        if (!title || !this.selectedDate) return;
 
         const dateKey = this.getDateKey(this.selectedDate);
         if (!this.notes[dateKey]) {
@@ -164,18 +183,16 @@ class BacheaCalendar {
         }
 
         this.notes[dateKey].push({
-            text,
+            title: title,
+            time: document.getElementById('eventTime').value.trim(),
+            location: document.getElementById('eventLocation').value.trim(),
+            notes: document.getElementById('eventNotes').value.trim(),
             color: this.selectedColor
         });
 
         this.saveNotes();
         this.closeModal();
         this.renderCalendar();
-
-        // Sincronizza automaticamente su Gist
-        if (this.gistToken && this.gistId) {
-            this.syncGist();
-        }
     }
 
     deleteNote(dateKey, index) {
@@ -186,11 +203,6 @@ class BacheaCalendar {
             }
             this.saveNotes();
             this.renderCalendar();
-
-            // Sincronizza automaticamente su Gist
-            if (this.gistToken && this.gistId) {
-                this.syncGist();
-            }
         }
     }
 
@@ -237,116 +249,99 @@ class BacheaCalendar {
         return div.innerHTML;
     }
 
-    // Gist methods
+    // Settings
     openSettings() {
         document.getElementById('settingsModal').classList.add('active');
-        document.getElementById('gistTokenInput').value = this.gistToken || '';
-        document.getElementById('gistIdInput').value = this.gistId || '';
-        this.updateSettingsStatus();
     }
 
     closeSettings() {
         document.getElementById('settingsModal').classList.remove('active');
     }
 
-    updateSettingsStatus() {
-        const status = document.getElementById('settingsStatus');
-        if (this.gistToken && this.gistId) {
-            status.innerHTML = '✅ Configurato correttamente';
-            status.style.color = '#81c784';
-        } else {
-            status.innerHTML = '⚠️ Configurazione incompleta';
-            status.style.color = '#ff6b9d';
-        }
+    // Edit Modal
+    openEditModal(dateKey, noteIndex) {
+        this.editingNote = { dateKey, noteIndex };
+        const note = this.notes[dateKey][noteIndex];
+
+        document.getElementById('editTitle').value = note.title || '';
+        document.getElementById('editTime').value = note.time || '';
+        document.getElementById('editLocation').value = note.location || '';
+        document.getElementById('editNotes').value = note.notes || '';
+
+        // Set colore
+        document.querySelectorAll('.edit-color-option').forEach(o => o.classList.remove('selected'));
+        document.querySelector(`.edit-color-option[data-color="${note.color}"]`).classList.add('selected');
+        this.selectedColor = note.color;
+
+        document.getElementById('editModal').classList.add('active');
     }
 
-    saveSettings() {
-        const token = document.getElementById('gistTokenInput').value.trim();
-        const gistId = document.getElementById('gistIdInput').value.trim();
-
-        if (!token || !gistId) {
-            alert('⚠️ Inserisci sia il token che l\'ID del Gist');
-            return;
-        }
-
-        this.gistToken = token;
-        this.gistId = gistId;
-        localStorage.setItem('gistToken', token);
-        localStorage.setItem('gistId', gistId);
-
-        alert('✅ Impostazioni salvate! Sincronizzazione in corso...');
-        this.closeSettings();
-        this.syncGist();
+    closeEditModal() {
+        document.getElementById('editModal').classList.remove('active');
+        this.editingNote = null;
     }
 
-    async loadFromGist() {
-        if (!this.gistToken || !this.gistId) return Promise.resolve();
+    saveEditedNote() {
+        if (!this.editingNote) return;
 
+        const { dateKey, noteIndex } = this.editingNote;
+        this.notes[dateKey][noteIndex] = {
+            title: document.getElementById('editTitle').value.trim(),
+            time: document.getElementById('editTime').value.trim(),
+            location: document.getElementById('editLocation').value.trim(),
+            notes: document.getElementById('editNotes').value.trim(),
+            color: this.selectedColor
+        };
+
+        this.saveNotes();
+        this.closeEditModal();
+        this.renderCalendar();
+    }
+
+    deleteCurrentNote() {
+        if (!this.editingNote) return;
+        if (!confirm('Sei sicuro di voler eliminare questo evento?')) return;
+
+        const { dateKey, noteIndex } = this.editingNote;
+        this.deleteNote(dateKey, noteIndex);
+        this.closeEditModal();
+    }
+
+    async loadFromGitHub() {
         try {
-            const response = await fetch(`https://api.github.com/gists/${this.gistId}`, {
-                headers: {
-                    'Authorization': `token ${this.gistToken}`,
-                    'Accept': 'application/vnd.github.v3+json'
+            // Prova a caricare dal file locale prima
+            try {
+                const response = await fetch('./json/data.json');
+                if (response.ok) {
+                    const content = await response.text();
+                    const loadedNotes = JSON.parse(content);
+                    this.notes = loadedNotes;
+                    this.saveNotes();
+                    return Promise.resolve();
                 }
-            });
+            } catch (localError) {
+                // Se il file locale non esiste, prova GitHub
+                console.log('File locale non trovato, tentando GitHub...');
+            }
+
+            // Fallback: leggi dal file pubblico su GitHub
+            const response = await fetch(
+                'https://raw.githubusercontent.com/adaidone86/bacheca/main/json/data.json'
+            );
 
             if (response.ok) {
-                const gist = await response.json();
-                const content = Object.values(gist.files)[0].content;
+                const content = await response.text();
                 const loadedNotes = JSON.parse(content);
                 this.notes = loadedNotes;
                 this.saveNotes();
                 return Promise.resolve();
             }
         } catch (error) {
-            console.error('Errore nel caricamento da Gist:', error);
+            console.error('Errore nel caricamento dei dati:', error);
         }
         return Promise.resolve();
     }
 
-    async syncGist() {
-        if (!this.gistToken || !this.gistId || this.isSyncing) return;
-
-        this.isSyncing = true;
-        const syncBtn = document.getElementById('syncBtn');
-        syncBtn.textContent = '⟳ Sincronizzazione...';
-        syncBtn.disabled = true;
-
-        try {
-            const response = await fetch(`https://api.github.com/gists/${this.gistId}`, {
-                method: 'PATCH',
-                headers: {
-                    'Authorization': `token ${this.gistToken}`,
-                    'Accept': 'application/vnd.github.v3+json',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    files: {
-                        'bacheca-data.json': {
-                            content: JSON.stringify(this.notes, null, 2)
-                        }
-                    }
-                })
-            });
-
-            if (response.ok) {
-                syncBtn.textContent = '✅ Sincronizzato!';
-                setTimeout(() => {
-                    syncBtn.textContent = '🔄 Sincronizza';
-                    syncBtn.disabled = false;
-                    this.isSyncing = false;
-                }, 2000);
-            }
-        } catch (error) {
-            console.error('Errore nella sincronizzazione:', error);
-            syncBtn.textContent = '❌ Errore!';
-            setTimeout(() => {
-                syncBtn.textContent = '🔄 Sincronizza';
-                syncBtn.disabled = false;
-                this.isSyncing = false;
-            }, 2000);
-        }
-    }
 }
 
 // Inizializza il calendario

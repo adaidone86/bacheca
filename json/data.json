@@ -1,0 +1,27 @@
+{
+  "2026-09-09": [
+    {
+      "title": "SAGRA DEL TORTELLO",
+      "time": "19:00-23:00",
+      "location": "📍 O.Live – Parco dell'Oliveta (Sesto)",
+      "notes": "con cena cantata! 📞 Prenotazione obbligatoria: 393 336 4633",
+      "color": "color-yellow"
+    }
+  ],
+  "2026-09-10": [
+    {
+      "title": "Pulire casa",
+      "time": "10:00-12:00",
+      "location": "📍 Casa",
+      "notes": "Pulire a fondo tutti gli ambienti",
+      "color": "color-blue"
+    },
+    {
+      "title": "Chiamare mamma",
+      "time": "15:00",
+      "location": "📍 Telefono",
+      "notes": "Ricordati di chiedere come sta",
+      "color": "color-purple"
+    }
+  ]
+}

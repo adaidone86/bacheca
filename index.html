@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bacheca Collaborativa</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -12,7 +13,6 @@
             <h1>📅 Bacheca: Ma io che cazzo ne so, scusa?</h1>
             <p class="subtitle">Aggiungi le tue proposte di cose da fare cliccando su un giorno!</p>
             <div class="header-buttons">
-                <button id="syncBtn">🔄 Sincronizza</button>
                 <button id="settingsBtn">⚙️ Impostazioni</button>
             </div>
         </header>
@@ -46,15 +46,30 @@
     <!-- Modal per aggiungere nota -->
     <div class="modal" id="modal">
         <div class="modal-content">
-            <div class="modal-header" id="modalTitle">Aggiungi una proposta</div>
+            <div class="modal-header" id="modalTitle">Aggiungi un evento</div>
             <form id="noteForm">
                 <div class="form-group">
-                    <label for="noteText">Cosa vuoi fare?</label>
-                    <textarea id="noteText" placeholder="Scrivi la tua proposta..." required></textarea>
+                    <label for="eventTitle">📌 Nome evento</label>
+                    <input type="text" id="eventTitle" placeholder="Es: SAGRA DEL TORTELLO" required>
                 </div>
 
                 <div class="form-group">
-                    <label>Colore</label>
+                    <label for="eventTime">🕐 Ora</label>
+                    <input type="text" id="eventTime" placeholder="Es: 19:00-23:00">
+                </div>
+
+                <div class="form-group">
+                    <label for="eventLocation">📍 Luogo</label>
+                    <input type="text" id="eventLocation" placeholder="Es: O.Live – Parco dell'Oliveta (Sesto)">
+                </div>
+
+                <div class="form-group">
+                    <label for="eventNotes">📝 Note aggiuntive</label>
+                    <textarea id="eventNotes" placeholder="Es: con cena cantata! 📞 Prenotazione: 393 336 4633"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>🎨 Colore</label>
                     <div class="color-picker" id="colorPicker">
                         <div class="color-option color-yellow selected" data-color="color-yellow"></div>
                         <div class="color-option color-pink" data-color="color-pink"></div>
@@ -76,34 +91,62 @@
     <!-- Settings Modal -->
     <div class="settings-modal" id="settingsModal">
         <div class="settings-content">
-            <div class="settings-header">⚙️ Impostazioni Gist</div>
-            <p class="settings-subtitle">Salva i tuoi dati su GitHub</p>
+            <div class="settings-header">⚙️ Impostazioni</div>
+            <p class="settings-subtitle">Presto disponibili nuove opzioni</p>
 
-            <div class="settings-help">
-                <strong>📖 Come funziona:</strong><br>
-                1. Crea un Gist vuoto su github.com/gists<br>
-                2. Genera un token su github.com/settings/tokens<br>
-                3. Incolla qui token e ID del Gist
-            </div>
-
-            <div class="settings-input-group">
-                <label for="gistTokenInput">🔑 Personal Access Token</label>
-                <input type="password" id="gistTokenInput" placeholder="github_pat_XXXXXXXX...">
-            </div>
-
-            <div class="settings-input-group">
-                <label for="gistIdInput">📌 ID Gist</label>
-                <input type="text" id="gistIdInput" placeholder="Esempio: abc123def456">
-            </div>
-
-            <div class="settings-status" id="settingsStatus">
-                ⚠️ Non configurato
+            <div style="text-align: center; padding: 30px; color: #999;">
+                ✨ In arrivo...
             </div>
 
             <div class="settings-buttons">
-                <button type="button" class="btn-settings-save" id="saveSettingsBtn">Salva</button>
-                <button type="button" class="btn-settings-cancel" id="closeSettingsBtn">Annulla</button>
+                <button type="button" class="btn-settings-cancel" id="closeSettingsBtn" style="width: 100%;">Chiudi</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div class="modal" id="editModal">
+        <div class="modal-content">
+            <div class="modal-header">✏️ Modifica evento</div>
+            <form id="editForm">
+                <div class="form-group">
+                    <label for="editTitle">📌 Nome evento</label>
+                    <input type="text" id="editTitle" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="editTime">🕐 Ora</label>
+                    <input type="text" id="editTime">
+                </div>
+
+                <div class="form-group">
+                    <label for="editLocation">📍 Luogo</label>
+                    <input type="text" id="editLocation">
+                </div>
+
+                <div class="form-group">
+                    <label for="editNotes">📝 Note aggiuntive</label>
+                    <textarea id="editNotes"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>🎨 Colore</label>
+                    <div class="color-picker" id="editColorPicker">
+                        <div class="edit-color-option color-yellow selected" data-color="color-yellow"></div>
+                        <div class="edit-color-option color-pink" data-color="color-pink"></div>
+                        <div class="edit-color-option color-green" data-color="color-green"></div>
+                        <div class="edit-color-option color-blue" data-color="color-blue"></div>
+                        <div class="edit-color-option color-purple" data-color="color-purple"></div>
+                        <div class="edit-color-option color-orange" data-color="color-orange"></div>
+                    </div>
+                </div>
+
+                <div class="modal-buttons">
+                    <button type="button" class="btn-save" id="saveEditBtn">Salva</button>
+                    <button type="button" class="btn-cancel" id="deleteNoteBtn" style="background: #ff6b9d; color: white;">🗑️ Elimina</button>
+                    <button type="button" class="btn-cancel" id="closeEditBtn">Chiudi</button>
+                </div>
+            </form>
         </div>
     </div>
 
