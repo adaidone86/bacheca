@@ -12,6 +12,19 @@ Una bacheca interattiva basata su calendario dove le persone possono aggiungere 
 - ⚡ **Zero dipendenze** — Solo HTML, CSS e JavaScript vanilla
 - 🚀 **Pronto per GitHub Pages** — Deploy direttamente dal repository
 
+## 📁 Struttura progetto
+
+```
+bacheca/
+├── index.html          # File principale HTML
+├── css/
+│   └── style.css       # Tutti gli stili CSS
+├── js/
+│   └── script.js       # Logica JavaScript
+├── README.md           # Documentazione
+└── .gitignore         # File da ignorare
+```
+
 ## 🚀 Come usarla
 
 ### Localmente
