@@ -12,8 +12,14 @@ class BacheaCalendar {
 
     init() {
         this.setupEventListeners();
-        this.render();
-        this.loadFromGist();
+        // Carica da Gist PRIMA di renderizzare
+        if (this.gistToken && this.gistId) {
+            this.loadFromGist().then(() => {
+                this.render();
+            });
+        } else {
+            this.render();
+        }
     }
 
     setupEventListeners() {
@@ -274,7 +280,7 @@ class BacheaCalendar {
     }
 
     async loadFromGist() {
-        if (!this.gistToken || !this.gistId) return;
+        if (!this.gistToken || !this.gistId) return Promise.resolve();
 
         try {
             const response = await fetch(`https://api.github.com/gists/${this.gistId}`, {
@@ -290,11 +296,12 @@ class BacheaCalendar {
                 const loadedNotes = JSON.parse(content);
                 this.notes = loadedNotes;
                 this.saveNotes();
-                this.renderCalendar();
+                return Promise.resolve();
             }
         } catch (error) {
             console.error('Errore nel caricamento da Gist:', error);
         }
+        return Promise.resolve();
     }
 
     async syncGist() {
