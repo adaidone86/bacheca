@@ -304,20 +304,25 @@ button {
 }
 
 .modal-content {
-    background: transparent;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
     border-radius: 16px;
     padding: 0;
     max-width: 400px;
     width: 90%;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
     animation: slideDown 0.3s ease;
     overflow: hidden;
+    color: white; /* Rende il testo bianco per farlo risaltare sul viola */
 }
 
 .modal-content form,
 .modal-content .modal-buttons {
-    background: white;
-    padding: 30px;
+    background: transparent; /* Lascia passare lo sfumato del modal-content */
+    padding: 20px 30px 30px 30px;
+}
+
+.modal-content .form-group label {
+    color: white;
 }
 
 @keyframes slideDown {

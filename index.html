@@ -65,7 +65,7 @@
     <!-- Modal per aggiungere nota -->
     <div class="modal" id="modal">
         <div class="modal-content">
-            <div id="eventCoverContainerAdd" style="background: #764ba2; margin: 0; padding: 20px; min-height: 180px; width: 100%; display: flex; flex-direction: column; justify-content: flex-end; border-radius: 16px 16px 0 0; overflow: hidden; box-sizing: border-box;">
+            <div id="eventCoverContainerAdd" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); background-size: cover; background-position: center; margin: 0; padding: 20px; min-height: 180px; width: 100%; display: flex; flex-direction: column; justify-content: flex-end; border-radius: 16px 16px 0 0; overflow: hidden; box-sizing: border-box;">
                 <div class="modal-header" id="modalTitle" style="color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">Aggiungi un evento</div>
                 <div class="modal-tabs" style="margin-top: 15px;">
                     <button class="modal-tab active" data-tab="evento-tab" style="background: rgba(255,255,255,0.9); color: #667eea;">📌 Evento</button>
@@ -166,6 +166,11 @@
                             <button type="button" id="eventImageDeleteBtn" style="padding: 8px 15px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;">🗑️ Elimina</button>
                         </div>
                         <input type="file" id="eventImage" accept="image/*" style="display: none;">
+
+                        <div style="margin-top: 12px; display: flex; gap: 8px;">
+                            <input type="url" id="eventImageUrl" placeholder="Es: https://example.com/image.jpg" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
+                            <button type="button" id="eventImageUrlBtn" style="padding: 8px 15px; background: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer;">🔗 URL</button>
+                        </div>
                     </div>
                 </div>
 
@@ -244,7 +249,7 @@
     <!-- Edit Modal -->
     <div class="modal" id="editModal">
         <div class="modal-content">
-            <div id="eventCoverContainer" style="background: #764ba2; margin: 0; padding: 20px; min-height: 180px; width: 100%; display: flex; flex-direction: column; justify-content: flex-end; border-radius: 16px 16px 0 0; overflow: hidden; box-sizing: border-box;">
+            <div id="eventCoverContainer" style="background-color: #667eea; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); background-size: cover; background-position: center; margin: 0; padding: 20px; min-height: 180px; width: 100%; display: flex; flex-direction: column; justify-content: flex-end; border-radius: 16px 16px 0 0; overflow: hidden; box-sizing: border-box;">
                 <div class="modal-header" style="color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">✏️ Modifica evento</div>
                 <div class="modal-tabs" style="margin-top: 15px;">
                     <button class="modal-tab active" data-tab="edit-evento-tab" style="background: rgba(255,255,255,0.9); color: #667eea;">📌 Evento</button>
@@ -356,6 +361,11 @@
                             <button type="button" id="editImageDeleteBtn" style="padding: 8px 15px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;">🗑️ Elimina</button>
                         </div>
                         <input type="file" id="editImage" accept="image/*" style="display: none;">
+
+                        <div style="margin-top: 12px; display: flex; gap: 8px;">
+                            <input type="url" id="editImageUrl" placeholder="Es: https://example.com/image.jpg" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
+                            <button type="button" id="editImageUrlBtn" style="padding: 8px 15px; background: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer;">🔗 URL</button>
+                        </div>
                     </div>
                 </div>
 

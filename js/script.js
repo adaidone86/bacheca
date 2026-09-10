@@ -317,6 +317,16 @@ class BacheaCalendar {
             this.showSuccessPopup('Immagine rimossa');
         });
 
+        document.getElementById('eventImageUrlBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            const url = document.getElementById('eventImageUrl').value.trim();
+            if (!url) {
+                this.showErrorPopup('Inserisci un URL valido');
+                return;
+            }
+            this.loadImageFromUrl(url, 'event');
+        });
+
         // Edit Image buttons
         document.getElementById('editImageUploadBtn').addEventListener('click', (e) => {
             e.preventDefault();
@@ -339,7 +349,18 @@ class BacheaCalendar {
             e.preventDefault();
             this.editImageData = null;
             document.getElementById('editImage').value = '';
+            document.getElementById('eventCoverContainer').style.backgroundImage = 'none';
             this.showSuccessPopup('Immagine rimossa');
+        });
+
+        document.getElementById('editImageUrlBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            const url = document.getElementById('editImageUrl').value.trim();
+            if (!url) {
+                this.showErrorPopup('Inserisci un URL valido');
+                return;
+            }
+            this.loadImageFromUrl(url, 'edit');
         });
 
         // Cropper buttons
@@ -571,6 +592,7 @@ class BacheaCalendar {
         // Reset immagine nel container (mantieni il gradiente viola)
         const coverContainerAdd = document.getElementById('eventCoverContainerAdd');
         coverContainerAdd.style.backgroundImage = 'none';
+        coverContainerAdd.style.backgroundAttachment = 'scroll';
         coverContainerAdd.style.minHeight = '180px';
 
         // Seleziona il colore neutro di default
@@ -704,12 +726,14 @@ class BacheaCalendar {
             // Visualizza l'immagine come copertina
             const coverDiv = document.getElementById('eventCoverContainerAdd');
             coverDiv.style.backgroundImage = `url(${croppedImage})`;
+            coverDiv.style.backgroundAttachment = 'scroll';
             coverDiv.style.minHeight = '180px';
         } else if (this.currentCropType === 'edit') {
             this.editImageData = croppedImage;
             // Visualizza l'immagine come copertina
             const coverDiv = document.getElementById('eventCoverContainer');
             coverDiv.style.backgroundImage = `url(${croppedImage})`;
+            coverDiv.style.backgroundAttachment = 'scroll';
             coverDiv.style.minHeight = '180px';
         }
 
@@ -724,6 +748,26 @@ class BacheaCalendar {
             this.cropper.destroy();
             this.cropper = null;
         }
+    }
+
+    loadImageFromUrl(url, type) {
+        fetch(url, { mode: 'cors' })
+            .then(response => {
+                if (!response.ok) throw new Error('Errore nel caricamento');
+                return response.blob();
+            })
+            .then(blob => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    this.currentCropType = type;
+                    this.openCropperModal(event.target.result);
+                };
+                reader.readAsDataURL(blob);
+                document.getElementById(type === 'event' ? 'eventImageUrl' : 'editImageUrl').value = '';
+            })
+            .catch(error => {
+                this.showErrorPopup('Errore nel caricamento. Verifica l\'URL e i permessi CORS.');
+            });
     }
 
     renderEditLink(link) {
@@ -1110,8 +1154,10 @@ class BacheaCalendar {
         const coverContainer = document.getElementById('eventCoverContainer');
         if (note.image) {
             coverContainer.style.backgroundImage = `url(${note.image})`;
+            coverContainer.style.backgroundAttachment = 'scroll';
         } else {
             coverContainer.style.backgroundImage = 'none';
+            coverContainer.style.backgroundAttachment = 'fixed';
         }
         // Mantieni sempre una min-height per mostrare il gradiente viola
         coverContainer.style.minHeight = '180px';
