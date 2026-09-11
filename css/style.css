@@ -148,8 +148,15 @@ button {
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
 }
 
-.day.other-month {
+.day.other-month,
+.day.past-event {
     background: #fafafa;
+    opacity: 0.5;
+}
+
+.day.other-month .day-number,
+.day.past-event .day-number {
+    color: #999;
 }
 
 .day-number {

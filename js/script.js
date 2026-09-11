@@ -469,8 +469,8 @@ class BacheaCalendar {
             });
         }
 
-        // Giorni mese successivo
-        const remainingDays = 42 - daysArray.length;
+        // Giorni mese successivo - solo per completare l'ultima riga (fino a 7 giorni per riga)
+        const remainingDays = (7 - (daysArray.length % 7)) % 7;
         for (let i = 1; i <= remainingDays; i++) {
             daysArray.push({
                 day: i,
@@ -490,7 +490,13 @@ class BacheaCalendar {
             today.setHours(0, 0, 0, 0);
             const isDisabledDay = dayObj.isCurrentMonth && dayObj.date <= today;
 
-            dayEl.className = `day ${!dayObj.isCurrentMonth || isDisabledDay ? 'other-month' : ''}`;
+            let className = 'day';
+            if (!dayObj.isCurrentMonth) {
+                className += ' other-month'; // Giorni mese precedente/successivo
+            } else if (isDisabledDay && dayObj.date < today) {
+                className += ' past-event'; // Giorni passati (non oggi)
+            }
+            dayEl.className = className;
 
             const dateKey = this.getDateKey(dayObj.date);
             const dayNotes = this.notes[dateKey] || [];
@@ -853,8 +859,26 @@ class BacheaCalendar {
     }
 
     nextMonth() {
+        // Cancella gli eventi del mese precedente
+        this.deleteEventsForMonth(new Date(this.currentDate.getFullYear(), this.currentDate.getMonth(), 1));
+
         this.currentDate.setMonth(this.currentDate.getMonth() + 1);
         this.render();
+    }
+
+    deleteEventsForMonth(monthDate) {
+        const year = monthDate.getFullYear();
+        const month = String(monthDate.getMonth() + 1).padStart(2, '0');
+
+        const keysToDelete = Object.keys(this.notes).filter(dateKey =>
+            dateKey.startsWith(`${year}-${month}-`)
+        );
+
+        keysToDelete.forEach(dateKey => {
+            delete this.notes[dateKey];
+        });
+
+        this.saveNotes();
     }
 
     today() {
@@ -866,6 +890,14 @@ class BacheaCalendar {
         const options = { year: 'numeric', month: 'long' };
         const monthYear = this.currentDate.toLocaleDateString('it-IT', options);
         document.getElementById('monthYear').textContent = monthYear.charAt(0).toUpperCase() + monthYear.slice(1);
+
+        // Mostra/nascondi bottone "Mese Precedente" a seconda se siamo nel mese corrente
+        const today = new Date();
+        const isCurrentMonth = this.currentDate.getFullYear() === today.getFullYear() &&
+                               this.currentDate.getMonth() === today.getMonth();
+
+        const prevBtn = document.getElementById('prevBtn');
+        prevBtn.style.display = isCurrentMonth ? 'none' : 'block';
     }
 
     saveNotes() {
