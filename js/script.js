@@ -436,6 +436,16 @@ class BacheaCalendar {
         document.getElementById('gifModal').addEventListener('click', (e) => {
             if (e.target === document.getElementById('gifModal')) this.toggleGifModal();
         });
+
+        // Select Day Modal
+        document.getElementById('closeSelectDayBtn').addEventListener('click', () => {
+            this.closeSelectDayModal();
+        });
+        document.getElementById('selectDayModal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('selectDayModal')) {
+                this.closeSelectDayModal();
+            }
+        });
     }
 
     render() {
@@ -560,6 +570,8 @@ class BacheaCalendar {
                             e.stopPropagation();
                             this.openEditModal(dateKey, index);
                         });
+                        // Abilita drag and drop solo se il giorno non è passato
+                        this.setupDragAndDrop(noteEl, dateKey, index, dayObj);
                     }
 
                     notesContainer.appendChild(noteEl);
@@ -924,6 +936,141 @@ class BacheaCalendar {
         return div.innerHTML;
     }
 
+    // Drag and Drop
+    setupDragAndDrop(noteEl, dateKey, noteIndex, dayObj) {
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        const dragThreshold = 10; // pixel per distinguere click da drag
+
+        noteEl.addEventListener('mousedown', (e) => {
+            dragStartX = e.clientX;
+            dragStartY = e.clientY;
+            isDragging = false;
+        });
+
+        noteEl.addEventListener('mousemove', (e) => {
+            if (e.buttons === 0) return; // Mouse non è premuto
+
+            const moveX = Math.abs(e.clientX - dragStartX);
+            const moveY = Math.abs(e.clientY - dragStartY);
+
+            if ((moveX > dragThreshold || moveY > dragThreshold) && !isDragging) {
+                isDragging = true;
+                this.startDrag(noteEl, dateKey, noteIndex, dayObj);
+            }
+        });
+
+        noteEl.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        noteEl.addEventListener('mouseleave', () => {
+            isDragging = false;
+        });
+    }
+
+    startDrag(noteEl, sourceDateKey, noteIndex, sourceDayObj) {
+        // Crea un elemento fantasma per il trascinamento
+        const dragGhost = noteEl.cloneNode(true);
+        dragGhost.style.position = 'fixed';
+        dragGhost.style.opacity = '0.7';
+        dragGhost.style.pointerEvents = 'none';
+        dragGhost.style.zIndex = '10000';
+        document.body.appendChild(dragGhost);
+
+        const daysGrid = document.getElementById('daysGrid');
+        const daysElements = Array.from(daysGrid.querySelectorAll('.day'));
+
+        const handleMouseMove = (e) => {
+            dragGhost.style.left = (e.clientX - 30) + 'px';
+            dragGhost.style.top = (e.clientY - 15) + 'px';
+
+            // Evidenzia il giorno dove è il mouse
+            daysElements.forEach(dayEl => {
+                dayEl.classList.remove('drag-over');
+            });
+
+            const mouseOverDay = daysElements.find(dayEl => {
+                const rect = dayEl.getBoundingClientRect();
+                return e.clientX >= rect.left && e.clientX <= rect.right &&
+                       e.clientY >= rect.top && e.clientY <= rect.bottom;
+            });
+
+            if (mouseOverDay) {
+                mouseOverDay.classList.add('drag-over');
+            }
+        };
+
+        const handleMouseUp = (e) => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+            dragGhost.remove();
+
+            // Rimuovi evidenziazione
+            daysElements.forEach(dayEl => {
+                dayEl.classList.remove('drag-over');
+            });
+
+            // Trova il giorno dove è stato rilasciato
+            const mouseOverDay = daysElements.find(dayEl => {
+                const rect = dayEl.getBoundingClientRect();
+                return e.clientX >= rect.left && e.clientX <= rect.right &&
+                       e.clientY >= rect.top && e.clientY <= rect.bottom;
+            });
+
+            if (mouseOverDay) {
+                this.dropEvent(mouseOverDay, sourceDateKey, noteIndex, sourceDayObj);
+            }
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    dropEvent(targetDayEl, sourceDateKey, noteIndex, sourceDayObj) {
+        // Estrai la data dal giorno target (dalla classe o dall'ID)
+        const notesContainer = targetDayEl.querySelector('[id^="notes-"]');
+        if (!notesContainer) return;
+
+        const targetDateKey = notesContainer.id.replace('notes-', '');
+
+        // Valida il giorno target
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const [year, month, day] = targetDateKey.split('-').map(Number);
+        const targetDate = new Date(year, month - 1, day);
+
+        // Non puoi spostare su giorni passati o oggi
+        if (targetDate <= today) {
+            this.showErrorPopup('Non puoi spostare su giorni passati o di oggi');
+            return;
+        }
+
+        if (sourceDateKey === targetDateKey) {
+            return; // Stesso giorno
+        }
+
+        // Sposta l'evento
+        const note = this.notes[sourceDateKey][noteIndex];
+        this.notes[sourceDateKey].splice(noteIndex, 1);
+
+        if (this.notes[sourceDateKey].length === 0) {
+            delete this.notes[sourceDateKey];
+        }
+
+        if (!this.notes[targetDateKey]) {
+            this.notes[targetDateKey] = [];
+        }
+
+        this.notes[targetDateKey].push(note);
+
+        this.saveNotes();
+        this.autoSync();
+        this.render();
+        this.showSuccessPopup('Evento spostato con successo!');
+    }
+
     // Ordina eventi per orario
     sortByTime(events) {
         return events.sort((a, b) => {
@@ -977,6 +1124,170 @@ class BacheaCalendar {
         }
     }
 
+    openSelectDayModal() {
+        const modal = document.getElementById('selectDayModal');
+        const today = new Date();
+        const yearSelect = document.getElementById('selectDayYear');
+        const monthSelect = document.getElementById('selectDayMonth');
+        const dayInput = document.getElementById('selectDayDay');
+        const form = document.getElementById('selectDayForm');
+
+        // Popola gli anni (da quello corrente in poi, fino a 10 anni avanti)
+        yearSelect.innerHTML = '';
+        for (let i = 0; i < 10; i++) {
+            const year = today.getFullYear() + i;
+            const option = document.createElement('option');
+            option.value = year;
+            option.textContent = year;
+            yearSelect.appendChild(option);
+        }
+        yearSelect.value = today.getFullYear();
+
+        // Aggiorna i mesi disponibili quando cambia l'anno
+        const updateAvailableMonths = () => {
+            const selectedYear = parseInt(yearSelect.value);
+            const currentYear = today.getFullYear();
+            const isCurrentYear = selectedYear === currentYear;
+
+            // Salva il mese selezionato (se esiste)
+            const previousMonth = monthSelect.value;
+
+            // Ripopola i mesi
+            monthSelect.innerHTML = '';
+            const allMonths = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
+                             'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
+
+            allMonths.forEach((monthName, monthIndex) => {
+                // Se è l'anno corrente, mostra solo i mesi da quello corrente in poi
+                if (isCurrentYear && monthIndex < today.getMonth()) {
+                    return; // Salta i mesi passati
+                }
+
+                const option = document.createElement('option');
+                option.value = monthIndex;
+                option.textContent = monthName;
+                monthSelect.appendChild(option);
+            });
+
+            // Preseleziona il mese corrente se disponibile, altrimenti il primo disponibile
+            if (isCurrentYear) {
+                monthSelect.value = today.getMonth();
+            } else {
+                monthSelect.value = 0; // Gennaio per anni futuri
+            }
+        };
+
+        // Preseleziona il giorno dopo il corrente
+        dayInput.value = today.getDate() + 1;
+
+        // Aggiorna i vincoli del giorno quando cambia mese o anno
+        const updateDayConstraints = () => {
+            const selectedYear = parseInt(yearSelect.value);
+            const selectedMonth = parseInt(monthSelect.value);
+            const isCurrentMonth = selectedYear === today.getFullYear() && selectedMonth === today.getMonth();
+            const minDay = isCurrentMonth ? today.getDate() + 1 : 1;
+            const maxDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+
+            dayInput.min = minDay;
+            dayInput.max = maxDay;
+            dayInput.placeholder = `${minDay} - ${maxDay}`;
+
+            // Se il giorno attuale è fuori range, aggiorna
+            if (parseInt(dayInput.value) < minDay) {
+                dayInput.value = minDay;
+            } else if (parseInt(dayInput.value) > maxDay) {
+                dayInput.value = maxDay;
+            }
+        };
+
+        yearSelect.addEventListener('change', () => {
+            updateAvailableMonths();
+            updateDayConstraints();
+        });
+        monthSelect.addEventListener('change', updateDayConstraints);
+
+        // Inizializza i mesi disponibili
+        updateAvailableMonths();
+        updateDayConstraints();
+
+        // Gestisci il submit del form
+        form.onsubmit = (e) => {
+            e.preventDefault();
+            const year = parseInt(yearSelect.value);
+            const month = parseInt(monthSelect.value);
+            const day = parseInt(dayInput.value);
+            const errorEl = document.getElementById('selectDayError');
+
+            // Valida il giorno
+            if (!day || day < parseInt(dayInput.min) || day > parseInt(dayInput.max)) {
+                errorEl.textContent = `Giorno non valido. Intervallo: ${dayInput.min} - ${dayInput.max}`;
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            const selectedDate = new Date(year, month, day);
+            this.closeSelectDayModal();
+            this.openModal(selectedDate);
+        };
+
+        // Valida il giorno in tempo reale (input, click su button su/giù, change)
+        const validateDay = () => {
+            const day = parseInt(dayInput.value);
+            const min = parseInt(dayInput.min);
+            const max = parseInt(dayInput.max);
+            const errorEl = document.getElementById('selectDayError');
+
+            if (day < min || day > max) {
+                // Correggi il valore fuori range
+                if (day < min) {
+                    dayInput.value = min;
+                } else if (day > max) {
+                    dayInput.value = max;
+                }
+                errorEl.textContent = `Giorno deve essere tra ${min} e ${max}`;
+                errorEl.style.display = 'block';
+            } else {
+                errorEl.style.display = 'none';
+            }
+        };
+
+        dayInput.addEventListener('input', validateDay);
+        dayInput.addEventListener('change', validateDay);
+        // Ascolta i click dei button su/giù
+        dayInput.addEventListener('mouseup', validateDay);
+
+        // Button per incrementare/decrementare il giorno
+        const dayPlusBtn = document.getElementById('selectDayDayPlus');
+        const dayMinusBtn = document.getElementById('selectDayDayMinus');
+
+        dayPlusBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const current = parseInt(dayInput.value) || parseInt(dayInput.min);
+            const max = parseInt(dayInput.max);
+            if (current < max) {
+                dayInput.value = current + 1;
+                validateDay();
+            }
+        });
+
+        dayMinusBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const current = parseInt(dayInput.value) || parseInt(dayInput.min);
+            const min = parseInt(dayInput.min);
+            if (current > min) {
+                dayInput.value = current - 1;
+                validateDay();
+            }
+        });
+
+        modal.style.display = 'flex';
+    }
+
+    closeSelectDayModal() {
+        const modal = document.getElementById('selectDayModal');
+        modal.style.display = 'none';
+    }
+
     renderList() {
         const eventsList = document.getElementById('eventsList');
         const allEvents = [];
@@ -1008,12 +1319,19 @@ class BacheaCalendar {
         // Filtra per colore visibile
         const visibleEvents = futureEvents.filter(event => this.isColorVisible(event.color));
 
+        eventsList.innerHTML = '';
+
+        // Aggiungi il tasto "+" in cima
+        const addBtn = document.createElement('button');
+        addBtn.style.cssText = 'width: 100%; padding: 16px; margin-bottom: 20px; background: #667eea; color: white; border: none; border-radius: 8px; font-size: 1.2rem; cursor: pointer; font-weight: bold;';
+        addBtn.textContent = '➕ Aggiungi evento';
+        addBtn.addEventListener('click', () => this.openSelectDayModal());
+        eventsList.appendChild(addBtn);
+
         if (visibleEvents.length === 0) {
-            eventsList.innerHTML = '<div class="empty-list">Nessun evento programmato 📭</div>';
+            eventsList.innerHTML += '<div class="empty-list">Nessun evento programmato 📭</div>';
             return;
         }
-
-        eventsList.innerHTML = '';
         visibleEvents.forEach(event => {
             const dateStr = event.date.toLocaleDateString('it-IT', {
                 weekday: 'long',

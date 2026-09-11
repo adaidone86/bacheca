@@ -170,6 +170,12 @@ button {
     color: #999;
 }
 
+.day.drag-over {
+    border: 2px solid #4CAF50 !important;
+    background: #e8f5e9 !important;
+    box-shadow: 0 0 10px rgba(76, 175, 80, 0.3) !important;
+}
+
 .notes-container {
     flex: 1;
     overflow-y: auto;

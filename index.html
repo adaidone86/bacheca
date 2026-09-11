@@ -246,6 +246,50 @@
         </div>
     </div>
 
+    <!-- Select Day Modal (per aggiungere evento da lista) -->
+    <div class="modal" id="selectDayModal">
+        <div class="modal-content" style="width: 90%; max-width: 400px; padding: 30px; background: white; border-radius: 16px;">
+            <div class="modal-header" style="margin-bottom: 30px; text-align: center; color: white;">📅 Scegli il giorno</div>
+            <form id="selectDayForm" style="display: flex; flex-direction: column; gap: 15px;">
+                <div>
+                    <label for="selectDayDay" style="display: block; margin-bottom: 5px; font-weight: 500;">Giorno</label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button type="button" id="selectDayDayMinus" style="padding: 10px 15px; background: #f0f0f0; border: 2px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 1.2rem; font-weight: bold;">−</button>
+                        <input type="number" id="selectDayDay" min="1" max="31" placeholder="Inserisci il giorno" style="flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 1rem; text-align: center;">
+                        <button type="button" id="selectDayDayPlus" style="padding: 10px 15px; background: #f0f0f0; border: 2px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 1.2rem; font-weight: bold;">+</button>
+                    </div>
+                </div>
+                <div>
+                    <label for="selectDayMonth" style="display: block; margin-bottom: 5px; font-weight: 500;">Mese</label>
+                    <select id="selectDayMonth" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 1rem;">
+                        <option value="0">Gennaio</option>
+                        <option value="1">Febbraio</option>
+                        <option value="2">Marzo</option>
+                        <option value="3">Aprile</option>
+                        <option value="4">Maggio</option>
+                        <option value="5">Giugno</option>
+                        <option value="6">Luglio</option>
+                        <option value="7">Agosto</option>
+                        <option value="8">Settembre</option>
+                        <option value="9">Ottobre</option>
+                        <option value="10">Novembre</option>
+                        <option value="11">Dicembre</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="selectDayYear" style="display: block; margin-bottom: 5px; font-weight: 500;">Anno</label>
+                    <select id="selectDayYear" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 1rem;">
+                    </select>
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 20px;">
+                    <button type="button" id="closeSelectDayBtn" style="flex: 1; padding: 10px; background: #ccc; color: #333; border: none; border-radius: 6px; cursor: pointer;">Annulla</button>
+                    <button type="submit" id="confirmSelectDayBtn" style="flex: 1; padding: 10px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">Conferma</button>
+                </div>
+            </form>
+            <div id="selectDayError" style="color: #f44336; text-align: center; margin-top: 10px; display: none;"></div>
+        </div>
+    </div>
+
     <!-- Edit Modal -->
     <div class="modal" id="editModal">
         <div class="modal-content">
