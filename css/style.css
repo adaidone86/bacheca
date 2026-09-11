@@ -479,6 +479,22 @@ button {
     background: #e0e0e0;
 }
 
+/* Button Elimina - sempre rosso */
+#eventImageDeleteBtn,
+#editImageDeleteBtn,
+#editLinkDeleteBtn,
+#deleteNoteBtn {
+    background: #f44336 !important;
+    color: white !important;
+}
+
+#eventImageDeleteBtn:hover,
+#editImageDeleteBtn:hover,
+#editLinkDeleteBtn:hover,
+#deleteNoteBtn:hover {
+    background: #da190b !important;
+}
+
 .empty-state {
     text-align: center;
     color: #999;
@@ -735,14 +751,17 @@ footer {
     justify-content: space-between;
     align-items: center;
     padding: 8px 12px;
-    background: #f5f5f5;
+    background: white;
+    border: 1px solid #ddd;
     border-radius: 6px;
     margin-bottom: 6px;
     font-size: 0.9rem;
+    color: #333;
+    font-weight: 500;
 }
 
 .participant-item button {
-    background: #ff6b9d;
+    background: #f44336;
     color: white;
     border: none;
     border-radius: 4px;
@@ -752,7 +771,7 @@ footer {
 }
 
 .participant-item button:hover {
-    background: #ff5483;
+    background: #da190b;
 }
 
 .participants-input-group {

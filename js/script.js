@@ -642,7 +642,7 @@ class BacheaCalendar {
             itemEl.className = 'participant-item';
             itemEl.innerHTML = `
                 <span>${this.escapeHtml(participant)}</span>
-                <button type="button" class="btn-remove-participant" data-index="${index}">🗑️ Elimina</button>
+                <button type="button" class="btn-remove-participant" data-index="${index}">Elimina</button>
             `;
 
             itemEl.querySelector('.btn-remove-participant').addEventListener('click', (e) => {
@@ -665,7 +665,7 @@ class BacheaCalendar {
             itemEl.className = 'participant-item';
             itemEl.innerHTML = `
                 <span>${this.escapeHtml(participant)}</span>
-                <button type="button" class="btn-remove-participant" data-index="${index}">🗑️ Elimina</button>
+                <button type="button" class="btn-remove-participant" data-index="${index}">Elimina</button>
             `;
 
             itemEl.querySelector('.btn-remove-participant').addEventListener('click', (e) => {
