@@ -140,13 +140,16 @@ class BacheaCalendar {
             setTimeout(() => this.renderList(), 100);
         }
 
-        // Ascolta il ridimensionamento della finestra
-        window.addEventListener('resize', () => {
-            const nowMobile = window.innerWidth < 768;
-            if (nowMobile !== this.isListView) {
-                // Se il dispositivo cambia (es: rotazione dello schermo), cambia vista
-                this.toggleView();
-            }
+        // Ascolta il cambio di orientamento (più affidabile di resize su mobile)
+        window.addEventListener('orientationchange', () => {
+            // Aspetta che il layout si aggiorni
+            setTimeout(() => {
+                const nowMobile = window.innerWidth < 768;
+                if (nowMobile !== this.isListView) {
+                    // Se il dispositivo cambia (es: rotazione dello schermo), cambia vista
+                    this.toggleView();
+                }
+            }, 100);
         });
     }
 
