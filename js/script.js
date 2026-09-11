@@ -20,6 +20,7 @@ class BacheaCalendar {
         this.selectedColor = 'color-yellow';
         this.notes = {}; // Inizializza vuoto - i dati vengono caricati SOLO da Firebase
         this.isSyncing = false;
+        this.isInitialLoad = true; // Flag per prima sincronizzazione
         this.editingNote = null; // Per tracciare quale nota stiamo editando
         this.isListView = false; // Toggle tra calendario e lista
         this.visibleColors = this.loadColorFilters(); // Colori visibili
@@ -394,7 +395,14 @@ class BacheaCalendar {
             e.preventDefault();
             const newLink = document.getElementById('editLink').value.trim();
             if (newLink) {
-                this.renderEditLink(newLink);
+                if (this.editingNote) {
+                    const { dateKey, noteIndex } = this.editingNote;
+                    this.notes[dateKey][noteIndex].link = newLink;
+                    this.saveNotes();
+                    this.autoSync();
+                    this.renderEditLink(newLink);
+                    this.showSuccessPopup('Link salvato');
+                }
             } else {
                 this.showErrorPopup('Inserisci un link valido oppure annulla');
             }
@@ -405,6 +413,8 @@ class BacheaCalendar {
             if (this.editingNote) {
                 const { dateKey, noteIndex } = this.editingNote;
                 this.notes[dateKey][noteIndex].link = '';
+                this.saveNotes();
+                this.autoSync();
                 this.renderEditLink('');
                 this.showSuccessPopup('Link eliminato');
             }
@@ -859,9 +869,6 @@ class BacheaCalendar {
     }
 
     nextMonth() {
-        // Cancella gli eventi del mese precedente
-        this.deleteEventsForMonth(new Date(this.currentDate.getFullYear(), this.currentDate.getMonth(), 1));
-
         this.currentDate.setMonth(this.currentDate.getMonth() + 1);
         this.render();
     }
@@ -1088,6 +1095,27 @@ class BacheaCalendar {
                 // Se this.notes è vuoto (caricamento iniziale), usa i dati da Firebase
                 if (Object.keys(this.notes).length === 0 && snapshot.exists()) {
                     this.notes = snapshot.val();
+                }
+
+                // Solo al caricamento iniziale: se è il 1° del mese, cancella gli eventi dei mesi precedenti
+                if (this.isInitialLoad) {
+                    this.isInitialLoad = false;
+                    const today = new Date();
+                    if (today.getDate() === 1) {
+                        const currentYear = today.getFullYear();
+                        const currentMonth = today.getMonth() + 1;
+
+                        Object.keys(this.notes).forEach(dateKey => {
+                            const [year, month, day] = dateKey.split('-');
+                            const eventYear = parseInt(year);
+                            const eventMonth = parseInt(month);
+
+                            // Se l'evento è di un mese precedente, cancellalo
+                            if (eventYear < currentYear || (eventYear === currentYear && eventMonth < currentMonth)) {
+                                delete this.notes[dateKey];
+                            }
+                        });
+                    }
                 }
 
                 // Salva i dati locali su Firebase (sovrascrivi completamente)
