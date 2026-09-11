@@ -155,8 +155,19 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="eventLink">🔗 Link</label>
-                        <input type="url" id="eventLink" placeholder="Es: https://example.com">
+                        <label for="eventLink" style="margin-bottom: 8px; display: block;">🔗 Link</label>
+                        <div id="eventLinkContainer" style="display: flex; gap: 10px; align-items: center;">
+                            <button type="button" id="eventLinkOpenBtn" style="padding: 8px 15px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer;">🌐 Vai sul sito</button>
+                            <button type="button" id="eventLinkModifyBtn" style="padding: 8px 15px; background: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer;">✏️ Modifica</button>
+                        </div>
+                        <div id="eventLinkInputContainer" style="display: none; flex-direction: column; gap: 8px;">
+                            <input type="url" id="eventLink" placeholder="Es: https://example.com" style="width: 100%; padding: 12px; border: 2px solid #eee; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
+                            <div style="display: flex; gap: 8px;">
+                                <button type="button" id="eventLinkSaveBtn" style="flex: 1; padding: 8px 15px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">Salva Link</button>
+                                <button type="button" id="eventLinkDeleteBtn" style="flex: 1; padding: 8px 15px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">Elimina Link</button>
+                                <button type="button" id="eventLinkCancelBtn" style="flex: 1; padding: 8px 15px; background: #ccc; color: #333; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">Annulla</button>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="form-group">

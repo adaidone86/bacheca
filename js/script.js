@@ -26,6 +26,7 @@ class BacheaCalendar {
         this.visibleColors = this.loadColorFilters(); // Colori visibili
         this.eventImageData = null;
         this.editImageData = null;
+        this.currentEventLink = ''; // Link in aggiunta
         this.cropper = null;
         this.currentCropType = null; // 'event' o 'edit'
         this.setupCustomPopup();
@@ -426,6 +427,46 @@ class BacheaCalendar {
             this.renderEditLink(currentLink);
         });
 
+        // Event Link buttons (per aggiungere nuovo evento)
+        document.getElementById('eventLinkOpenBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            if (this.currentEventLink) {
+                window.open(this.currentEventLink, '_blank');
+            }
+        });
+
+        document.getElementById('eventLinkModifyBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('eventLinkContainer').style.display = 'none';
+            document.getElementById('eventLinkInputContainer').style.display = 'flex';
+        });
+
+        document.getElementById('eventLinkSaveBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            const newLink = document.getElementById('eventLink').value.trim();
+            if (newLink) {
+                this.currentEventLink = newLink;
+                this.renderEventLink(newLink);
+                this.showSuccessPopup('Link salvato');
+            } else {
+                this.showErrorPopup('Inserisci un link valido oppure annulla');
+            }
+        });
+
+        document.getElementById('eventLinkDeleteBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.currentEventLink = '';
+            document.getElementById('eventLink').value = '';
+            this.renderEventLink('');
+            this.showSuccessPopup('Link eliminato');
+        });
+
+        document.getElementById('eventLinkCancelBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            const currentLink = this.currentEventLink || '';
+            this.renderEventLink(currentLink);
+        });
+
         // GIF Modal
         document.getElementById('titleLine2').addEventListener('click', () => {
             const text = document.getElementById('titleLine2').textContent;
@@ -627,6 +668,10 @@ class BacheaCalendar {
         document.querySelector('input[name="eventColor"][data-color="color-neutral"]').checked = true;
         this.selectedColor = 'color-neutral';
 
+        // Reset del link
+        this.currentEventLink = '';
+        this.renderEventLink('');
+
         document.getElementById('modal').classList.add('active');
         document.getElementById('modal').style.display = 'flex';
         document.getElementById('eventTitle').focus();
@@ -647,6 +692,7 @@ class BacheaCalendar {
         document.getElementById('eventParticipantsInputGroup').style.display = 'none';
         document.getElementById('eventParticipantInput').value = '';
         this.eventParticipantsList = [];
+        this.currentEventLink = '';
 
         // Resetta i tab del modal di aggiunta
         const modal = document.getElementById('modal');
@@ -798,6 +844,31 @@ class BacheaCalendar {
             });
     }
 
+    renderEventLink(link) {
+        const linkContainer = document.getElementById('eventLinkContainer');
+        const linkInputContainer = document.getElementById('eventLinkInputContainer');
+        const linkInput = document.getElementById('eventLink');
+        const openBtn = document.getElementById('eventLinkOpenBtn');
+        this.currentEventLink = link;
+
+        // Mostra sempre il container con i button
+        linkContainer.style.display = 'flex';
+        linkInputContainer.style.display = 'none';
+        linkInput.value = link || '';
+
+        if (link && link.trim()) {
+            openBtn.disabled = false;
+            openBtn.style.background = '#2196F3';
+            openBtn.style.cursor = 'pointer';
+            openBtn.style.opacity = '1';
+        } else {
+            openBtn.disabled = true;
+            openBtn.style.background = '#ccc';
+            openBtn.style.cursor = 'not-allowed';
+            openBtn.style.opacity = '0.6';
+        }
+    }
+
     renderEditLink(link) {
         const linkContainer = document.getElementById('editLinkContainer');
         const linkInputContainer = document.getElementById('editLinkInputContainer');
@@ -843,7 +914,7 @@ class BacheaCalendar {
             location: document.getElementById('eventLocation').value.trim(),
             notes: document.getElementById('eventNotes').value.trim(),
             color: this.selectedColor,
-            link: document.getElementById('eventLink').value.trim(),
+            link: this.currentEventLink,
             image: this.eventImageData,
             participants: this.eventParticipantsList
         });
