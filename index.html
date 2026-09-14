@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bacheca</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
+    <link rel="manifest" href="app/manifest.json">
+    <meta name="theme-color" content="#667eea">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
@@ -43,6 +47,7 @@
             <h1 id="titleLine2" style="cursor: pointer;"></h1>
             <p class="subtitle" id="titleLine3"></p>
             <div class="header-buttons">
+                <button id="installBtn" style="display: none; background: #4CAF50; padding: 8px 16px; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">⬇️ Installa app</button>
                 <button id="viewToggleBtn" class="view-toggle">📋 Lista</button>
                 <button id="settingsBtn">⚙️ Impostazioni</button>
                 <button id="infoBtn">ℹ️ Info</button>
@@ -490,5 +495,53 @@
     </style>
 
     <script src="js/script.js"></script>
+
+    <!-- PWA Installation Handler -->
+    <script>
+        let deferredPrompt = null;
+        const installBtn = document.getElementById('installBtn');
+
+        // Intercetta beforeinstallprompt e mostra il button
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installBtn.style.display = 'inline-block';
+        });
+
+        // Gestisci il click sul button di installazione
+        if (installBtn) {
+            installBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+
+                if (!deferredPrompt) {
+                    console.log('Install prompt non disponibile');
+                    return;
+                }
+
+                // Mostra il prompt di installazione
+                deferredPrompt.prompt();
+
+                // Attendi la risposta dell'utente
+                const { outcome } = await deferredPrompt.userChoice;
+
+                if (outcome === 'accepted') {
+                    console.log('Installazione accettata');
+                } else {
+                    console.log('Installazione rifiutata');
+                }
+
+                // Pulisci il prompt
+                deferredPrompt = null;
+                installBtn.style.display = 'none';
+            });
+        }
+
+        // Nascondi il button quando l'app è già installata
+        window.addEventListener('appinstalled', () => {
+            console.log('App installata');
+            installBtn.style.display = 'none';
+            deferredPrompt = null;
+        });
+    </script>
 </body>
 </html>
