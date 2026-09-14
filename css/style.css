@@ -1080,15 +1080,6 @@ footer {
         max-width: 100%;
     }
 
-    /* Mostra la lista di default su mobile */
-    #listView {
-        display: block !important;
-    }
-
-    #calendarView {
-        display: none !important;
-    }
-
     .calendar-wrapper {
         padding: 12px;
         border-radius: 12px;

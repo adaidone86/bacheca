@@ -67,6 +67,11 @@ class BacheaCalendar {
             // Sincronizza con Firebase PRIMA di renderizzare
             this.autoSync().then(() => {
                 this.render();
+                // Nascondi il loading quando tutto è pronto
+                const loadingScreen = document.getElementById('loadingScreen');
+                if (loadingScreen) {
+                    loadingScreen.style.display = 'none';
+                }
             });
         });
     }
@@ -124,8 +129,12 @@ class BacheaCalendar {
 
         const isMobile = isMobileByWidth || isMobileByAgent;
 
-        if (isMobile) {
-            // Su mobile: attiva vista lista
+        // Carica la preferenza dal localStorage se esiste
+        const savedView = localStorage.getItem('preferredView');
+        if (savedView !== null) {
+            this.isListView = savedView === 'list';
+        } else if (isMobile) {
+            // Di default: lista su mobile, calendario su desktop
             this.isListView = true;
         }
 
@@ -481,13 +490,50 @@ class BacheaCalendar {
         });
     }
 
-    render() {
-        this.updateHeader();
-        if (this.isListView) {
-            this.renderList();
-        } else {
-            this.renderCalendar();
+    showLoading() {
+        const loadingScreen = document.getElementById('loadingScreen');
+        if (loadingScreen) {
+            loadingScreen.style.display = 'flex';
         }
+    }
+
+    hideLoading() {
+        const loadingScreen = document.getElementById('loadingScreen');
+        if (loadingScreen) {
+            loadingScreen.style.display = 'none';
+        }
+    }
+
+    updateViewUI() {
+        const viewToggleBtn = document.getElementById('viewToggleBtn');
+        const listView = document.getElementById('listView');
+        const calendarView = document.getElementById('calendarView');
+
+        if (this.isListView) {
+            viewToggleBtn.textContent = '📅 Calendario';
+            viewToggleBtn.classList.add('active');
+            listView.style.display = 'block';
+            calendarView.style.display = 'none';
+        } else {
+            viewToggleBtn.textContent = '📋 Lista';
+            viewToggleBtn.classList.remove('active');
+            listView.style.display = 'none';
+            calendarView.style.display = 'block';
+        }
+    }
+
+    render() {
+        this.showLoading();
+        setTimeout(() => {
+            this.updateViewUI();
+            this.updateHeader();
+            if (this.isListView) {
+                this.renderList();
+            } else {
+                this.renderCalendar();
+            }
+            this.hideLoading();
+        }, 50);
     }
 
     renderCalendar() {
@@ -1168,23 +1214,9 @@ class BacheaCalendar {
     // View Toggle
     toggleView() {
         this.isListView = !this.isListView;
-        const viewToggleBtn = document.getElementById('viewToggleBtn');
-        const listView = document.getElementById('listView');
-        const calendarView = document.getElementById('calendarView');
-
-        if (this.isListView) {
-            viewToggleBtn.textContent = '📅 Calendario';
-            viewToggleBtn.classList.add('active');
-            listView.style.display = 'block';
-            calendarView.style.display = 'none';
-            this.renderList();
-        } else {
-            viewToggleBtn.textContent = '📋 Lista';
-            viewToggleBtn.classList.remove('active');
-            listView.style.display = 'none';
-            calendarView.style.display = 'block';
-            this.renderCalendar();
-        }
+        // Salva la preferenza nel localStorage
+        localStorage.setItem('preferredView', this.isListView ? 'list' : 'calendar');
+        this.render();
     }
 
     openSelectDayModal() {

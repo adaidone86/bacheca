@@ -20,6 +20,23 @@
         </div>
     </div>
 
+    <!-- Loading Spinner -->
+    <div id="loadingScreen" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; z-index: 9999;">
+        <div style="text-align: center; color: white;">
+            <div style="font-size: 3rem; margin-bottom: 20px;">📅</div>
+            <div style="font-size: 1.2rem; font-weight: bold; margin-bottom: 20px;">Caricamento in corso...</div>
+            <div style="width: 60px; height: 6px; background: rgba(255,255,255,0.3); border-radius: 10px; margin: 0 auto;">
+                <div style="height: 100%; background: white; border-radius: 10px; animation: loading 1.5s ease-in-out infinite; width: 40%;"></div>
+            </div>
+            <style>
+                @keyframes loading {
+                    0%, 100% { width: 0%; }
+                    50% { width: 100%; }
+                }
+            </style>
+        </div>
+    </div>
+
     <div id="mainContainer" class="container">
         <header>
             <h1 id="titleLine1" style="cursor: pointer;"></h1>
