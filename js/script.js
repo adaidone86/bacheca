@@ -613,18 +613,24 @@ class BacheaCalendar {
 
             const dateKey = this.getDateKey(dayObj.date);
             const dayNotes = this.notes[dateKey] || [];
+            const visibleNotes = dayNotes.filter(note => this.isColorVisible(note.color));
+
+            // Aggiungi classe has-events se il giorno ha eventi visibili
+            if (visibleNotes.length > 0) {
+                className += ' has-events';
+            }
+            dayEl.className = className;
 
             dayEl.innerHTML = `
                 <div class="day-number">${dayObj.day}</div>
                 <div class="notes-container" id="notes-${dateKey}">
-                    ${dayNotes.length === 0 ? '<div class="empty-state">✨</div>' : ''}
+                    ${visibleNotes.length === 0 ? '<div class="empty-state">✨</div>' : ''}
                 </div>
                 <button class="add-note-btn" type="button">+</button>
             `;
 
             // Aggiungi le note al giorno (solo se il colore è visibile)
             const notesContainer = dayEl.querySelector(`#notes-${dateKey}`);
-            const visibleNotes = dayNotes.filter(note => this.isColorVisible(note.color));
 
             if (visibleNotes.length > 0) {
                 notesContainer.innerHTML = '';

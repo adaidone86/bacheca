@@ -1149,13 +1149,20 @@ footer {
 
     .days-grid {
         gap: 3px;
-        min-height: 300px;
+        min-height: auto;
+        grid-auto-rows: auto;
     }
 
     .day {
         padding: 6px;
-        min-height: 70px;
+        height: 45px !important;
         border-radius: 6px;
+        overflow: hidden;
+    }
+
+    .day.has-events {
+        height: 100px !important;
+        overflow: visible;
     }
 
     .day-number {
