@@ -505,7 +505,9 @@
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault();
             deferredPrompt = e;
-            installBtn.style.display = 'inline-block';
+            if (installBtn) {
+                installBtn.style.display = 'inline-block';
+            }
         });
 
         // Gestisci il click sul button di installazione
@@ -515,31 +517,40 @@
 
                 if (!deferredPrompt) {
                     console.log('Install prompt non disponibile');
+                    // Mostra messaggio all'utente
+                    alert('Installazione non disponibile su questo browser');
                     return;
                 }
 
-                // Mostra il prompt di installazione
-                deferredPrompt.prompt();
+                try {
+                    // Mostra il prompt di installazione
+                    deferredPrompt.prompt();
 
-                // Attendi la risposta dell'utente
-                const { outcome } = await deferredPrompt.userChoice;
+                    // Attendi la risposta dell'utente
+                    const { outcome } = await deferredPrompt.userChoice;
 
-                if (outcome === 'accepted') {
-                    console.log('Installazione accettata');
-                } else {
-                    console.log('Installazione rifiutata');
+                    if (outcome === 'accepted') {
+                        console.log('Installazione accettata');
+                        installBtn.style.display = 'none';
+                    } else {
+                        console.log('Installazione rifiutata');
+                        // Non nascondere il button se l'utente rifiuta
+                    }
+
+                    // Pulisci il prompt
+                    deferredPrompt = null;
+                } catch (err) {
+                    console.error('Errore durante installazione:', err);
                 }
-
-                // Pulisci il prompt
-                deferredPrompt = null;
-                installBtn.style.display = 'none';
             });
         }
 
         // Nascondi il button quando l'app è già installata
         window.addEventListener('appinstalled', () => {
             console.log('App installata');
-            installBtn.style.display = 'none';
+            if (installBtn) {
+                installBtn.style.display = 'none';
+            }
             deferredPrompt = null;
         });
     </script>
