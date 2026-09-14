@@ -127,17 +127,6 @@ class BacheaCalendar {
         if (isMobile) {
             // Su mobile: attiva vista lista
             this.isListView = true;
-            const viewToggleBtn = document.getElementById('viewToggleBtn');
-            const listView = document.getElementById('listView');
-            const calendarView = document.getElementById('calendarView');
-
-            viewToggleBtn.textContent = '📅 Calendario';
-            viewToggleBtn.classList.add('active');
-            listView.style.display = 'block';
-            calendarView.style.display = 'none';
-
-            // Renderizza la lista subito
-            setTimeout(() => this.renderList(), 100);
         }
 
         // Ascolta il cambio di orientamento (più affidabile di resize su mobile)
