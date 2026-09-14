@@ -1,10 +1,10 @@
 const CACHE_NAME = 'bacheca-v1';
 const URLS_TO_CACHE = [
-  '/app/',
-  '/app/index.html',
-  '/app/css/style.css',
-  '/app/js/script.js',
-  '/app/manifest.json'
+  '/bacheca/app/',
+  '/bacheca/app/index.html',
+  '/bacheca/app/css/style.css',
+  '/bacheca/app/js/script.js',
+  '/bacheca/app/manifest.json'
 ];
 
 // Installa il service worker e cache i file
@@ -69,7 +69,7 @@ self.addEventListener('fetch', event => {
       });
     }).catch(() => {
       // Fallback per pagina offline
-      return caches.match('/app/index.html');
+      return caches.match('/bacheca/app/index.html');
     })
   );
 });
