@@ -1,9 +1,9 @@
 const CACHE_NAME = 'bacheca-v1';
 const URLS_TO_CACHE = [
-  '/bacheca/app/',
-  '/bacheca/app/index.html',
-  '/bacheca/app/css/style.css',
-  '/bacheca/app/js/script.js',
+  '/bacheca/',
+  '/bacheca/index.html',
+  '/bacheca/css/style.css',
+  '/bacheca/js/script.js',
   '/bacheca/app/manifest.json'
 ];
 
@@ -69,7 +69,7 @@ self.addEventListener('fetch', event => {
       });
     }).catch(() => {
       // Fallback per pagina offline
-      return caches.match('/bacheca/app/index.html');
+      return caches.match('/bacheca/index.html');
     })
   );
 });

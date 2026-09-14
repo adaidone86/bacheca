@@ -1,9 +1,9 @@
 {
-  "name": "Bacheca Collaborativa",
+  "name": "Bacheca",
   "short_name": "Bacheca",
   "description": "Una bacheca collaborativa per proporre e condividere eventi",
-  "start_url": "/bacheca/app/",
-  "scope": "/bacheca/app/",
+  "start_url": "/bacheca/",
+  "scope": "/bacheca/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#667eea",
