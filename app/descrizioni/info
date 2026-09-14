@@ -1,0 +1,76 @@
+🎯 Come usare la Bacheca:
+
+‼️ LIMITAZIONI IMPORTANTI ‼️
+
+   ❌ GIORNI PASSATI (prima di oggi)
+      • Non è possibile aggiungere eventi
+      • Non è possibile modificare gli eventi
+      • Non è possibile eliminare gli eventi
+      • I giorni appaiono grigi e non sono cliccabili
+
+   ⚠️ GIORNO ODIERNO (oggi)
+      • Non è possibile aggiungere nuovi eventi
+      • È possibile modificare gli eventi esistenti
+      • È possibile eliminare gli eventi esistenti
+      • Il giorno appare con sfondo grigio ma gli eventi rimangono colorati
+
+1️⃣ AGGIUNGERE UN EVENTO
+   • Clicca su un giorno del calendario (da domani in poi)
+   • Si aprirà un modal con 3 sezioni: Evento, Partecipanti, Dettagli
+   • Completa i campi e clicca "Aggiungi"
+
+📋 LE 3 SEZIONI DEL MODAL
+
+   🔹 SEZIONE "EVENTO" (Obbligatoria)
+      • Nome evento: il titolo dell'evento (OBBLIGATORIO)
+      • Ora: l'orario dell'evento (OBBLIGATORIO)
+      • Luogo: dove si svolge l'evento (OBBLIGATORIO)
+      • Note: descrizione o dettagli aggiuntivi (OBBLIGATORIO)
+
+   🔹 SEZIONE "PARTECIPANTI" (Opzionale)
+      • Spunta "👥 Aggiungi partecipanti" per abilitare questa sezione
+      • Inserisci i nomi dei partecipanti nel campo
+      • Clicca il tasto "Salva" accanto al campo per aggiungerli
+      • Usa il tasto "🗑️ Elimina" per rimuovere un partecipante
+      • I partecipanti verranno mostrati nella lista eventi
+
+   🔹 SEZIONE "DETTAGLI" (Opzionale)
+      • Colore: seleziona il colore/categoria dell'evento (colore neutro di default)
+      • Link: inserisci un link utile per l'evento
+      • Immagine: aggiungi un'immagine per l'evento
+
+2️⃣ VISUALIZZARE GLI EVENTI
+   • Vedrai i nomi degli eventi come post-it colorati sui giorni
+   • Clicca su un post-it per vedere tutti i dettagli
+
+3️⃣ MODIFICARE UN EVENTO
+   • Clicca su un evento
+   • Modifica i dati nelle 3 sezioni che desideri
+   • Clicca "Salva"
+
+4️⃣ ELIMINARE UN EVENTO
+   • Clicca su un evento
+   • Clicca il tasto "Elimina"
+   • Conferma l'eliminazione
+
+5️⃣ NAVIGAZIONE
+   • Usa i pulsanti per andare al mese precedente/successivo
+   • Clicca "Oggi" per tornare al mese corrente
+
+6️⃣ FILTRARE PER CATEGORIA
+   • Clicca il pulsante "⚙️ Impostazioni"
+   • Seleziona/deseleziona le categorie che vuoi vedere
+   • Vedrai solo gli eventi delle categorie scelte
+
+7️⃣ CAMBIARE VISTA
+   • Clicca "📋 Lista" per passare alla visualizzazione in lista
+   • Clicca di nuovo per tornare al calendario
+
+8️⃣ CATEGORIE COLORI
+   ⚪ Senza categoria (Neutro)
+   🍽️  Gastronomia/Cibo (Giallo)
+   👥 Serate/Sociali (Rosa)
+   ⛹️  Sport/Attività (Verde)
+   🎮 Intrattenimento (Blu)
+   🎵 Cultura/Musica (Viola)
+   🏞️  Escursioni/Turismo (Arancione)

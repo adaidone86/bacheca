@@ -58,11 +58,7 @@ class BacheaCalendar {
     }
 
     init() {
-        try {
-            this.setupEventListeners();
-        } catch (e) {
-            console.warn('Errore setup listener:', e.message);
-        }
+        this.setupEventListeners();
         this.detectDevice();
         this.loadVersion();
         this.loadTitle();
@@ -156,19 +152,9 @@ class BacheaCalendar {
     }
 
     setupEventListeners() {
-        // Helper per aggiungere listener in modo sicuro
-        const addListener = (selector, event, callback) => {
-            const el = selector.startsWith('.')
-                ? document.querySelector(selector)
-                : document.getElementById(selector);
-            if (el) {
-                el.addEventListener(event, callback);
-            }
-        };
-
-        addListener('prevBtn', 'click', () => this.previousMonth());
-        addListener('nextBtn', 'click', () => this.nextMonth());
-        addListener('.btn-today', 'click', () => this.today());
+        document.getElementById('prevBtn').addEventListener('click', () => this.previousMonth());
+        document.getElementById('nextBtn').addEventListener('click', () => this.nextMonth());
+        document.querySelector('.btn-today').addEventListener('click', () => this.today());
 
         document.getElementById('closeBtn').addEventListener('click', (e) => {
             e.preventDefault();
