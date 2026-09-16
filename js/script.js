@@ -169,21 +169,28 @@ class BacheaCalendar {
             this.deviceName = deviceData.name;
             this.syncCode = deviceData.syncCode;
 
+            // Se il device non ha un nome, chiedi di impostarlo
+            if (!this.deviceName || this.deviceName.trim() === '') {
+                console.log('Device senza nome detected. Richiedendo nome...');
+                await this.promptForDeviceName();
+                return;
+            }
+
             // Migrazione retrocompatibile: se il device non ha un syncCode, generane uno
             if (!this.syncCode) {
                 console.log('Device vecchio senza syncCode detected. Generazione nuovo syncCode...');
                 this.syncCode = this.generateSyncCode();
 
-                // Crea un nuovo syncCode entry su Firebase
-                database.ref(`syncCodes/${this.syncCode}`).set({
-                    name: this.deviceName,
-                    deviceIds: [this.deviceId],
-                    createdAt: new Date().getTime()
-                });
-
                 // Aggiorna il device con il nuovo syncCode
                 database.ref(`devices/${this.deviceId}`).update({
                     syncCode: this.syncCode
+                }).then(() => {
+                    // Crea l'entry di syncCodes DOPO aver aggiornato il device
+                    database.ref(`syncCodes/${this.syncCode}`).set({
+                        name: this.deviceName,
+                        deviceIds: [this.deviceId],
+                        createdAt: new Date().getTime()
+                    });
                 });
 
                 console.log('SyncCode assegnato al device vecchio:', this.syncCode);
@@ -273,20 +280,20 @@ class BacheaCalendar {
                 const newSyncCode = this.generateSyncCode();
                 this.syncCode = newSyncCode;
 
-                // Crea un nuovo syncCode entry su Firebase
-                database.ref(`syncCodes/${newSyncCode}`).set({
-                    name: this.deviceName,
-                    deviceIds: [this.deviceId],
-                    createdAt: new Date().getTime()
-                });
-
-                // Salva il dispositivo su Firebase come Anonimo
+                // Salva il dispositivo su Firebase come Anonimo con syncCode
                 database.ref(`devices/${this.deviceId}`).set({
                     id: this.deviceId,
                     name: this.deviceName,
                     syncCode: newSyncCode,
                     createdAt: new Date().getTime(),
                     lastSeen: new Date().getTime()
+                });
+
+                // Crea l'entry di syncCodes
+                database.ref(`syncCodes/${newSyncCode}`).set({
+                    name: this.deviceName,
+                    deviceIds: [this.deviceId],
+                    createdAt: new Date().getTime()
                 });
 
                 modal.classList.remove('active');
