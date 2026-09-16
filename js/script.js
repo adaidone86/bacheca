@@ -33,6 +33,8 @@ class BacheaCalendar {
         this.deviceName = null; // Nome dell'utente
         this.syncCode = null; // Codice di sincronizzazione multi-device
         this.deviceNames = {}; // Mappa di deviceId -> nome
+        this.eventsListener = null; // Listener per cambiamenti Firebase
+        this.suppressSync = false; // Flag per evitare loop di sync
         this.setupCustomPopup();
         this.initializeDevice().then(() => this.init());
     }
@@ -61,6 +63,70 @@ class BacheaCalendar {
         popup.style.display = 'flex';
     }
 
+    showConfirmDialog(message) {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('confirmModal');
+            const messageEl = document.getElementById('confirmMessage');
+            const cancelBtn = document.getElementById('confirmCancelBtn');
+            const okBtn = document.getElementById('confirmOkBtn');
+
+            messageEl.textContent = message;
+            modal.style.display = 'flex';
+
+            const handleCancel = () => {
+                modal.style.display = 'none';
+                cancelBtn.removeEventListener('click', handleCancel);
+                okBtn.removeEventListener('click', handleOk);
+                resolve(false);
+            };
+
+            const handleOk = () => {
+                modal.style.display = 'none';
+                cancelBtn.removeEventListener('click', handleCancel);
+                okBtn.removeEventListener('click', handleOk);
+                resolve(true);
+            };
+
+            cancelBtn.addEventListener('click', handleCancel);
+            okBtn.addEventListener('click', handleOk);
+
+            // Chiudi premendo ESC
+            const handleEsc = (e) => {
+                if (e.key === 'Escape') {
+                    handleCancel();
+                    document.removeEventListener('keydown', handleEsc);
+                }
+            };
+            document.addEventListener('keydown', handleEsc);
+        });
+    }
+
+    showEventDeletedDialog() {
+        const popup = document.getElementById('customPopup');
+        const icon = document.getElementById('popupIcon');
+        const messageEl = document.getElementById('popupMessage');
+        const closeBtn = document.getElementById('popupCloseBtn');
+
+        icon.textContent = '🗑️';
+        messageEl.textContent = 'L\'evento a cui stavi partecipando è stato eliminato';
+        popup.style.display = 'flex';
+
+        // Rimuovi i vecchi listener dal bottone
+        const newCloseBtn = closeBtn.cloneNode(true);
+        closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+
+        newCloseBtn.addEventListener('click', () => {
+            popup.style.display = 'none';
+            this.editingNote = null;
+            const editModal = document.getElementById('editModal');
+            if (editModal) {
+                editModal.classList.remove('active');
+                editModal.style.display = 'none';
+            }
+            this.render();
+        });
+    }
+
     generateUUID() {
         return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
             const r = Math.random() * 16 | 0;
@@ -76,6 +142,31 @@ class BacheaCalendar {
             code += chars.charAt(Math.floor(Math.random() * chars.length));
         }
         return code;
+    }
+
+    getDeviceInfo() {
+        // Rileva browser
+        let browser = 'Unknown';
+        const ua = navigator.userAgent.toLowerCase();
+
+        if (ua.indexOf('edg/') > -1) browser = 'Edge';
+        else if (ua.indexOf('chrome') > -1 && ua.indexOf('chromium') === -1) browser = 'Chrome';
+        else if (ua.indexOf('firefox') > -1) browser = 'Firefox';
+        else if (ua.indexOf('safari') > -1 && ua.indexOf('chrome') === -1) browser = 'Safari';
+        else if (ua.indexOf('opr/') > -1) browser = 'Opera';
+        else if (ua.indexOf('trident') > -1) browser = 'IE';
+
+        // Rileva tipo di dispositivo
+        let deviceType = 'Desktop';
+        if (navigator.userAgentData && navigator.userAgentData.mobile) {
+            deviceType = 'Mobile';
+        } else if (ua.indexOf('mobile') > -1 || ua.indexOf('android') > -1 || ua.indexOf('iphone') > -1 || ua.indexOf('ipad') > -1) {
+            deviceType = 'Mobile';
+        } else if (ua.indexOf('tablet') > -1 || ua.indexOf('ipad') > -1) {
+            deviceType = 'Tablet';
+        }
+
+        return { browser, deviceType };
     }
 
     async getStoredDeviceId() {
@@ -260,10 +351,13 @@ class BacheaCalendar {
                 });
 
                 // Salva il dispositivo su Firebase
+                const deviceInfo = this.getDeviceInfo();
                 database.ref(`devices/${this.deviceId}`).set({
                     id: this.deviceId,
                     name: this.deviceName,
                     syncCode: newSyncCode,
+                    browser: deviceInfo.browser,
+                    deviceType: deviceInfo.deviceType,
                     createdAt: new Date().getTime(),
                     lastSeen: new Date().getTime()
                 });
@@ -281,10 +375,13 @@ class BacheaCalendar {
                 this.syncCode = newSyncCode;
 
                 // Salva il dispositivo su Firebase come Anonimo con syncCode
+                const deviceInfo = this.getDeviceInfo();
                 database.ref(`devices/${this.deviceId}`).set({
                     id: this.deviceId,
                     name: this.deviceName,
                     syncCode: newSyncCode,
+                    browser: deviceInfo.browser,
+                    deviceType: deviceInfo.deviceType,
                     createdAt: new Date().getTime(),
                     lastSeen: new Date().getTime()
                 });
@@ -324,10 +421,13 @@ class BacheaCalendar {
             }
 
             // Salva il dispositivo su Firebase con il syncCode
+            const deviceInfo = this.getDeviceInfo();
             await database.ref(`devices/${this.deviceId}`).set({
                 id: this.deviceId,
                 name: this.deviceName,
                 syncCode: syncCode,
+                browser: deviceInfo.browser,
+                deviceType: deviceInfo.deviceType,
                 createdAt: new Date().getTime(),
                 lastSeen: new Date().getTime()
             });
@@ -341,8 +441,10 @@ class BacheaCalendar {
     }
 
     updateLastSeen() {
-        if (this.deviceId) {
-            database.ref(`devices/${this.deviceId}/lastSeen`).set(new Date().getTime());
+        if (this.deviceId && this.deviceName) {
+            database.ref(`devices/${this.deviceId}`).update({
+                lastSeen: new Date().getTime()
+            });
         }
     }
 
@@ -813,6 +915,50 @@ class BacheaCalendar {
             });
         } else {
             console.warn('Button "editWantToParticipateBtn" non trovato');
+        }
+
+        // Open chat from participants tab
+        const openChatBtn = document.getElementById('openChatFromParticipantsBtn');
+        if (openChatBtn) {
+            openChatBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                // Attiva la tab chat
+                document.querySelectorAll('.modal-tab').forEach(tab => tab.classList.remove('active'));
+                document.querySelectorAll('.modal-tab-content').forEach(content => content.classList.remove('active'));
+
+                // Se la tab chat esiste, attivala
+                const chatTabBtn = document.querySelector('[data-tab="edit-chat-tab"]');
+                const chatContent = document.getElementById('edit-chat-tab');
+
+                if (chatContent) {
+                    chatContent.classList.add('active');
+                    // Se il bottone tab esiste, attivalo
+                    if (chatTabBtn) chatTabBtn.classList.add('active');
+                } else {
+                    // Se la tab chat non esiste in pagina, mostra un messaggio
+                    console.warn('Chat tab non trovata');
+                }
+            });
+        }
+
+        // Chat send button
+        const chatSendBtn = document.getElementById('chatSendBtn');
+        if (chatSendBtn) {
+            chatSendBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.sendChatMessage();
+            });
+        }
+
+        // Chat input: invia con Enter
+        const chatInput = document.getElementById('chatMessageInput');
+        if (chatInput) {
+            chatInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    this.sendChatMessage();
+                }
+            });
         }
 
         // Event Image buttons
@@ -1462,6 +1608,9 @@ class BacheaCalendar {
             console.log('Aggiunto utente ai partecipanti:', this.editParticipantsList);
             this.renderEditParticipants();
 
+            // Aggiorna la visibilità dell'input chat
+            this.updateChatInputVisibility(this.editParticipantsList);
+
             // Salva immediatamente su Firebase
             if (this.editingNote) {
                 const { dateKey, noteIndex } = this.editingNote;
@@ -1636,7 +1785,7 @@ class BacheaCalendar {
         });
 
         this.saveNotes();
-        this.autoSync(); // Sincronizza con Firebase
+        this.syncToFirebase(); // Sincronizza con Firebase in real-time
         this.closeModal();
         this.render(); // Usa render() per renderizzare la vista corretta
         setTimeout(() => this.showSuccessPopup('Evento aggiunto con successo!'), 100);
@@ -1644,14 +1793,22 @@ class BacheaCalendar {
 
     deleteNote(dateKey, index) {
         if (this.notes[dateKey]) {
+            // Prendi l'ID dell'evento prima di eliminarlo
+            const eventId = this.notes[dateKey][index].id;
+
             this.notes[dateKey].splice(index, 1);
             if (this.notes[dateKey].length === 0) {
                 delete this.notes[dateKey];
             }
+
+            // Elimina la chat associata su Firebase
+            if (eventId) {
+                database.ref(`eventChats/${eventId}`).remove().catch(error => {
+                    console.error('Errore eliminazione chat:', error);
+                });
+            }
             this.saveNotes();
-            this.closeModal(); // Chiudi il modal di aggiunta se aperto
-            this.autoSync(); // Sincronizza con Firebase
-            this.render(); // Usa render() per renderizzare la vista corretta
+            this.syncToFirebase(); // Sincronizza con Firebase in real-time
         }
     }
 
@@ -2211,15 +2368,69 @@ class BacheaCalendar {
 
                 // Salva i dati locali su Firebase (sovrascrivi completamente)
                 if (Object.keys(this.notes).length > 0) {
+                    this.suppressSync = true;
                     database.ref('events').set(this.notes, (error) => {
+                        this.suppressSync = false;
                         this.isSyncing = false;
                         resolve();
+                        this.setupRealtimeSync(); // Inizia il real-time sync
                     });
                 } else {
                     this.isSyncing = false;
                     resolve();
+                    this.setupRealtimeSync();
                 }
             });
+        });
+    }
+
+    setupRealtimeSync() {
+        // Rimuovi il vecchio listener se esiste
+        if (this.eventsListener) {
+            database.ref('events').off('value', this.eventsListener);
+        }
+
+        // Configura listener real-time
+        this.eventsListener = (snapshot) => {
+            // Se il cambiamento viene da questo client (suppressSync), ignora
+            if (this.suppressSync) {
+                return;
+            }
+
+            if (snapshot.exists()) {
+                const remoteNotes = snapshot.val();
+
+                // Aggiorna solo se c'è una vera differenza
+                if (JSON.stringify(this.notes) !== JSON.stringify(remoteNotes)) {
+                    this.notes = remoteNotes;
+
+                    // Se il modal è aperto, verifica se l'evento è stato eliminato
+                    if (this.editingNote) {
+                        const { dateKey, noteIndex } = this.editingNote;
+                        if (!this.notes[dateKey] || !this.notes[dateKey][noteIndex]) {
+                            // L'evento è stato eliminato
+                            this.showEventDeletedDialog();
+                        } else {
+                            // L'evento esiste ancora, aggiorna il contenuto
+                            this.updateEditModalContent();
+                        }
+                    }
+
+                    this.render();
+                }
+            }
+        };
+
+        database.ref('events').on('value', this.eventsListener);
+    }
+
+    syncToFirebase() {
+        this.suppressSync = true;
+        database.ref('events').set(this.notes, (error) => {
+            this.suppressSync = false;
+            if (error) {
+                console.error('Errore sincronizzazione Firebase:', error);
+            }
         });
     }
 
@@ -2267,6 +2478,49 @@ class BacheaCalendar {
     }
 
     // Edit Modal
+    updateEditModalContent() {
+        // Aggiorna il contenuto del modal con i dati più recenti da Firebase
+        if (!this.editingNote) return;
+
+        const { dateKey, noteIndex } = this.editingNote;
+        if (!this.notes[dateKey] || !this.notes[dateKey][noteIndex]) return;
+
+        const note = this.notes[dateKey][noteIndex];
+
+        // Aggiorna i campi del modal
+        document.getElementById('editTitle').value = note.title || '';
+        document.getElementById('editTime').value = note.time || '';
+        document.getElementById('editLocation').value = note.location || '';
+        document.getElementById('editNotes').value = note.notes || '';
+        document.getElementById('editLink').value = note.link || '';
+
+        // Aggiorna i partecipanti
+        this.editParticipantsList = note.participants ? [...note.participants] : [];
+        this.renderEditParticipants();
+
+        // Aggiorna il colore
+        this.selectedColor = note.color || 'color-yellow';
+        const colorRadio = document.querySelector(`input[name="editEventColor"][data-color="${this.selectedColor}"]`);
+        if (colorRadio) {
+            colorRadio.checked = true;
+        }
+
+        // Aggiorna l'immagine
+        this.editImageData = note.image || null;
+        const coverContainer = document.getElementById('eventCoverContainer');
+        if (note.image) {
+            coverContainer.style.backgroundImage = `url(${note.image})`;
+        } else {
+            coverContainer.style.backgroundImage = 'none';
+        }
+
+        // Aggiorna il flag chat
+        document.getElementById('editChatEnabled').checked = note.chatEnabled || false;
+
+        // Ricarica la lista dei partecipanti
+        this.updateParticipateButton();
+    }
+
     openEditModal(dateKey, noteIndex) {
         // Chiudi il modal di aggiunta se aperto
         document.getElementById('modal').classList.remove('active');
@@ -2311,8 +2565,125 @@ class BacheaCalendar {
         // Mantieni sempre una min-height per mostrare il gradiente viola
         coverContainer.style.minHeight = '180px';
 
+        // Carica il flag chat
+        document.getElementById('editChatEnabled').checked = note.chatEnabled || false;
+
+        // Carica e visualizza i messaggi della chat
+        this.loadAndDisplayChatMessages(note.id);
+
+        // Nascondi il form di invio se non sei partecipante
+        this.updateChatInputVisibility(note.participants);
+
         document.getElementById('editModal').classList.add('active');
         document.getElementById('editModal').style.display = 'flex';
+    }
+
+    loadAndDisplayChatMessages(eventId) {
+        try {
+            const chatRef = database.ref(`eventChats/${eventId}/messages`);
+
+            // Rimuovi il vecchio listener se esiste
+            if (this.chatListener) {
+                chatRef.off('value', this.chatListener);
+            }
+
+            // Crea un nuovo listener per aggiornamenti real-time
+            this.chatListener = chatRef.on('value', (snapshot) => {
+                const messagesContainer = document.getElementById('chatMessagesContainer');
+                if (!messagesContainer) return; // Se il container non esiste, esci
+
+                messagesContainer.innerHTML = '';
+
+                if (!snapshot.exists()) {
+                    messagesContainer.innerHTML = '<div style="text-align: center; color: #999; padding: 20px;">Nessun messaggio ancora. Inizia una conversazione!</div>';
+                    return;
+                }
+
+                const messages = snapshot.val();
+                const messageIds = Object.keys(messages).sort((a, b) => messages[a].timestamp - messages[b].timestamp);
+
+                // Accorpa messaggi consecutivi dello stesso utente
+                let groupedMessages = [];
+                let currentGroup = null;
+
+                messageIds.forEach(msgId => {
+                    const msg = messages[msgId];
+
+                    if (!currentGroup || currentGroup.deviceId !== msg.deviceId) {
+                        // Nuovo utente, crea un nuovo gruppo
+                        if (currentGroup) {
+                            groupedMessages.push(currentGroup);
+                        }
+                        currentGroup = {
+                            deviceId: msg.deviceId,
+                            name: msg.name,
+                            texts: [msg.text],
+                            timestamp: msg.timestamp
+                        };
+                    } else {
+                        // Stesso utente, aggiungi il testo al gruppo
+                        currentGroup.texts.push(msg.text);
+                    }
+                });
+
+                if (currentGroup) {
+                    groupedMessages.push(currentGroup);
+                }
+
+                // Visualizza i gruppi di messaggi
+                groupedMessages.forEach(group => {
+                    const isYou = group.deviceId === this.deviceId;
+                    const messageEl = document.createElement('div');
+                    messageEl.style.cssText = `
+                        display: flex;
+                        flex-direction: column;
+                        align-items: ${isYou ? 'flex-end' : 'flex-start'};
+                        gap: 4px;
+                    `;
+
+                    const bubbleEl = document.createElement('div');
+                    bubbleEl.style.cssText = `
+                        max-width: 70%;
+                        padding: 10px 14px;
+                        border-radius: 12px;
+                        word-wrap: break-word;
+                        font-size: 0.95rem;
+                        white-space: pre-wrap;
+                        ${isYou
+                            ? 'background: #667eea; color: white; border-radius: 18px 18px 4px 18px;'
+                            : 'background: white; color: #333; border: 1px solid #ddd; border-radius: 18px 18px 18px 4px;'}
+                    `;
+                    bubbleEl.textContent = group.texts.join('\n');
+
+                    const nameEl = document.createElement('div');
+                    nameEl.style.cssText = `font-size: 0.75rem; color: #999; ${isYou ? 'text-align: right;' : 'text-align: left;'}`;
+                    nameEl.textContent = group.name;
+
+                    messageEl.appendChild(nameEl);
+                    messageEl.appendChild(bubbleEl);
+                    messagesContainer.appendChild(messageEl);
+                });
+
+                // Scroll al fondo
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            });
+        } catch (error) {
+            console.error('Errore caricamento messaggi chat:', error);
+        }
+    }
+
+    updateChatInputVisibility(participants) {
+        const isParticipant = participants && participants.includes(this.deviceId);
+        const inputContainer = document.getElementById('chatInputContainer');
+        if (inputContainer) {
+            inputContainer.style.display = isParticipant ? 'flex' : 'none';
+            if (!isParticipant) {
+                const placeholder = document.createElement('div');
+                placeholder.style.cssText = 'text-align: center; color: #999; padding: 10px;';
+                placeholder.textContent = 'Solo i partecipanti possono inviare messaggi';
+                inputContainer.parentElement.appendChild(placeholder);
+            }
+        }
     }
 
     async loadAndDisplayCreatorName(creatorId) {
@@ -2340,12 +2711,25 @@ class BacheaCalendar {
     }
 
     closeEditModal() {
+        // Rimuovi il listener della chat
+        if (this.chatListener && this.editingNote) {
+            const { dateKey, noteIndex } = this.editingNote;
+            if (this.notes[dateKey] && this.notes[dateKey][noteIndex]) {
+                const eventId = this.notes[dateKey][noteIndex].id;
+                database.ref(`eventChats/${eventId}/messages`).off('value', this.chatListener);
+            }
+            this.chatListener = null;
+        }
+
         // Pulisci i campi del form
         document.getElementById('editTitle').value = '';
         document.getElementById('editTime').value = '';
         document.getElementById('editLocation').value = '';
         document.getElementById('editNotes').value = '';
         document.getElementById('editLink').value = '';
+        document.getElementById('editChatEnabled').checked = false;
+        document.getElementById('chatMessageInput').value = '';
+        document.getElementById('chatMessagesContainer').innerHTML = '';
         this.editParticipantsList = [];
 
         // Resetta i tab del modal di modifica
@@ -2360,6 +2744,36 @@ class BacheaCalendar {
         document.getElementById('editModal').style.display = 'none';
         this.closeModal(); // Chiudi anche il modal di aggiunta se aperto
         this.editingNote = null;
+    }
+
+    async sendChatMessage() {
+        if (!this.editingNote) return;
+
+        const messageText = document.getElementById('chatMessageInput').value.trim();
+        if (!messageText) return;
+
+        const { dateKey, noteIndex } = this.editingNote;
+        const eventId = this.notes[dateKey][noteIndex].id;
+
+        try {
+            const messageRef = database.ref(`eventChats/${eventId}/messages`).push();
+            const messageId = messageRef.key;
+
+            await messageRef.set({
+                deviceId: this.deviceId,
+                name: this.deviceName,
+                text: messageText,
+                timestamp: new Date().getTime()
+            });
+
+            // Pulisci l'input
+            document.getElementById('chatMessageInput').value = '';
+
+            // Ricarica i messaggi
+            this.loadAndDisplayChatMessages(eventId);
+        } catch (error) {
+            console.error('Errore invio messaggio:', error);
+        }
     }
 
     saveEditedNote() {
@@ -2379,24 +2793,34 @@ class BacheaCalendar {
             link: document.getElementById('editLink').value.trim(),
             image: this.editImageData,
             participants: this.editParticipantsList,
+            chatEnabled: document.getElementById('editChatEnabled').checked,
             creatorId: creatorId // Mantieni il creatore originale
         };
 
         this.saveNotes();
-        this.autoSync(); // Sincronizza con Firebase
+        this.syncToFirebase(); // Sincronizza con Firebase in real-time
         this.closeEditModal();
         this.render(); // Usa render() per renderizzare la vista corretta (calendario o lista)
         setTimeout(() => this.showSuccessPopup('Evento modificato con successo!'), 100);
     }
 
-    deleteCurrentNote() {
+    async deleteCurrentNote() {
         if (!this.editingNote) return;
-        if (!confirm('Sei sicuro di voler eliminare questo evento?')) return;
+
+        const confirmed = await this.showConfirmDialog('Sei sicuro di voler eliminare questo evento?');
+        if (!confirmed) return;
 
         const { dateKey, noteIndex } = this.editingNote;
         this.deleteNote(dateKey, noteIndex); // Elimina e sincronizza Firebase
-        this.closeEditModal(); // Chiude il popup
-        setTimeout(() => this.showSuccessPopup('Evento eliminato con successo!'), 100);
+
+        // Aspetta che il listener real-time chiuda il modal
+        // Se non succede entro 500ms, chiudi manualmente
+        setTimeout(() => {
+            if (this.editingNote) {
+                // Il listener non ha chiuso il modal, lo faccio manualmente
+                this.showEventDeletedDialog();
+            }
+        }, 500);
     }
 
     async loadFromGitHub() {

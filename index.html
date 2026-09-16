@@ -406,8 +406,9 @@
 
                 <!-- Tab: Partecipanti -->
                 <div id="edit-participants-tab" class="modal-tab-content">
-                    <div class="form-group" style="margin-bottom: 15px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.2);">
+                    <div class="form-group" style="margin-bottom: 15px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.2); display: flex; justify-content: space-between; align-items: center;">
                         <p style="color: white; font-weight: 600; margin: 0;">👤 Proposta da: <span id="creatorNameDisplay">-</span></p>
+                        <button type="button" id="openChatFromParticipantsBtn" style="padding: 6px 12px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; white-space: nowrap;">💬 Chat</button>
                     </div>
 
                     <div class="form-group" id="editParticipantsGroup">
@@ -483,6 +484,24 @@
                             <button type="button" id="editImageUrlBtn" style="padding: 8px 15px; background: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer;">🔗 URL</button>
                         </div>
                     </div>
+
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="editChatEnabled" style="width: 18px; height: 18px; cursor: pointer;">
+                            <span>💬 Abilita Chat</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Tab: Chat -->
+                <div id="edit-chat-tab" class="modal-tab-content">
+                    <div id="chatMessagesContainer" style="flex: 1; overflow-y: auto; padding: 12px; max-height: 400px; display: flex; flex-direction: column; gap: 12px; background: #f5f5f5; border-radius: 8px; margin-bottom: 12px;">
+                        <!-- I messaggi vengono inseriti qui -->
+                    </div>
+                    <div id="chatInputContainer" style="display: flex; gap: 8px;">
+                        <input type="text" id="chatMessageInput" placeholder="Scrivi un messaggio..." style="flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 0.95rem;">
+                        <button type="button" id="chatSendBtn" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Invia</button>
+                    </div>
                 </div>
 
                 <div class="modal-buttons">
@@ -500,6 +519,17 @@
             <div id="popupIcon" style="font-size: 48px; margin-bottom: 15px;"></div>
             <p id="popupMessage" style="font-size: 1rem; color: #333; margin-bottom: 20px;"></p>
             <button id="popupCloseBtn" style="padding: 10px 30px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem;">Ok</button>
+        </div>
+    </div>
+
+    <!-- Modal di conferma -->
+    <div id="confirmModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 5001; align-items: center; justify-content: center;">
+        <div style="background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); text-align: center; max-width: 400px; animation: slideIn 0.3s ease;">
+            <p id="confirmMessage" style="font-size: 1rem; color: #333; margin-bottom: 25px; font-weight: 500;"></p>
+            <div style="display: flex; gap: 12px; justify-content: center;">
+                <button id="confirmCancelBtn" style="padding: 10px 30px; background: #ccc; color: #333; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; font-weight: 500;">Annulla</button>
+                <button id="confirmOkBtn" style="padding: 10px 30px; background: #f44336; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; font-weight: 500;">Elimina</button>
+            </div>
         </div>
     </div>
 
