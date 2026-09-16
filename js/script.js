@@ -1332,30 +1332,54 @@ class BacheaCalendar {
         const participantNames = await Promise.all(this.editParticipantsList.map(async (participant) => {
             // Retrocompatibilità: se è una stringa corta, è il vecchio formato (nome diretto)
             if (participant.length < 20) {
-                return { id: participant, name: participant };
+                return { id: participant, name: participant, syncCode: null };
             }
 
             // Nuovo formato: è un ID, leggi il nome da Firebase
             try {
                 const snapshot = await database.ref(`devices/${participant}`).once('value');
                 if (snapshot.exists()) {
-                    return { id: participant, name: snapshot.val().name };
+                    const deviceData = snapshot.val();
+                    return { id: participant, name: deviceData.name, syncCode: deviceData.syncCode || null };
                 }
-                return { id: participant, name: 'Sconosciuto' };
+                return { id: participant, name: 'Sconosciuto', syncCode: null };
             } catch (error) {
-                return { id: participant, name: 'Errore' };
+                return { id: participant, name: 'Errore', syncCode: null };
             }
         }));
 
-        participantNames.forEach((participantData, index) => {
-            const isCurrentUser = participantData.id === this.deviceId;
+        // Deduplicare per syncCode: se più device hanno lo stesso syncCode, mostrar solo una volta
+        const seenSyncCodes = new Set();
+        const displayedParticipants = [];
+
+        participantNames.forEach((participantData, originalIndex) => {
+            // Se ha syncCode e l'abbiamo già visto, salta
+            if (participantData.syncCode && seenSyncCodes.has(participantData.syncCode)) {
+                return;
+            }
+
+            // Marca il syncCode come visto
+            if (participantData.syncCode) {
+                seenSyncCodes.add(participantData.syncCode);
+            }
+
+            displayedParticipants.push({ ...participantData, originalIndex });
+        });
+
+        displayedParticipants.forEach((participantData) => {
+            // Controlla se è l'utente corrente (per syncCode o deviceId)
+            let isCurrentUser = participantData.id === this.deviceId;
+            if (!isCurrentUser && this.syncCode && participantData.syncCode) {
+                isCurrentUser = participantData.syncCode === this.syncCode;
+            }
+
             const itemEl = document.createElement('div');
             itemEl.className = 'participant-item';
 
             if (isCurrentUser) {
                 itemEl.innerHTML = `
                     <span>${this.escapeHtml(participantData.name)} (tu)</span>
-                    <button type="button" class="btn-remove-participant" data-index="${index}" style="background: #f44336;">Non posso più</button>
+                    <button type="button" class="btn-remove-participant" data-index="${participantData.originalIndex}" style="background: #f44336;">Non posso più</button>
                 `;
             } else {
                 itemEl.innerHTML = `
@@ -1367,7 +1391,8 @@ class BacheaCalendar {
             if (removeBtn) {
                 removeBtn.addEventListener('click', (e) => {
                     e.preventDefault();
-                    this.editParticipantsList.splice(index, 1);
+                    const indexToRemove = parseInt(e.target.dataset.index);
+                    this.editParticipantsList.splice(indexToRemove, 1);
                     this.renderEditParticipants();
 
                     // Salva immediatamente su Firebase
@@ -1384,22 +1409,43 @@ class BacheaCalendar {
         });
 
         // Aggiorna il button "Voglio partecipare"
-        this.updateParticipateButton();
+        await this.updateParticipateButton();
     }
 
-    updateParticipateButton() {
+    async updateParticipateButton() {
         const btn = document.getElementById('editWantToParticipateBtn');
         if (!btn) {
             console.warn('Button editWantToParticipateBtn non trovato in updateParticipateButton');
             return;
         }
 
-        const isParticipant = this.editParticipantsList.some(p => {
-            // Compatibilità: controlla sia il nuovo formato (ID lungo) che vecchio (nome)
-            return p === this.deviceId || p === this.deviceName;
-        });
+        // Controlla se il syncCode corrente è già tra i partecipanti
+        let isParticipant = false;
 
-        console.log('updateParticipateButton:', { isParticipant, deviceId: this.deviceId, participants: this.editParticipantsList });
+        if (this.syncCode) {
+            // Nuovo sistema: controlla per syncCode
+            for (const participantId of this.editParticipantsList) {
+                try {
+                    const snapshot = await database.ref(`devices/${participantId}`).once('value');
+                    if (snapshot.exists()) {
+                        const participantSyncCode = snapshot.val().syncCode;
+                        if (participantSyncCode === this.syncCode) {
+                            isParticipant = true;
+                            break;
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Errore caricamento syncCode partecipante:', error);
+                }
+            }
+        } else {
+            // Fallback: controlla per deviceId o nome
+            isParticipant = this.editParticipantsList.some(p => {
+                return p === this.deviceId || p === this.deviceName;
+            });
+        }
+
+        console.log('updateParticipateButton:', { isParticipant, deviceId: this.deviceId, syncCode: this.syncCode, participants: this.editParticipantsList });
 
         if (isParticipant) {
             btn.style.display = 'none';
