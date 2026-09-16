@@ -5,12 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bacheca</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
-    <link rel="manifest" href="/bacheca/app/manifest.json">
+    <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#667eea">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style-desktop.css" media="(min-width: 769px)">
+    <link rel="stylesheet" href="css/style-mobile.css" media="(max-width: 768px)">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
@@ -43,15 +44,29 @@
     </div>
 
     <div id="mainContainer" class="container">
-        <header>
-            <h1 id="titleLine1" style="cursor: pointer;"></h1>
-            <h1 id="titleLine2" style="cursor: pointer;"></h1>
-            <p class="subtitle" id="titleLine3"></p>
-            <div class="header-buttons">
-                <button id="installBtn" style="display: none; background: #4CAF50; padding: 8px 16px; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">⬇️ Installa app</button>
-                <button id="viewToggleBtn" class="view-toggle">📋 Lista</button>
-                <button id="settingsBtn">⚙️ Impostazioni</button>
-                <button id="infoBtn">ℹ️ Info</button>
+        <header style="color: white; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-start; gap: 20px;">
+            <div style="text-align: center; flex: 1;">
+                <h1 id="titleLine1" style="cursor: pointer;"></h1>
+                <h1 id="titleLine2" style="cursor: pointer;"></h1>
+                <p class="subtitle" id="titleLine3"></p>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 300px;">
+                <p id="welcomeMessage" style="font-size: 1.1rem; font-weight: 600; color: rgba(255, 255, 255, 0.95); margin: 0;"></p>
+                <div style="position: relative; display: flex; gap: 8px; align-items: center;">
+                    <button id="menuBtn" style="background: transparent; border: 2px solid rgba(255, 255, 255, 0.8); color: white; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 1.2rem; transition: all 0.3s;">⚙️</button>
+                    <button id="installBtn" style="display: inline-block; background: #4CAF50; padding: 8px 16px; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.9rem;">⬇️ Installa app</button>
+                    <div id="menuDropdown" style="display: none; position: absolute; top: 100%; right: 0; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); min-width: 200px; z-index: 1000; margin-top: 5px;">
+                        <button id="editNameBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">👤 Inserisci il tuo nome</button>
+                        <div id="syncCodeSection" style="padding: 12px 16px; border-bottom: 1px solid #eee; display: none;">
+                            <div style="font-size: 0.85rem; color: #666; margin-bottom: 6px; font-weight: 500;">Cod. <span id="syncCodeDisplay">-</span></div>
+                            <button type="button" id="copySyncCodeBtn" style="width: 100%; padding: 6px 10px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem;">📋 Copia codice</button>
+                        </div>
+                        <button id="changeModalBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">📋 Cambia Modalità</button>
+                        <button id="settingsBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">🎨 Visualizzazione</button>
+                        <button id="infoBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; transition: background 0.2s;">ℹ️ Info</button>
+                    </div>
+                </div>
+                <button id="viewToggleBtn" class="view-toggle" style="display: none;">📋 Lista</button>
             </div>
         </header>
 
@@ -83,6 +98,36 @@
         <footer>
             <p>🪫 Powerd By: adaidone - 🆚 0.0.1</p>
         </footer>
+    </div>
+
+    <!-- Modal per chiedere il nome utente -->
+    <div class="modal" id="namePromptModal" style="z-index: 10000 !important;">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header" style="text-align: center;">👤 Come ti chiami?</div>
+            <form id="namePromptForm" style="padding: 20px 30px;">
+                <div class="form-group">
+                    <input type="text" id="nameInput" placeholder="Inserisci il tuo nome">
+                </div>
+
+                <div class="form-group" style="border-top: 1px solid #eee; padding-top: 20px; margin-top: 20px;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500;">
+                        <input type="checkbox" id="nameSyncExistingCheckbox" style="width: 18px; height: 18px; cursor: pointer;">
+                        <span>Ho già inserito il nome su altro dispositivo</span>
+                    </label>
+                </div>
+
+                <div class="form-group" id="nameSyncCodeGroup" style="display: none;">
+                    <label for="nameSyncCodeInput" style="display: block; margin-bottom: 8px; font-weight: 500;">🔗 Codice di sincronizzazione</label>
+                    <input type="text" id="nameSyncCodeInput" placeholder="Es: ABC12" style="text-transform: uppercase;" maxlength="5">
+                    <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">Inserisci il codice di 5 caratteri mostrato su un altro tuo dispositivo.</p>
+                </div>
+
+                <div class="modal-buttons">
+                    <button type="submit" class="btn-save" style="background: #4CAF50 !important;">Salva</button>
+                    <button type="button" class="btn-cancel" id="namePromptCancelBtn" style="background: #f0f0f0 !important; color: #333 !important;">Annulla</button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <!-- Modal per aggiungere nota -->
@@ -219,7 +264,7 @@
     <!-- Settings Modal -->
     <div class="settings-modal" id="settingsModal">
         <div class="settings-content">
-            <div class="settings-header">⚙️ Impostazioni</div>
+            <div class="settings-header">👁️ Visualizza</div>
             <p class="settings-subtitle">Filtra eventi per colore</p>
 
             <div class="settings-input-group">
@@ -361,22 +406,15 @@
 
                 <!-- Tab: Partecipanti -->
                 <div id="edit-participants-tab" class="modal-tab-content">
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="editHasParticipants">
-                            👥 Aggiungi partecipanti
-                        </label>
+                    <div class="form-group" style="margin-bottom: 15px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.2);">
+                        <p style="color: white; font-weight: 600; margin: 0;">👤 Proposta da: <span id="creatorNameDisplay">-</span></p>
                     </div>
 
-                    <div class="form-group" id="editParticipantsGroup" style="display: none;">
+                    <div class="form-group" id="editParticipantsGroup">
+                        <label style="margin-bottom: 12px; display: block; font-weight: 600;">👥 <span id="participantCountDisplay">0</span> Partecipanti</label>
                         <div id="editParticipantsList" class="participants-list"></div>
 
-                        <div class="participants-input-group" id="editParticipantsInputGroup" style="display: none;">
-                            <input type="text" id="editParticipantInput" placeholder="Nome partecipante" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
-                            <button type="button" class="btn-participant-save" id="editParticipantSaveBtn" style="padding: 8px 12px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; margin-left: 8px;">Salva</button>
-                        </div>
-
-                        <button type="button" class="btn-add-participant" id="editAddParticipantBtn" style="width: 100%; padding: 10px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; margin-top: 8px;">+ Aggiungi partecipante</button>
+                        <button type="button" class="btn-add-participant" id="editWantToParticipateBtn" style="width: 100%; padding: 10px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; margin-top: 12px;">Voglio partecipare</button>
                     </div>
                 </div>
 
@@ -502,11 +540,39 @@
         let deferredPrompt = null;
         const installBtn = document.getElementById('installBtn');
 
+        // Verifica se l'app è già installata
+        function isAppInstalled() {
+            const standalone = window.matchMedia('(display-mode: standalone)').matches;
+            const iOSStandalone = window.navigator.standalone === true;
+            console.log('Display mode standalone:', standalone);
+            console.log('iOS standalone:', iOSStandalone);
+            return standalone || iOSStandalone;
+        }
+
+        // Nascondi il bottone se l'app è già installata
+        function hideInstallButton() {
+            if (isAppInstalled()) {
+                console.log('App già installata, nascondo il bottone');
+                if (installBtn) {
+                    installBtn.style.display = 'none !important';
+                    installBtn.removeAttribute('style');
+                    installBtn.setAttribute('style', 'display: none !important;');
+                }
+            } else {
+                console.log('App non installata, bottone visibile');
+            }
+        }
+
+        hideInstallButton();
+
+        // Ricontrolla quando il DOM è pronto
+        setTimeout(hideInstallButton, 100);
+
         // Intercetta beforeinstallprompt e mostra il button
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault();
             deferredPrompt = e;
-            if (installBtn) {
+            if (installBtn && !isAppInstalled()) {
                 installBtn.style.display = 'inline-block';
             }
         });
@@ -518,8 +584,12 @@
 
                 if (!deferredPrompt) {
                     console.log('Install prompt non disponibile');
-                    // Mostra messaggio all'utente
-                    alert('Installazione non disponibile su questo browser');
+                    // Mostra messaggio all'utente con popup personalizzato
+                    if (bacheaInstance && bacheaInstance.showErrorPopup) {
+                        bacheaInstance.showErrorPopup('Installazione non disponibile su questo browser');
+                    } else {
+                        alert('Installazione non disponibile su questo browser');
+                    }
                     return;
                 }
 
@@ -554,6 +624,18 @@
             }
             deferredPrompt = null;
         });
+
+        // Registra il service worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js', { scope: '/bacheca/' }).then((registration) => {
+                console.log('Service Worker registrato correttamente:', registration);
+                console.log('Scope:', registration.scope);
+            }).catch((error) => {
+                console.error('Errore Service Worker:', error);
+            });
+        } else {
+            console.warn('Service Worker non supportato');
+        }
     </script>
 </body>
 </html>

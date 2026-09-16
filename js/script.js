@@ -29,8 +29,12 @@ class BacheaCalendar {
         this.currentEventLink = ''; // Link in aggiunta
         this.cropper = null;
         this.currentCropType = null; // 'event' o 'edit'
+        this.deviceId = null; // UUID unico del dispositivo
+        this.deviceName = null; // Nome dell'utente
+        this.syncCode = null; // Codice di sincronizzazione multi-device
+        this.deviceNames = {}; // Mappa di deviceId -> nome
         this.setupCustomPopup();
-        this.init();
+        this.initializeDevice().then(() => this.init());
     }
 
     setupCustomPopup() {
@@ -57,6 +61,385 @@ class BacheaCalendar {
         popup.style.display = 'flex';
     }
 
+    generateUUID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
+    generateSyncCode() {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        let code = '';
+        for (let i = 0; i < 5; i++) {
+            code += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return code;
+    }
+
+    async getStoredDeviceId() {
+        // Prova localStorage prima
+        const localId = localStorage.getItem('deviceId');
+        if (localId) {
+            console.log('DeviceId da localStorage:', localId);
+            return localId;
+        }
+
+        // Fallback: prova IndexedDB
+        try {
+            const idbId = await this.getFromIndexedDB('deviceId');
+            if (idbId) {
+                console.log('DeviceId da IndexedDB:', idbId);
+                localStorage.setItem('deviceId', idbId);
+                return idbId;
+            }
+        } catch (e) {
+            console.warn('Errore IndexedDB:', e);
+        }
+
+        return null;
+    }
+
+    setStoredDeviceId(id) {
+        localStorage.setItem('deviceId', id);
+        this.saveToIndexedDB('deviceId', id);
+    }
+
+    saveToIndexedDB(key, value) {
+        try {
+            const request = indexedDB.open('BacheaDB', 1);
+            request.onsuccess = function(e) {
+                const db = e.target.result;
+                const tx = db.transaction(['storage'], 'readwrite');
+                tx.objectStore('storage').put({ key: key, value: value });
+            };
+            request.onupgradeneeded = function(e) {
+                e.target.result.createObjectStore('storage', { keyPath: 'key' });
+            };
+        } catch (e) {
+            console.warn('IndexedDB non disponibile:', e);
+        }
+    }
+
+    getFromIndexedDB(key) {
+        return new Promise((resolve) => {
+            try {
+                const request = indexedDB.open('BacheaDB', 1);
+                request.onsuccess = function(e) {
+                    const db = e.target.result;
+                    const tx = db.transaction(['storage'], 'readonly');
+                    const getReq = tx.objectStore('storage').get(key);
+                    getReq.onsuccess = function() {
+                        resolve(getReq.result ? getReq.result.value : null);
+                    };
+                };
+                request.onupgradeneeded = function(e) {
+                    e.target.result.createObjectStore('storage', { keyPath: 'key' });
+                    resolve(null);
+                };
+            } catch (e) {
+                console.warn('IndexedDB error:', e);
+                resolve(null);
+            }
+        });
+    }
+
+    async initializeDevice() {
+        let deviceId = await this.getStoredDeviceId();
+
+        if (!deviceId) {
+            deviceId = this.generateUUID();
+            this.setStoredDeviceId(deviceId);
+        }
+
+        this.deviceId = deviceId;
+        console.log('Device ID inizializzato:', this.deviceId);
+
+        // Verifica se il dispositivo esiste su Firebase
+        const deviceRef = database.ref(`devices/${deviceId}`);
+        const snapshot = await deviceRef.once('value');
+
+        if (!snapshot.exists()) {
+            // Primo accesso - chiedi il nome
+            await this.promptForDeviceName();
+        } else {
+            // Dispositivo già registrato - carica il nome e syncCode
+            const deviceData = snapshot.val();
+            this.deviceName = deviceData.name;
+            this.syncCode = deviceData.syncCode;
+
+            // Migrazione retrocompatibile: se il device non ha un syncCode, generane uno
+            if (!this.syncCode) {
+                console.log('Device vecchio senza syncCode detected. Generazione nuovo syncCode...');
+                this.syncCode = this.generateSyncCode();
+
+                // Crea un nuovo syncCode entry su Firebase
+                database.ref(`syncCodes/${this.syncCode}`).set({
+                    name: this.deviceName,
+                    deviceIds: [this.deviceId],
+                    createdAt: new Date().getTime()
+                });
+
+                // Aggiorna il device con il nuovo syncCode
+                database.ref(`devices/${this.deviceId}`).update({
+                    syncCode: this.syncCode
+                });
+
+                console.log('SyncCode assegnato al device vecchio:', this.syncCode);
+            }
+        }
+    }
+
+    promptForDeviceName() {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('namePromptModal');
+            const form = document.getElementById('namePromptForm');
+            const input = document.getElementById('nameInput');
+            const cancelBtn = document.getElementById('namePromptCancelBtn');
+            const syncCheckbox = document.getElementById('nameSyncExistingCheckbox');
+            const syncCodeGroup = document.getElementById('nameSyncCodeGroup');
+            const syncCodeInput = document.getElementById('nameSyncCodeInput');
+
+            modal.classList.add('active');
+
+            // Mostra/nascondi il campo syncCode in base al checkbox
+            syncCheckbox.addEventListener('change', (e) => {
+                syncCodeGroup.style.display = e.target.checked ? 'block' : 'none';
+            });
+
+            form.onsubmit = async (e) => {
+                e.preventDefault();
+                const inputName = input.value.trim();
+                const useSyncCode = syncCheckbox.checked;
+
+                // Se il checkbox è marcato, usa il syncCode
+                if (useSyncCode) {
+                    const syncCode = syncCodeInput.value.trim().toUpperCase();
+                    if (!syncCode || syncCode.length !== 5) {
+                        alert('Inserisci un codice valido di 5 caratteri');
+                        return;
+                    }
+
+                    // Prova a sincronizzarsi con il codice
+                    const success = await this.syncWithCode(syncCode);
+                    if (success) {
+                        modal.classList.remove('active');
+                        resolve();
+                        return;
+                    } else {
+                        alert('Codice di sincronizzazione non valido. Verifica e riprova.');
+                        return;
+                    }
+                }
+
+                // Altrimenti, crea un nuovo dispositivo con un nome
+                if (inputName.toLowerCase() === 'anonimo') {
+                    alert('Non puoi usare "Anonimo" come nominativo. Scegli un altro nome o clicca Annulla.');
+                    return;
+                }
+
+                this.deviceName = inputName || `Utente ${Math.random().toString(36).substr(2, 5)}`;
+
+                // Genera un nuovo syncCode per questo dispositivo
+                const newSyncCode = this.generateSyncCode();
+                this.syncCode = newSyncCode;
+
+                // Crea un nuovo syncCode entry su Firebase
+                database.ref(`syncCodes/${newSyncCode}`).set({
+                    name: this.deviceName,
+                    deviceIds: [this.deviceId],
+                    createdAt: new Date().getTime()
+                });
+
+                // Salva il dispositivo su Firebase
+                database.ref(`devices/${this.deviceId}`).set({
+                    id: this.deviceId,
+                    name: this.deviceName,
+                    syncCode: newSyncCode,
+                    createdAt: new Date().getTime(),
+                    lastSeen: new Date().getTime()
+                });
+
+                modal.classList.remove('active');
+                resolve();
+            };
+
+            cancelBtn.onclick = (e) => {
+                e.preventDefault();
+                this.deviceName = 'Anonimo';
+
+                // Genera un nuovo syncCode anche per l'Anonimo
+                const newSyncCode = this.generateSyncCode();
+                this.syncCode = newSyncCode;
+
+                // Crea un nuovo syncCode entry su Firebase
+                database.ref(`syncCodes/${newSyncCode}`).set({
+                    name: this.deviceName,
+                    deviceIds: [this.deviceId],
+                    createdAt: new Date().getTime()
+                });
+
+                // Salva il dispositivo su Firebase come Anonimo
+                database.ref(`devices/${this.deviceId}`).set({
+                    id: this.deviceId,
+                    name: this.deviceName,
+                    syncCode: newSyncCode,
+                    createdAt: new Date().getTime(),
+                    lastSeen: new Date().getTime()
+                });
+
+                modal.classList.remove('active');
+                resolve();
+            };
+        });
+    }
+
+    async syncWithCode(syncCode) {
+        try {
+            const syncCodeRef = database.ref(`syncCodes/${syncCode}`);
+            const snapshot = await syncCodeRef.once('value');
+
+            if (!snapshot.exists()) {
+                console.error('SyncCode non valido:', syncCode);
+                return false;
+            }
+
+            const syncCodeData = snapshot.val();
+            this.deviceName = syncCodeData.name;
+            this.syncCode = syncCode;
+
+            // Aggiungi il dispositivo alla lista dei deviceIds
+            const updatedDeviceIds = [...(syncCodeData.deviceIds || [])];
+            if (!updatedDeviceIds.includes(this.deviceId)) {
+                updatedDeviceIds.push(this.deviceId);
+                await database.ref(`syncCodes/${syncCode}/deviceIds`).set(updatedDeviceIds);
+            }
+
+            // Salva il dispositivo su Firebase con il syncCode
+            await database.ref(`devices/${this.deviceId}`).set({
+                id: this.deviceId,
+                name: this.deviceName,
+                syncCode: syncCode,
+                createdAt: new Date().getTime(),
+                lastSeen: new Date().getTime()
+            });
+
+            console.log('Sincronizzazione riuscita con il codice:', syncCode);
+            return true;
+        } catch (error) {
+            console.error('Errore durante la sincronizzazione:', error);
+            return false;
+        }
+    }
+
+    updateLastSeen() {
+        if (this.deviceId) {
+            database.ref(`devices/${this.deviceId}/lastSeen`).set(new Date().getTime());
+        }
+    }
+
+    displayWelcomeMessage() {
+        const welcomeEl = document.getElementById('welcomeMessage');
+        if (welcomeEl && this.deviceName) {
+            if (this.deviceName === 'Anonimo') {
+                welcomeEl.textContent = '👋 Benvenuto';
+            } else {
+                welcomeEl.textContent = `👋 Benvenuto, ${this.deviceName}!`;
+            }
+        }
+    }
+
+    async loadDeviceNames() {
+        try {
+            const snapshot = await database.ref('devices').once('value');
+            if (snapshot.exists()) {
+                const devices = snapshot.val();
+                this.deviceNames = {};
+                for (const [id, device] of Object.entries(devices)) {
+                    this.deviceNames[id] = device.name || 'Sconosciuto';
+                }
+            }
+        } catch (error) {
+            console.error('Errore caricamento nomi device:', error);
+        }
+    }
+
+    getParticipantName(participantId) {
+        // Se è una stringa corta, è il vecchio formato (nome)
+        if (participantId.length < 20) {
+            return participantId;
+        }
+        // Se è un ID lungo, cerca il nome nella cache
+        return this.deviceNames[participantId] || 'Sconosciuto';
+    }
+
+    updateEditNameButtonText() {
+        const editNameBtn = document.getElementById('editNameBtn');
+        if (editNameBtn) {
+            if (this.deviceName === 'Anonimo') {
+                editNameBtn.textContent = '👤 Inserisci il tuo nome';
+            } else {
+                editNameBtn.textContent = '👤 Cambia il tuo nome';
+            }
+        }
+    }
+
+    showEditNameModal() {
+        const modal = document.getElementById('namePromptModal');
+        const form = document.getElementById('namePromptForm');
+        const input = document.getElementById('nameInput');
+        const cancelBtn = document.getElementById('namePromptCancelBtn');
+
+        input.value = this.deviceName === 'Anonimo' ? '' : this.deviceName;
+        input.placeholder = this.deviceName === 'Anonimo' ? 'Inserisci il tuo nome' : `Cambia da "${this.deviceName}"`;
+
+        modal.classList.add('active');
+
+        const handleSubmit = (e) => {
+            e.preventDefault();
+            const inputName = input.value.trim();
+
+            if (inputName.toLowerCase() === 'anonimo') {
+                alert('Non puoi usare "Anonimo" come nominativo. Scegli un altro nome o clicca Annulla.');
+                return;
+            }
+
+            this.deviceName = inputName || this.deviceName;
+
+            database.ref(`devices/${this.deviceId}`).update({
+                name: this.deviceName
+            });
+
+            // Se il device ha un syncCode, aggiorna il nome nel syncCode
+            if (this.syncCode) {
+                database.ref(`syncCodes/${this.syncCode}`).update({
+                    name: this.deviceName
+                });
+            }
+
+            this.displayWelcomeMessage();
+            this.updateEditNameButtonText();
+            modal.classList.remove('active');
+
+            // Rimuovi i listener temporanei
+            form.removeEventListener('submit', handleSubmit);
+            cancelBtn.removeEventListener('click', handleCancel);
+        };
+
+        const handleCancel = (e) => {
+            e.preventDefault();
+            modal.classList.remove('active');
+
+            // Rimuovi i listener temporanei
+            form.removeEventListener('submit', handleSubmit);
+            cancelBtn.removeEventListener('click', handleCancel);
+        };
+
+        form.addEventListener('submit', handleSubmit);
+        cancelBtn.addEventListener('click', handleCancel);
+    }
+
     init() {
         try {
             this.setupEventListeners();
@@ -66,6 +449,11 @@ class BacheaCalendar {
         this.detectDevice();
         this.loadVersion();
         this.loadTitle();
+        this.displayWelcomeMessage();
+        this.updateEditNameButtonText();
+        this.loadDeviceNames(); // Carica i nomi dei devices
+        // Aggiorna lastSeen ogni minuto
+        setInterval(() => this.updateLastSeen(), 60000);
         // Carica da GitHub PRIMA di renderizzare
         this.loadFromGitHub().then(() => {
             // Sincronizza con Firebase PRIMA di renderizzare
@@ -166,19 +554,85 @@ class BacheaCalendar {
             }
         };
 
+        // Menu dropdown
+        const menuBtn = document.getElementById('menuBtn');
+        const menuDropdown = document.getElementById('menuDropdown');
+        const changeModalBtn = document.getElementById('changeModalBtn');
+        const syncCodeSection = document.getElementById('syncCodeSection');
+        const syncCodeDisplay = document.getElementById('syncCodeDisplay');
+        const copySyncCodeBtn = document.getElementById('copySyncCodeBtn');
+
+        if (menuBtn && menuDropdown) {
+            menuBtn.addEventListener('click', () => {
+                menuDropdown.style.display = menuDropdown.style.display === 'none' ? 'block' : 'none';
+                // Aggiorna il syncCode quando il menu viene aperto
+                if (syncCodeDisplay && this.syncCode) {
+                    syncCodeDisplay.textContent = this.syncCode;
+                    syncCodeSection.style.display = 'block';
+                } else if (syncCodeSection) {
+                    syncCodeSection.style.display = 'none';
+                }
+            });
+
+            // Chiudi menu quando clicca fuori
+            document.addEventListener('click', (e) => {
+                if (e.target !== menuBtn && !menuDropdown.contains(e.target)) {
+                    menuDropdown.style.display = 'none';
+                }
+            });
+        }
+
+        if (copySyncCodeBtn) {
+            copySyncCodeBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (this.syncCode) {
+                    navigator.clipboard.writeText(this.syncCode).then(() => {
+                        this.showSuccessPopup('Codice copiato: ' + this.syncCode);
+                    }).catch(() => {
+                        this.showErrorPopup('Errore nella copia del codice');
+                    });
+                }
+            });
+        }
+
+        if (changeModalBtn) {
+            changeModalBtn.addEventListener('click', () => {
+                this.toggleView();
+                menuDropdown.style.display = 'none';
+            });
+        }
+
+        const editNameBtn = document.getElementById('editNameBtn');
+        if (editNameBtn) {
+            editNameBtn.addEventListener('click', () => {
+                this.showEditNameModal();
+                menuDropdown.style.display = 'none';
+            });
+        }
+
         addListener('prevBtn', 'click', () => this.previousMonth());
         addListener('nextBtn', 'click', () => this.nextMonth());
         addListener('.btn-today', 'click', () => this.today());
 
-        document.getElementById('closeBtn').addEventListener('click', (e) => {
-            e.preventDefault();
-            this.closeModal();
-        });
-        document.getElementById('modal').addEventListener('click', (e) => {
-            if (e.target === document.getElementById('modal')) this.closeModal();
-        });
+        const closeBtn = document.getElementById('closeBtn');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.closeModal();
+            });
+        }
 
-        document.getElementById('noteForm').addEventListener('submit', (e) => this.addNote(e));
+        const modal = document.getElementById('modal');
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) this.closeModal();
+            });
+        }
+
+        const noteForm = document.getElementById('noteForm');
+        if (noteForm) {
+            noteForm.addEventListener('submit', (e) => this.addNote(e));
+        }
 
         // Seleziona colore form aggiunta evento
         document.querySelectorAll('.color-select').forEach(option => {
@@ -213,75 +667,110 @@ class BacheaCalendar {
         // Gestione partecipanti form aggiunta
         this.eventParticipantsList = [];
 
-        document.getElementById('eventHasParticipants').addEventListener('change', (e) => {
-            document.getElementById('eventParticipantsGroup').style.display = e.target.checked ? 'block' : 'none';
-            if (e.target.checked) {
-                this.renderEventParticipants();
-            }
-        });
+        const eventHasParticipants = document.getElementById('eventHasParticipants');
+        if (eventHasParticipants) {
+            eventHasParticipants.addEventListener('change', (e) => {
+                const group = document.getElementById('eventParticipantsGroup');
+                if (group) group.style.display = e.target.checked ? 'block' : 'none';
+                if (e.target.checked) {
+                    this.renderEventParticipants();
+                }
+            });
+        }
 
-        document.getElementById('eventAddParticipantBtn').addEventListener('click', (e) => {
-            e.preventDefault();
-            document.getElementById('eventParticipantsInputGroup').style.display = 'flex';
-            document.getElementById('eventParticipantInput').focus();
-        });
+        const eventAddParticipantBtn = document.getElementById('eventAddParticipantBtn');
+        if (eventAddParticipantBtn) {
+            eventAddParticipantBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const inputGroup = document.getElementById('eventParticipantsInputGroup');
+                if (inputGroup) inputGroup.style.display = 'flex';
+                const input = document.getElementById('eventParticipantInput');
+                if (input) input.focus();
+            });
+        }
 
-        document.getElementById('eventParticipantSaveBtn').addEventListener('click', (e) => {
-            e.preventDefault();
-            const name = document.getElementById('eventParticipantInput').value.trim();
-            if (name) {
-                this.eventParticipantsList.push(name);
-                document.getElementById('eventParticipantInput').value = '';
-                document.getElementById('eventParticipantsInputGroup').style.display = 'none';
-                this.renderEventParticipants();
-            }
-        });
+        const eventParticipantSaveBtn = document.getElementById('eventParticipantSaveBtn');
+        if (eventParticipantSaveBtn) {
+            eventParticipantSaveBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const name = document.getElementById('eventParticipantInput').value.trim();
+                if (name) {
+                    this.eventParticipantsList.push(name);
+                    const input = document.getElementById('eventParticipantInput');
+                    if (input) input.value = '';
+                    const inputGroup = document.getElementById('eventParticipantsInputGroup');
+                    if (inputGroup) inputGroup.style.display = 'none';
+                    this.renderEventParticipants();
+                }
+            });
+        }
 
-        // Gestione partecipanti form modifica
+        // Gestione partecipanti form modifica (LEGACY - non più utilizzati nel nuovo sistema)
         this.editParticipantsList = [];
 
-        document.getElementById('editHasParticipants').addEventListener('change', (e) => {
-            document.getElementById('editParticipantsGroup').style.display = e.target.checked ? 'block' : 'none';
-            if (e.target.checked) {
-                this.renderEditParticipants();
-            }
-        });
-
-        document.getElementById('editAddParticipantBtn').addEventListener('click', (e) => {
-            e.preventDefault();
-            document.getElementById('editParticipantsInputGroup').style.display = 'flex';
-            document.getElementById('editParticipantInput').focus();
-        });
-
-        document.getElementById('editParticipantSaveBtn').addEventListener('click', (e) => {
-            e.preventDefault();
-            const name = document.getElementById('editParticipantInput').value.trim();
-            if (name) {
-                this.editParticipantsList.push(name);
-                document.getElementById('editParticipantInput').value = '';
-                document.getElementById('editParticipantsInputGroup').style.display = 'none';
-                this.renderEditParticipants();
-
-                // Salva immediatamente su Firebase
-                if (this.editingNote) {
-                    const { dateKey, noteIndex } = this.editingNote;
-                    this.notes[dateKey][noteIndex].participants = this.editParticipantsList;
-                    this.saveNotes();
-                    this.autoSync();
+        const editHasParticipants = document.getElementById('editHasParticipants');
+        if (editHasParticipants) {
+            editHasParticipants.addEventListener('change', (e) => {
+                const group = document.getElementById('editParticipantsGroup');
+                if (group) group.style.display = e.target.checked ? 'block' : 'none';
+                if (e.target.checked) {
+                    this.renderEditParticipants();
                 }
-            }
-        });
+            });
+        }
+
+        const editAddParticipantBtn = document.getElementById('editAddParticipantBtn');
+        if (editAddParticipantBtn) {
+            editAddParticipantBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const inputGroup = document.getElementById('editParticipantsInputGroup');
+                if (inputGroup) inputGroup.style.display = 'flex';
+                const input = document.getElementById('editParticipantInput');
+                if (input) input.focus();
+            });
+        }
+
+        const editParticipantSaveBtn = document.getElementById('editParticipantSaveBtn');
+        if (editParticipantSaveBtn) {
+            editParticipantSaveBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const name = document.getElementById('editParticipantInput').value.trim();
+                if (name) {
+                    this.editParticipantsList.push(name);
+                    const input = document.getElementById('editParticipantInput');
+                    if (input) input.value = '';
+                    const group = document.getElementById('editParticipantsInputGroup');
+                    if (group) group.style.display = 'none';
+                    this.renderEditParticipants();
+
+                    // Salva immediatamente su Firebase
+                    if (this.editingNote) {
+                        const { dateKey, noteIndex } = this.editingNote;
+                        this.notes[dateKey][noteIndex].participants = this.editParticipantsList;
+                        this.saveNotes();
+                        this.autoSync();
+                    }
+                }
+            });
+        }
 
         // Settings
-        document.getElementById('settingsBtn').addEventListener('click', () => this.openSettings());
-        document.getElementById('closeSettingsBtn').addEventListener('click', () => this.closeSettings());
+        const settingsBtn = document.getElementById('settingsBtn');
+        if (settingsBtn) settingsBtn.addEventListener('click', () => this.openSettings());
+        const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+        if (closeSettingsBtn) closeSettingsBtn.addEventListener('click', () => this.closeSettings());
 
         // Info
-        document.getElementById('infoBtn').addEventListener('click', () => this.openInfo());
-        document.getElementById('closeInfoBtn').addEventListener('click', () => this.closeInfo());
-        document.getElementById('infoModal').addEventListener('click', (e) => {
-            if (e.target === document.getElementById('infoModal')) this.closeInfo();
-        });
+        const infoBtn = document.getElementById('infoBtn');
+        if (infoBtn) infoBtn.addEventListener('click', () => this.openInfo());
+        const closeInfoBtn = document.getElementById('closeInfoBtn');
+        if (closeInfoBtn) closeInfoBtn.addEventListener('click', () => this.closeInfo());
+        const infoModal = document.getElementById('infoModal');
+        if (infoModal) {
+            infoModal.addEventListener('click', (e) => {
+                if (e.target === infoModal) this.closeInfo();
+            });
+        }
 
         // Color filters
         document.querySelectorAll('.color-filter').forEach(checkbox => {
@@ -307,6 +796,17 @@ class BacheaCalendar {
         document.getElementById('editModal').addEventListener('click', (e) => {
             if (e.target === document.getElementById('editModal')) this.closeEditModal();
         });
+
+        const participateBtn = document.getElementById('editWantToParticipateBtn');
+        if (participateBtn) {
+            participateBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                console.log('Click "Voglio partecipare"', this.deviceId);
+                this.addCurrentUserToParticipants();
+            });
+        } else {
+            console.warn('Button "editWantToParticipateBtn" non trovato');
+        }
 
         // Event Image buttons
         document.getElementById('eventImageUploadBtn').addEventListener('click', (e) => {
@@ -456,52 +956,75 @@ class BacheaCalendar {
             document.getElementById('eventLinkInputContainer').style.display = 'flex';
         });
 
-        document.getElementById('eventLinkSaveBtn').addEventListener('click', (e) => {
-            e.preventDefault();
-            const newLink = document.getElementById('eventLink').value.trim();
-            if (newLink) {
-                this.currentEventLink = newLink;
-                this.renderEventLink(newLink);
-                this.showSuccessPopup('Link salvato');
-            } else {
-                this.showErrorPopup('Inserisci un link valido oppure annulla');
-            }
-        });
+        const eventLinkSaveBtn = document.getElementById('eventLinkSaveBtn');
+        if (eventLinkSaveBtn) {
+            eventLinkSaveBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const newLink = document.getElementById('eventLink').value.trim();
+                if (newLink) {
+                    this.currentEventLink = newLink;
+                    this.renderEventLink(newLink);
+                    this.showSuccessPopup('Link salvato');
+                } else {
+                    this.showErrorPopup('Inserisci un link valido oppure annulla');
+                }
+            });
+        }
 
-        document.getElementById('eventLinkDeleteBtn').addEventListener('click', (e) => {
-            e.preventDefault();
-            this.currentEventLink = '';
-            document.getElementById('eventLink').value = '';
-            this.renderEventLink('');
-            this.showSuccessPopup('Link eliminato');
-        });
+        const eventLinkDeleteBtn = document.getElementById('eventLinkDeleteBtn');
+        if (eventLinkDeleteBtn) {
+            eventLinkDeleteBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.currentEventLink = '';
+                const linkInput = document.getElementById('eventLink');
+                if (linkInput) linkInput.value = '';
+                this.renderEventLink('');
+                this.showSuccessPopup('Link eliminato');
+            });
+        }
 
-        document.getElementById('eventLinkCancelBtn').addEventListener('click', (e) => {
-            e.preventDefault();
-            const currentLink = this.currentEventLink || '';
-            this.renderEventLink(currentLink);
-        });
+        const eventLinkCancelBtn = document.getElementById('eventLinkCancelBtn');
+        if (eventLinkCancelBtn) {
+            eventLinkCancelBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const currentLink = this.currentEventLink || '';
+                this.renderEventLink(currentLink);
+            });
+        }
 
         // GIF Modal
-        document.getElementById('titleLine2').addEventListener('click', () => {
-            const text = document.getElementById('titleLine2').textContent;
-            if (text === 'Ma io che cazzo ne so, scusi?') {
-                this.toggleGifModal();
-            }
-        });
-        document.getElementById('gifModal').addEventListener('click', (e) => {
-            if (e.target === document.getElementById('gifModal')) this.toggleGifModal();
-        });
+        const titleLine2 = document.getElementById('titleLine2');
+        if (titleLine2) {
+            titleLine2.addEventListener('click', () => {
+                const text = titleLine2.textContent;
+                if (text === 'Ma io che cazzo ne so, scusi?') {
+                    this.toggleGifModal();
+                }
+            });
+        }
+        const gifModal = document.getElementById('gifModal');
+        if (gifModal) {
+            gifModal.addEventListener('click', (e) => {
+                if (e.target === gifModal) this.toggleGifModal();
+            });
+        }
 
         // Select Day Modal
-        document.getElementById('closeSelectDayBtn').addEventListener('click', () => {
-            this.closeSelectDayModal();
-        });
-        document.getElementById('selectDayModal').addEventListener('click', (e) => {
-            if (e.target === document.getElementById('selectDayModal')) {
+        const closeSelectDayBtn = document.getElementById('closeSelectDayBtn');
+        if (closeSelectDayBtn) {
+            closeSelectDayBtn.addEventListener('click', () => {
                 this.closeSelectDayModal();
-            }
-        });
+            });
+        }
+
+        const selectDayModal = document.getElementById('selectDayModal');
+        if (selectDayModal) {
+            selectDayModal.addEventListener('click', (e) => {
+                if (e.target === selectDayModal) {
+                    this.closeSelectDayModal();
+                }
+            });
+        }
     }
 
     showLoading() {
@@ -787,35 +1310,116 @@ class BacheaCalendar {
         });
     }
 
-    renderEditParticipants() {
+    async renderEditParticipants() {
         const listEl = document.getElementById('editParticipantsList');
         if (!listEl) return;
         listEl.innerHTML = '';
 
-        this.editParticipantsList.forEach((participant, index) => {
+        // Aggiorna il numero di partecipanti
+        const countEl = document.getElementById('participantCountDisplay');
+        if (countEl) {
+            countEl.textContent = this.editParticipantsList.length;
+        }
+
+        // Carica i nomi di tutti i partecipanti
+        const participantNames = await Promise.all(this.editParticipantsList.map(async (participant) => {
+            // Retrocompatibilità: se è una stringa corta, è il vecchio formato (nome diretto)
+            if (participant.length < 20) {
+                return { id: participant, name: participant };
+            }
+
+            // Nuovo formato: è un ID, leggi il nome da Firebase
+            try {
+                const snapshot = await database.ref(`devices/${participant}`).once('value');
+                if (snapshot.exists()) {
+                    return { id: participant, name: snapshot.val().name };
+                }
+                return { id: participant, name: 'Sconosciuto' };
+            } catch (error) {
+                return { id: participant, name: 'Errore' };
+            }
+        }));
+
+        participantNames.forEach((participantData, index) => {
+            const isCurrentUser = participantData.id === this.deviceId;
             const itemEl = document.createElement('div');
             itemEl.className = 'participant-item';
-            itemEl.innerHTML = `
-                <span>${this.escapeHtml(participant)}</span>
-                <button type="button" class="btn-remove-participant" data-index="${index}">Elimina</button>
-            `;
 
-            itemEl.querySelector('.btn-remove-participant').addEventListener('click', (e) => {
-                e.preventDefault();
-                this.editParticipantsList.splice(index, 1);
-                this.renderEditParticipants();
+            if (isCurrentUser) {
+                itemEl.innerHTML = `
+                    <span>${this.escapeHtml(participantData.name)} (tu)</span>
+                    <button type="button" class="btn-remove-participant" data-index="${index}" style="background: #f44336;">Non posso più</button>
+                `;
+            } else {
+                itemEl.innerHTML = `
+                    <span>${this.escapeHtml(participantData.name)}</span>
+                `;
+            }
 
-                // Salva immediatamente su Firebase
-                if (this.editingNote) {
-                    const { dateKey, noteIndex } = this.editingNote;
-                    this.notes[dateKey][noteIndex].participants = this.editParticipantsList;
-                    this.saveNotes();
-                    this.autoSync();
-                }
-            });
+            const removeBtn = itemEl.querySelector('.btn-remove-participant');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.editParticipantsList.splice(index, 1);
+                    this.renderEditParticipants();
+
+                    // Salva immediatamente su Firebase
+                    if (this.editingNote) {
+                        const { dateKey, noteIndex } = this.editingNote;
+                        this.notes[dateKey][noteIndex].participants = this.editParticipantsList;
+                        this.saveNotes();
+                        this.autoSync();
+                    }
+                });
+            }
 
             listEl.appendChild(itemEl);
         });
+
+        // Aggiorna il button "Voglio partecipare"
+        this.updateParticipateButton();
+    }
+
+    updateParticipateButton() {
+        const btn = document.getElementById('editWantToParticipateBtn');
+        if (!btn) {
+            console.warn('Button editWantToParticipateBtn non trovato in updateParticipateButton');
+            return;
+        }
+
+        const isParticipant = this.editParticipantsList.some(p => {
+            // Compatibilità: controlla sia il nuovo formato (ID lungo) che vecchio (nome)
+            return p === this.deviceId || p === this.deviceName;
+        });
+
+        console.log('updateParticipateButton:', { isParticipant, deviceId: this.deviceId, participants: this.editParticipantsList });
+
+        if (isParticipant) {
+            btn.style.display = 'none';
+        } else {
+            btn.style.display = 'block';
+        }
+    }
+
+    addCurrentUserToParticipants() {
+        console.log('addCurrentUserToParticipants called', { deviceId: this.deviceId, editingNote: this.editingNote });
+
+        if (!this.editParticipantsList.includes(this.deviceId)) {
+            this.editParticipantsList.push(this.deviceId);
+            console.log('Aggiunto utente ai partecipanti:', this.editParticipantsList);
+            this.renderEditParticipants();
+
+            // Salva immediatamente su Firebase
+            if (this.editingNote) {
+                const { dateKey, noteIndex } = this.editingNote;
+                this.notes[dateKey][noteIndex].participants = this.editParticipantsList;
+                this.saveNotes();
+                this.autoSync();
+                this.showSuccessPopup('Adesso sei un partecipante!');
+            }
+        } else {
+            console.log('Utente già partecipante');
+        }
     }
 
     openCropperModal(imageSrc) {
@@ -974,7 +1578,8 @@ class BacheaCalendar {
             color: this.selectedColor,
             link: this.currentEventLink,
             image: this.eventImageData,
-            participants: this.eventParticipantsList
+            participants: this.eventParticipantsList,
+            creatorId: this.deviceId
         });
 
         this.saveNotes();
@@ -1459,7 +2064,7 @@ class BacheaCalendar {
             eventEl.className = `event-item ${event.color}`;
 
             const participantsHtml = event.participants && event.participants.length > 0
-                ? `<div class="event-participants">👥 ${event.participants.map(p => this.escapeHtml(p)).join(', ')}</div>`
+                ? `<div class="event-participants">👥 ${event.participants.map(p => this.escapeHtml(this.getParticipantName(p))).join(', ')}</div>`
                 : '';
 
             eventEl.innerHTML = `
@@ -1626,14 +2231,12 @@ class BacheaCalendar {
         // Gestisci visualizzazione link
         this.renderEditLink(note.link);
 
+        // Carica il nome del creatore
+        this.loadAndDisplayCreatorName(note.creatorId);
+
         // Set partecipanti
         this.editParticipantsList = note.participants ? [...note.participants] : [];
-        const hasParticipants = this.editParticipantsList.length > 0;
-        document.getElementById('editHasParticipants').checked = hasParticipants;
-        document.getElementById('editParticipantsGroup').style.display = hasParticipants ? 'block' : 'none';
-        if (hasParticipants) {
-            this.renderEditParticipants();
-        }
+        this.renderEditParticipants();
 
         // Set colore - mantieni il colore originale come default
         this.selectedColor = note.color || 'color-yellow';
@@ -1659,6 +2262,30 @@ class BacheaCalendar {
         document.getElementById('editModal').style.display = 'flex';
     }
 
+    async loadAndDisplayCreatorName(creatorId) {
+        if (!creatorId) {
+            document.getElementById('creatorNameDisplay').textContent = 'Anonimo';
+            return;
+        }
+
+        try {
+            const snapshot = await database.ref(`devices/${creatorId}`).once('value');
+            if (snapshot.exists()) {
+                const creatorName = snapshot.val().name;
+                if (creatorName === 'Anonimo') {
+                    document.getElementById('creatorNameDisplay').textContent = 'Anonimo';
+                } else {
+                    document.getElementById('creatorNameDisplay').textContent = creatorName;
+                }
+            } else {
+                document.getElementById('creatorNameDisplay').textContent = 'Sconosciuto';
+            }
+        } catch (error) {
+            console.error('Errore caricamento creatore:', error);
+            document.getElementById('creatorNameDisplay').textContent = 'Errore';
+        }
+    }
+
     closeEditModal() {
         // Pulisci i campi del form
         document.getElementById('editTitle').value = '';
@@ -1666,10 +2293,6 @@ class BacheaCalendar {
         document.getElementById('editLocation').value = '';
         document.getElementById('editNotes').value = '';
         document.getElementById('editLink').value = '';
-        document.getElementById('editHasParticipants').checked = false;
-        document.getElementById('editParticipantsGroup').style.display = 'none';
-        document.getElementById('editParticipantsInputGroup').style.display = 'none';
-        document.getElementById('editParticipantInput').value = '';
         this.editParticipantsList = [];
 
         // Resetta i tab del modal di modifica
@@ -1691,6 +2314,7 @@ class BacheaCalendar {
 
         const { dateKey, noteIndex } = this.editingNote;
         const eventId = this.notes[dateKey][noteIndex].id;
+        const creatorId = this.notes[dateKey][noteIndex].creatorId; // Mantieni il creatore originale
 
         this.notes[dateKey][noteIndex] = {
             id: eventId, // Mantieni l'ID originale
@@ -1701,7 +2325,8 @@ class BacheaCalendar {
             color: this.selectedColor,
             link: document.getElementById('editLink').value.trim(),
             image: this.editImageData,
-            participants: this.editParticipantsList
+            participants: this.editParticipantsList,
+            creatorId: creatorId // Mantieni il creatore originale
         };
 
         this.saveNotes();
@@ -1730,6 +2355,7 @@ class BacheaCalendar {
 }
 
 // Inizializza il calendario
+let bacheaInstance = null;
 document.addEventListener('DOMContentLoaded', () => {
-    new BacheaCalendar();
+    bacheaInstance = new BacheaCalendar();
 });
