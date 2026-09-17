@@ -868,6 +868,10 @@ footer {
     background: #5568d3 !important;
 }
 
+.event-item.color-neutral {
+    border-left-color: #999;
+}
+
 .event-item.color-yellow {
     border-left-color: #ffd54f;
 }
@@ -1022,6 +1026,45 @@ footer {
 
 .info-modal.active {
     display: flex;
+}
+
+/* Section grouping for related buttons */
+.section-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding: 12px;
+    border-left: 4px solid #667eea;
+    background: rgba(102, 126, 234, 0.05);
+    border-radius: 6px;
+}
+
+.section-group-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #333;
+    margin-bottom: 8px;
+}
+
+.button-row {
+    display: flex;
+    gap: 8px;
+}
+
+/* Uniform button styling */
+button[type="button"] {
+    padding: 10px 15px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 0.95rem;
+    transition: background-color 0.2s ease;
+}
+
+button[type="button"]:hover {
+    opacity: 0.9;
 }
 
 .info-content {
@@ -1184,4 +1227,20 @@ footer {
     font-size: 0.95rem;
     color: white;
     margin: 0;
+}
+
+.modal-tab {
+    transition: all 0.3s ease;
+}
+
+.modal-tab:not(.active) {
+    background: rgba(255, 255, 255, 0.7) !important;
+    color: #333 !important;
+}
+
+.modal-tab.active {
+    background: rgba(255, 255, 255, 0.95) !important;
+    color: #667eea !important;
+    font-weight: 600;
+    box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
 }

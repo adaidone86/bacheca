@@ -754,6 +754,13 @@ class BacheaCalendar {
         document.querySelectorAll('input[name="editEventColor"]').forEach(option => {
             option.addEventListener('change', (e) => {
                 this.selectedColor = e.target.dataset.color;
+                // Auto-save della categoria
+                if (this.editingNote) {
+                    const { dateKey, noteIndex } = this.editingNote;
+                    this.notes[dateKey][noteIndex].color = this.selectedColor;
+                    this.syncToFirebase();
+                    this.render(); // Aggiorna l'interfaccia subito
+                }
             });
         });
 
@@ -770,6 +777,16 @@ class BacheaCalendar {
                 // Aggiungi active al tab cliccato e al suo contenuto
                 e.target.classList.add('active');
                 modal.querySelector(`#${tabName}`).classList.add('active');
+
+                // Mostra/nascondi il button Salva solo nella tab Evento
+                const saveEditBtn = document.getElementById('saveEditBtn');
+                if (saveEditBtn) {
+                    if (tabName === 'edit-evento-tab') {
+                        saveEditBtn.style.display = 'inline-block';
+                    } else {
+                        saveEditBtn.style.display = 'none';
+                    }
+                }
             });
         });
 
@@ -1020,10 +1037,23 @@ class BacheaCalendar {
             this.editImageData = null;
             document.getElementById('editImage').value = '';
             document.getElementById('eventCoverContainer').style.backgroundImage = 'none';
+            if (this.editingNote) {
+                const { dateKey, noteIndex } = this.editingNote;
+                this.notes[dateKey][noteIndex].image = null;
+                this.saveNotes();
+            }
+            this.syncToFirebase();
+            this.render();
             this.showSuccessPopup('Immagine rimossa');
         });
 
         document.getElementById('editImageUrlBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            // Mostra il container con input URL
+            document.getElementById('editImageUrlInputContainer').style.display = 'flex';
+        });
+
+        document.getElementById('editImageUrlSaveBtn').addEventListener('click', (e) => {
             e.preventDefault();
             const url = document.getElementById('editImageUrl').value.trim();
             if (!url) {
@@ -1031,6 +1061,9 @@ class BacheaCalendar {
                 return;
             }
             this.loadImageFromUrl(url, 'edit');
+            // Nascondi il container dopo il salvataggio
+            document.getElementById('editImageUrlInputContainer').style.display = 'none';
+            document.getElementById('editImageUrl').value = '';
         });
 
         // Cropper buttons
@@ -1050,7 +1083,12 @@ class BacheaCalendar {
         document.getElementById('editLinkOpenBtn').addEventListener('click', (e) => {
             e.preventDefault();
             if (this.currentEditingLink) {
-                window.open(this.currentEditingLink, '_blank');
+                // Se il link non ha protocollo, aggiungi https://
+                let url = this.currentEditingLink;
+                if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                    url = 'https://' + url;
+                }
+                window.open(url, '_blank');
             }
         });
 
@@ -1068,7 +1106,7 @@ class BacheaCalendar {
                     const { dateKey, noteIndex } = this.editingNote;
                     this.notes[dateKey][noteIndex].link = newLink;
                     this.saveNotes();
-                    this.autoSync();
+                    this.syncToFirebase();
                     this.renderEditLink(newLink);
                     this.showSuccessPopup('Link salvato');
                 }
@@ -1335,8 +1373,10 @@ class BacheaCalendar {
                         noteEl.style.cursor = 'pointer';
                     }
 
+                    noteEl.setAttribute('data-event-id', note.id);
                     noteEl.innerHTML = `
                         <span class="note-text">${this.escapeHtml(note.title)}</span>
+                        <span class="note-badge" style="position: absolute; top: 2px; right: 2px; background: #f44336; color: white; border-radius: 50%; width: 20px; height: 20px; display: none; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: bold;"></span>
                     `;
 
                     // Click per aprire il dettaglio (solo se non è passato)
@@ -1350,6 +1390,9 @@ class BacheaCalendar {
                     }
 
                     notesContainer.appendChild(noteEl);
+
+                    // Aggiorna il badge dei messaggi non letti per questo evento
+                    this.updateNoteBadge(noteEl, note.id);
                 });
             }
 
@@ -1673,6 +1716,14 @@ class BacheaCalendar {
             coverDiv.style.backgroundImage = `url(${croppedImage})`;
             coverDiv.style.backgroundAttachment = 'scroll';
             coverDiv.style.minHeight = '180px';
+
+            // Auto-save dell'immagine
+            if (this.editingNote) {
+                const { dateKey, noteIndex } = this.editingNote;
+                this.notes[dateKey][noteIndex].image = croppedImage;
+                this.saveNotes();
+                this.syncToFirebase();
+            }
         }
 
         this.closeCropperModal();
@@ -2277,6 +2328,8 @@ class BacheaCalendar {
                 ? `<div class="event-participants">👥 ${event.participants.map(p => this.escapeHtml(this.getParticipantName(p))).join(', ')}</div>`
                 : '';
 
+            eventEl.setAttribute('data-event-id', event.id);
+            eventEl.style.position = 'relative';
             eventEl.innerHTML = `
                 <div style="position: relative; background-image: url(${event.image || ''}); background-size: cover; background-position: center;">
                     <div style="position: relative; z-index: 10; padding: 16px; background: rgba(255, 255, 255, 0.95);">
@@ -2287,6 +2340,7 @@ class BacheaCalendar {
                         ${event.notes ? `<div class="event-notes">${this.escapeHtml(event.notes).replace(/\n/g, '<br>')}</div>` : ''}
                         ${participantsHtml}
                     </div>
+                    <span class="list-event-badge" style="position: absolute; top: 10px; right: 10px; background: #f44336; color: white; border-radius: 50%; width: 24px; height: 24px; display: none; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; z-index: 11;"></span>
                     ${event.image ? `<div style="position: absolute; top: 0; right: 0; width: 100%; height: 100%; background-image: url(${event.image}); background-size: cover; background-position: center; clip-path: polygon(15% 0%, 100% 0%, 100% 100%, 0% 100%, 15% 75%, 0% 50%, 15% 25%); z-index: 1;"></div>` : ''}
                 </div>
             `;
@@ -2296,6 +2350,9 @@ class BacheaCalendar {
             });
 
             eventsList.appendChild(eventEl);
+
+            // Aggiorna il badge dei messaggi non letti
+            this.updateListEventBadge(eventEl, event.id);
         });
     }
 
@@ -2422,6 +2479,37 @@ class BacheaCalendar {
         };
 
         database.ref('events').on('value', this.eventsListener);
+
+        // Listener globale per i messaggi di TUTTI gli eventi (per aggiornare badge in real-time)
+        database.ref('eventChats').on('value', () => {
+            // Quando arrivano messaggi nuovi, aggiorna tutti i badge nel calendario e nella lista
+            this.updateAllBadges();
+        });
+    }
+
+    updateAllBadges() {
+        // Aggiorna i badge di tutti gli eventi visibili
+        const noteElements = document.querySelectorAll('[data-event-id]');
+        noteElements.forEach(noteEl => {
+            const eventId = noteEl.getAttribute('data-event-id');
+            if (eventId) {
+                this.updateNoteBadge(noteEl, eventId);
+                // Aggiorna anche il badge nella lista
+                const listEl = document.querySelector(`.event-item[data-event-id="${eventId}"]`);
+                if (listEl) {
+                    this.updateListEventBadge(listEl, eventId);
+                }
+            }
+        });
+
+        // Aggiorna il badge del pulsante Chat se il modal è aperto
+        if (this.editingNote) {
+            const { dateKey, noteIndex } = this.editingNote;
+            const note = this.notes[dateKey] && this.notes[dateKey][noteIndex];
+            if (note) {
+                this.updateChatButtonBadge(note.id);
+            }
+        }
     }
 
     syncToFirebase() {
@@ -2430,6 +2518,126 @@ class BacheaCalendar {
             this.suppressSync = false;
             if (error) {
                 console.error('Errore sincronizzazione Firebase:', error);
+            }
+        });
+    }
+
+    async getUnreadMessageCount(eventId) {
+        try {
+            const statusSnapshot = await database.ref(`chatReadStatus/${eventId}/${this.syncCode}`).once('value');
+            const lastReadTimestamp = statusSnapshot.exists() ? statusSnapshot.val().lastReadTimestamp : 0;
+
+            const messagesSnapshot = await database.ref(`eventChats/${eventId}/messages`).once('value');
+            if (!messagesSnapshot.exists()) return 0;
+
+            const messages = messagesSnapshot.val();
+            let unreadCount = 0;
+            for (const msgId in messages) {
+                if (messages[msgId].timestamp > lastReadTimestamp) {
+                    unreadCount++;
+                }
+            }
+            return unreadCount;
+        } catch (error) {
+            console.error('Errore conteggio messaggi non letti:', error);
+            return 0;
+        }
+    }
+
+    updateChatButtonBadge(eventId) {
+        const chatBtn = document.getElementById('openChatFromParticipantsBtn');
+        if (!chatBtn) return;
+
+        // Controlla se sei partecipante
+        const isParticipant = this.editParticipantsList && this.editParticipantsList.includes(this.deviceId);
+
+        // Se non sei partecipante, non mostrare il badge
+        if (!isParticipant) {
+            chatBtn.style.setProperty('background', 'rgba(255, 255, 255, 0.3)', 'important');
+            chatBtn.style.setProperty('color', 'white', 'important');
+            chatBtn.textContent = '💬 Chat';
+            return;
+        }
+
+        this.getUnreadMessageCount(eventId).then(count => {
+            if (count > 0) {
+                chatBtn.style.setProperty('background', '#4CAF50', 'important');
+                chatBtn.style.setProperty('color', 'white', 'important');
+                chatBtn.textContent = `💬 Chat (${count})`;
+            } else {
+                chatBtn.style.setProperty('background', 'rgba(255, 255, 255, 0.3)', 'important');
+                chatBtn.style.setProperty('color', 'white', 'important');
+                chatBtn.textContent = '💬 Chat';
+            }
+        });
+    }
+
+    updateNoteBadge(noteEl, eventId) {
+        // Trova l'evento e controlla se sei partecipante
+        let isParticipant = false;
+        let found = false;
+        for (const dateKey in this.notes) {
+            if (found) break;
+            const dayNotes = this.notes[dateKey];
+            for (let i = 0; i < dayNotes.length; i++) {
+                if (dayNotes[i].id === eventId) {
+                    const participants = dayNotes[i].participants || [];
+                    isParticipant = participants.includes(this.deviceId);
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        // Se non sei partecipante, nascondi il badge
+        if (!isParticipant) {
+            const badge = noteEl.querySelector('.note-badge');
+            if (badge) badge.style.display = 'none';
+            return;
+        }
+
+        this.getUnreadMessageCount(eventId).then(count => {
+            const badge = noteEl.querySelector('.note-badge');
+            if (badge && count > 0) {
+                badge.textContent = count;
+                badge.style.display = 'flex';
+            } else if (badge) {
+                badge.style.display = 'none';
+            }
+        });
+    }
+
+    updateListEventBadge(eventEl, eventId) {
+        // Trova l'evento e controlla se sei partecipante
+        let isParticipant = false;
+        let found = false;
+        for (const dateKey in this.notes) {
+            if (found) break;
+            const dayNotes = this.notes[dateKey];
+            for (let i = 0; i < dayNotes.length; i++) {
+                if (dayNotes[i].id === eventId) {
+                    const participants = dayNotes[i].participants || [];
+                    isParticipant = participants.includes(this.deviceId);
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        // Se non sei partecipante, nascondi il badge
+        if (!isParticipant) {
+            const badge = eventEl.querySelector('.list-event-badge');
+            if (badge) badge.style.display = 'none';
+            return;
+        }
+
+        this.getUnreadMessageCount(eventId).then(count => {
+            const badge = eventEl.querySelector('.list-event-badge');
+            if (badge && count > 0) {
+                badge.textContent = count;
+                badge.style.display = 'flex';
+            } else if (badge) {
+                badge.style.display = 'none';
             }
         });
     }
@@ -2514,9 +2722,6 @@ class BacheaCalendar {
             coverContainer.style.backgroundImage = 'none';
         }
 
-        // Aggiorna il flag chat
-        document.getElementById('editChatEnabled').checked = note.chatEnabled || false;
-
         // Ricarica la lista dei partecipanti
         this.updateParticipateButton();
     }
@@ -2565,11 +2770,11 @@ class BacheaCalendar {
         // Mantieni sempre una min-height per mostrare il gradiente viola
         coverContainer.style.minHeight = '180px';
 
-        // Carica il flag chat
-        document.getElementById('editChatEnabled').checked = note.chatEnabled || false;
-
         // Carica e visualizza i messaggi della chat
         this.loadAndDisplayChatMessages(note.id);
+
+        // Aggiorna il badge dei messaggi non letti
+        this.updateChatButtonBadge(note.id);
 
         // Nascondi il form di invio se non sei partecipante
         this.updateChatInputVisibility(note.participants);
@@ -2596,79 +2801,153 @@ class BacheaCalendar {
 
                 if (!snapshot.exists()) {
                     messagesContainer.innerHTML = '<div style="text-align: center; color: #999; padding: 20px;">Nessun messaggio ancora. Inizia una conversazione!</div>';
+
+                    // Se non ci sono messaggi, aggiorna i badge
+                    if (this.editingNote) {
+                        const { dateKey, noteIndex } = this.editingNote;
+                        const note = this.notes[dateKey] && this.notes[dateKey][noteIndex];
+                        if (note) {
+                            this.updateChatButtonBadge(note.id);
+                            this.updateCalendarBadge(note.id);
+                        }
+                    }
                     return;
                 }
 
-                const messages = snapshot.val();
-                const messageIds = Object.keys(messages).sort((a, b) => messages[a].timestamp - messages[b].timestamp);
+                // Ottieni il lastReadTimestamp
+                database.ref(`chatReadStatus/${eventId}/${this.syncCode}`).once('value', (statusSnapshot) => {
+                    const lastReadTimestamp = statusSnapshot.exists() ? statusSnapshot.val().lastReadTimestamp : 0;
 
-                // Accorpa messaggi consecutivi dello stesso utente
-                let groupedMessages = [];
-                let currentGroup = null;
+                    const messages = snapshot.val();
+                    const messageIds = Object.keys(messages).sort((a, b) => messages[a].timestamp - messages[b].timestamp);
 
-                messageIds.forEach(msgId => {
-                    const msg = messages[msgId];
+                    // Accorpa messaggi consecutivi dello stesso utente
+                    let groupedMessages = [];
+                    let currentGroup = null;
 
-                    if (!currentGroup || currentGroup.deviceId !== msg.deviceId) {
-                        // Nuovo utente, crea un nuovo gruppo
-                        if (currentGroup) {
-                            groupedMessages.push(currentGroup);
+                    messageIds.forEach(msgId => {
+                        const msg = messages[msgId];
+
+                        if (!currentGroup || currentGroup.deviceId !== msg.deviceId) {
+                            // Nuovo utente, crea un nuovo gruppo
+                            if (currentGroup) {
+                                groupedMessages.push(currentGroup);
+                            }
+                            currentGroup = {
+                                deviceId: msg.deviceId,
+                                name: msg.name,
+                                texts: [msg.text],
+                                timestamp: msg.timestamp
+                            };
+                        } else {
+                            // Stesso utente, aggiungi il testo al gruppo
+                            currentGroup.texts.push(msg.text);
                         }
-                        currentGroup = {
-                            deviceId: msg.deviceId,
-                            name: msg.name,
-                            texts: [msg.text],
-                            timestamp: msg.timestamp
-                        };
-                    } else {
-                        // Stesso utente, aggiungi il testo al gruppo
-                        currentGroup.texts.push(msg.text);
+                    });
+
+                    if (currentGroup) {
+                        groupedMessages.push(currentGroup);
                     }
+
+                    // Visualizza i gruppi di messaggi con separatore
+                    let separatorAdded = false;
+                    let separatorElement = null;
+                    groupedMessages.forEach(group => {
+                        // Aggiungi il separatore prima del primo messaggio non letto
+                        if (!separatorAdded && group.timestamp > lastReadTimestamp) {
+                            const separatorEl = document.createElement('div');
+                            separatorEl.style.cssText = `
+                                width: 100%;
+                                height: 2px;
+                                background: linear-gradient(to right, transparent, #667eea, transparent);
+                                margin: 12px 0;
+                                position: relative;
+                            `;
+                            const labelEl = document.createElement('div');
+                            labelEl.style.cssText = `
+                                text-align: center;
+                                font-size: 0.75rem;
+                                color: #667eea;
+                                margin-top: -10px;
+                                margin-bottom: 12px;
+                            `;
+                            labelEl.textContent = 'Nuovi messaggi';
+                            messagesContainer.appendChild(separatorEl);
+                            messagesContainer.appendChild(labelEl);
+                            separatorElement = separatorEl;
+                            separatorAdded = true;
+                        }
+
+                        const isYou = group.deviceId === this.deviceId;
+                        const messageEl = document.createElement('div');
+                        messageEl.style.cssText = `
+                            display: flex;
+                            flex-direction: column;
+                            align-items: ${isYou ? 'flex-end' : 'flex-start'};
+                            gap: 4px;
+                        `;
+
+                        const bubbleEl = document.createElement('div');
+                        bubbleEl.style.cssText = `
+                            max-width: 70%;
+                            padding: 10px 14px;
+                            border-radius: 12px;
+                            word-wrap: break-word;
+                            font-size: 0.95rem;
+                            white-space: pre-wrap;
+                            ${isYou
+                                ? 'background: #667eea; color: white; border-radius: 18px 18px 4px 18px;'
+                                : 'background: white; color: #333; border: 1px solid #ddd; border-radius: 18px 18px 18px 4px;'}
+                        `;
+                        bubbleEl.textContent = group.texts.join('\n');
+
+                        const nameEl = document.createElement('div');
+                        nameEl.style.cssText = `font-size: 0.75rem; color: #999; ${isYou ? 'text-align: right;' : 'text-align: left;'}`;
+                        nameEl.textContent = group.name;
+
+                        messageEl.appendChild(nameEl);
+                        messageEl.appendChild(bubbleEl);
+                        messagesContainer.appendChild(messageEl);
+                    });
+
+                    // Scroll sempre al fondo
+                    setTimeout(() => {
+                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                        // Assicurati che lo scroll avvenga anche se il container non è ancora renderizzato
+                        setTimeout(() => {
+                            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                        }, 50);
+                    }, 150);
                 });
 
-                if (currentGroup) {
-                    groupedMessages.push(currentGroup);
+                // Aggiorna i badge quando i messaggi cambiano
+                if (this.editingNote) {
+                    const { dateKey, noteIndex } = this.editingNote;
+                    const note = this.notes[dateKey] && this.notes[dateKey][noteIndex];
+                    if (note) {
+                        this.updateChatButtonBadge(note.id);
+                        // Aggiorna il badge nel calendario
+                        this.updateCalendarBadge(note.id);
+                    }
                 }
-
-                // Visualizza i gruppi di messaggi
-                groupedMessages.forEach(group => {
-                    const isYou = group.deviceId === this.deviceId;
-                    const messageEl = document.createElement('div');
-                    messageEl.style.cssText = `
-                        display: flex;
-                        flex-direction: column;
-                        align-items: ${isYou ? 'flex-end' : 'flex-start'};
-                        gap: 4px;
-                    `;
-
-                    const bubbleEl = document.createElement('div');
-                    bubbleEl.style.cssText = `
-                        max-width: 70%;
-                        padding: 10px 14px;
-                        border-radius: 12px;
-                        word-wrap: break-word;
-                        font-size: 0.95rem;
-                        white-space: pre-wrap;
-                        ${isYou
-                            ? 'background: #667eea; color: white; border-radius: 18px 18px 4px 18px;'
-                            : 'background: white; color: #333; border: 1px solid #ddd; border-radius: 18px 18px 18px 4px;'}
-                    `;
-                    bubbleEl.textContent = group.texts.join('\n');
-
-                    const nameEl = document.createElement('div');
-                    nameEl.style.cssText = `font-size: 0.75rem; color: #999; ${isYou ? 'text-align: right;' : 'text-align: left;'}`;
-                    nameEl.textContent = group.name;
-
-                    messageEl.appendChild(nameEl);
-                    messageEl.appendChild(bubbleEl);
-                    messagesContainer.appendChild(messageEl);
-                });
-
-                // Scroll al fondo
-                messagesContainer.scrollTop = messagesContainer.scrollHeight;
             });
         } catch (error) {
             console.error('Errore caricamento messaggi chat:', error);
+        }
+    }
+
+    markChatAsRead(eventId) {
+        // Aggiorna il timestamp quando apri la chat
+        database.ref(`chatReadStatus/${eventId}/${this.syncCode}`).set({
+            lastReadTimestamp: new Date().getTime()
+        });
+    }
+
+    updateCalendarBadge(eventId) {
+        // Trova il post-it nel calendario e aggiorna il badge
+        const noteEl = document.querySelector(`[data-event-id="${eventId}"]`);
+        if (noteEl) {
+            this.updateNoteBadge(noteEl, eventId);
         }
     }
 
@@ -2678,10 +2957,23 @@ class BacheaCalendar {
         if (inputContainer) {
             inputContainer.style.display = isParticipant ? 'flex' : 'none';
             if (!isParticipant) {
+                // Rimuovi il vecchio messaggio se esiste
+                const oldPlaceholder = inputContainer.parentElement.querySelector('.chat-not-participant-message');
+                if (oldPlaceholder) {
+                    oldPlaceholder.remove();
+                }
+                // Aggiungi il nuovo messaggio solo se non è partecipante
                 const placeholder = document.createElement('div');
+                placeholder.className = 'chat-not-participant-message';
                 placeholder.style.cssText = 'text-align: center; color: #999; padding: 10px;';
                 placeholder.textContent = 'Solo i partecipanti possono inviare messaggi';
                 inputContainer.parentElement.appendChild(placeholder);
+            } else {
+                // Se è partecipante, rimuovi il messaggio
+                const oldPlaceholder = inputContainer.parentElement.querySelector('.chat-not-participant-message');
+                if (oldPlaceholder) {
+                    oldPlaceholder.remove();
+                }
             }
         }
     }
@@ -2711,6 +3003,20 @@ class BacheaCalendar {
     }
 
     closeEditModal() {
+        // Marca la chat come letta quando chiudi il modal (dopo aver letto i messaggi)
+        if (this.editingNote) {
+            const { dateKey, noteIndex } = this.editingNote;
+            if (this.notes[dateKey] && this.notes[dateKey][noteIndex]) {
+                const eventId = this.notes[dateKey][noteIndex].id;
+                this.markChatAsRead(eventId);
+
+                // Aggiorna i badge dopo aver marcato come letto
+                setTimeout(() => {
+                    this.updateAllBadges();
+                }, 100);
+            }
+        }
+
         // Rimuovi il listener della chat
         if (this.chatListener && this.editingNote) {
             const { dateKey, noteIndex } = this.editingNote;
@@ -2727,7 +3033,6 @@ class BacheaCalendar {
         document.getElementById('editLocation').value = '';
         document.getElementById('editNotes').value = '';
         document.getElementById('editLink').value = '';
-        document.getElementById('editChatEnabled').checked = false;
         document.getElementById('chatMessageInput').value = '';
         document.getElementById('chatMessagesContainer').innerHTML = '';
         this.editParticipantsList = [];
@@ -2793,7 +3098,6 @@ class BacheaCalendar {
             link: document.getElementById('editLink').value.trim(),
             image: this.editImageData,
             participants: this.editParticipantsList,
-            chatEnabled: document.getElementById('editChatEnabled').checked,
             creatorId: creatorId // Mantieni il creatore originale
         };
 
