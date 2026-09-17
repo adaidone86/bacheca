@@ -146,43 +146,34 @@
                 <div id="evento-tab" class="modal-tab-content active">
                     <div class="form-group">
                         <label for="eventTitle">📌 Nome evento</label>
-                        <input type="text" id="eventTitle" placeholder="Es: SAGRA DEL TORTELLO" required>
+                        <input type="text" id="eventTitle" placeholder="Es: SAGRA DEL TORTELLO" required style="height: 44px;">
                     </div>
 
-                    <div class="form-group">
-                        <label for="eventTime">🕐 Ora</label>
-                        <input type="time" id="eventTime" required>
-                    </div>
+                    <div style="display: flex; gap: 12px;">
+                        <div class="form-group" style="flex: 0 0 35%;">
+                            <label for="eventTime">🕐 Ora</label>
+                            <input type="time" id="eventTime" required style="height: 44px; border-radius: 6px;">
+                        </div>
 
-                    <div class="form-group">
-                        <label for="eventLocation">📍 Luogo</label>
-                        <input type="text" id="eventLocation" placeholder="Es: O.Live – Parco dell'Oliveta (Sesto)" required>
+                        <div class="form-group" style="flex: 1;">
+                            <label for="eventLocation">📍 Luogo</label>
+                            <input type="text" id="eventLocation" placeholder="Es: O.Live – Parco dell'Oliveta (Sesto)" required style="height: 44px;">
+                        </div>
                     </div>
 
                     <div class="form-group">
                         <label for="eventNotes">📝 Note aggiuntive</label>
-                        <textarea id="eventNotes" placeholder="Es: con cena cantata! 📞 Prenotazione: 393 336 4633" required></textarea>
+                        <textarea id="eventNotes" placeholder="Es: con cena cantata! 📞 Prenotazione: 393 336 4633" style="height: 100px; resize: vertical;"></textarea>
                     </div>
                 </div>
 
                 <!-- Tab: Partecipanti -->
                 <div id="participants-tab" class="modal-tab-content">
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="eventHasParticipants">
-                            👥 Aggiungi partecipanti
-                        </label>
-                    </div>
-
-                    <div class="form-group" id="eventParticipantsGroup" style="display: none;">
-                        <div id="eventParticipantsList" class="participants-list"></div>
-
-                        <div class="participants-input-group" id="eventParticipantsInputGroup" style="display: none;">
-                            <input type="text" id="eventParticipantInput" placeholder="Nome partecipante" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px;">
-                            <button type="button" class="btn-participant-save" id="eventParticipantSaveBtn" style="padding: 8px 12px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; margin-left: 8px;">Salva</button>
+                    <div class="form-group" id="eventParticipantsGroup" style="opacity: 0.5; pointer-events: none;">
+                        <label style="margin-bottom: 12px; display: block; font-weight: 600;">👥 Partecipanti (disponibile dopo la creazione)</label>
+                        <div style="padding: 12px; background: rgba(255,255,255,0.5); border-radius: 6px; text-align: center; color: #999; font-size: 0.9rem;">
+                            I partecipanti potranno essere aggiunti dopo la creazione dell'evento
                         </div>
-
-                        <button type="button" class="btn-add-participant" id="eventAddParticipantBtn" style="width: 100%; padding: 10px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; margin-top: 8px;">+ Aggiungi partecipante</button>
                     </div>
                 </div>
 
@@ -385,22 +376,24 @@
                 <div id="edit-evento-tab" class="modal-tab-content active">
                     <div class="form-group">
                         <label for="editTitle">📌 Nome evento</label>
-                        <input type="text" id="editTitle" required>
+                        <input type="text" id="editTitle" required style="height: 44px;">
                     </div>
 
-                    <div class="form-group">
-                        <label for="editTime">🕐 Ora</label>
-                        <input type="time" id="editTime">
-                    </div>
+                    <div style="display: flex; gap: 12px;">
+                        <div class="form-group" style="flex: 0 0 35%;">
+                            <label for="editTime">🕐 Ora</label>
+                            <input type="time" id="editTime" style="height: 44px; border-radius: 6px;">
+                        </div>
 
-                    <div class="form-group">
-                        <label for="editLocation">📍 Luogo</label>
-                        <input type="text" id="editLocation">
+                        <div class="form-group" style="flex: 1;">
+                            <label for="editLocation">📍 Luogo</label>
+                            <input type="text" id="editLocation" style="height: 44px;">
+                        </div>
                     </div>
 
                     <div class="form-group">
                         <label for="editNotes">📝 Note aggiuntive</label>
-                        <textarea id="editNotes"></textarea>
+                        <textarea id="editNotes" style="height: 100px; resize: vertical;"></textarea>
                     </div>
                 </div>
 

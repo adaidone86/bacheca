@@ -344,7 +344,7 @@ class BacheaCalendar {
                 this.syncCode = newSyncCode;
 
                 // Crea un nuovo syncCode entry su Firebase
-                database.ref(`syncCodes/${newSyncCode}`).set({
+                await database.ref(`syncCodes/${newSyncCode}`).set({
                     name: this.deviceName,
                     deviceIds: [this.deviceId],
                     createdAt: new Date().getTime()
@@ -352,7 +352,7 @@ class BacheaCalendar {
 
                 // Salva il dispositivo su Firebase
                 const deviceInfo = this.getDeviceInfo();
-                database.ref(`devices/${this.deviceId}`).set({
+                await database.ref(`devices/${this.deviceId}`).set({
                     id: this.deviceId,
                     name: this.deviceName,
                     syncCode: newSyncCode,
@@ -366,7 +366,7 @@ class BacheaCalendar {
                 resolve();
             };
 
-            cancelBtn.onclick = (e) => {
+            cancelBtn.onclick = async (e) => {
                 e.preventDefault();
                 this.deviceName = 'Anonimo';
 
@@ -376,7 +376,7 @@ class BacheaCalendar {
 
                 // Salva il dispositivo su Firebase come Anonimo con syncCode
                 const deviceInfo = this.getDeviceInfo();
-                database.ref(`devices/${this.deviceId}`).set({
+                await database.ref(`devices/${this.deviceId}`).set({
                     id: this.deviceId,
                     name: this.deviceName,
                     syncCode: newSyncCode,
@@ -387,7 +387,7 @@ class BacheaCalendar {
                 });
 
                 // Crea l'entry di syncCodes
-                database.ref(`syncCodes/${newSyncCode}`).set({
+                await database.ref(`syncCodes/${newSyncCode}`).set({
                     name: this.deviceName,
                     deviceIds: [this.deviceId],
                     createdAt: new Date().getTime()
@@ -793,20 +793,9 @@ class BacheaCalendar {
         // Gestione partecipanti form aggiunta
         this.eventParticipantsList = [];
 
-        const eventHasParticipants = document.getElementById('eventHasParticipants');
-        if (eventHasParticipants) {
-            eventHasParticipants.addEventListener('change', (e) => {
-                const group = document.getElementById('eventParticipantsGroup');
-                if (group) group.style.display = e.target.checked ? 'block' : 'none';
-                if (e.target.checked) {
-                    this.renderEventParticipants();
-                }
-            });
-        }
-
-        const eventAddParticipantBtn = document.getElementById('eventAddParticipantBtn');
-        if (eventAddParticipantBtn) {
-            eventAddParticipantBtn.addEventListener('click', (e) => {
+        const eventWantToParticipateBtn = document.getElementById('eventWantToParticipateBtn');
+        if (eventWantToParticipateBtn) {
+            eventWantToParticipateBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 const inputGroup = document.getElementById('eventParticipantsInputGroup');
                 if (inputGroup) inputGroup.style.display = 'flex';
@@ -1428,11 +1417,8 @@ class BacheaCalendar {
         document.getElementById('eventNotes').value = '';
         document.getElementById('eventLink').value = '';
         document.getElementById('eventImage').value = '';
-        document.getElementById('eventHasParticipants').checked = false;
-        document.getElementById('eventParticipantsGroup').style.display = 'none';
-        document.getElementById('eventParticipantsInputGroup').style.display = 'none';
-        document.getElementById('eventParticipantInput').value = '';
         this.eventParticipantsList = [];
+        this.renderEventParticipants();
         this.eventImageData = null;
 
         // Reset immagine nel container (mantieni il gradiente viola)
@@ -1464,12 +1450,9 @@ class BacheaCalendar {
         document.getElementById('eventLocation').value = '';
         document.getElementById('eventNotes').value = '';
         document.getElementById('eventLink').value = '';
-        document.getElementById('eventHasParticipants').checked = false;
-        document.getElementById('eventParticipantsGroup').style.display = 'none';
-        document.getElementById('eventParticipantsInputGroup').style.display = 'none';
-        document.getElementById('eventParticipantInput').value = '';
         this.eventParticipantsList = [];
         this.currentEventLink = '';
+        this.renderEventParticipants();
 
         // Resetta i tab del modal di aggiunta
         const modal = document.getElementById('modal');
@@ -1486,6 +1469,7 @@ class BacheaCalendar {
 
     renderEventParticipants() {
         const listEl = document.getElementById('eventParticipantsList');
+        if (!listEl) return; // La sezione partecipanti non esiste nel form di aggiunta
         listEl.innerHTML = '';
 
         this.eventParticipantsList.forEach((participant, index) => {
@@ -1519,20 +1503,46 @@ class BacheaCalendar {
 
         // Carica i nomi di tutti i partecipanti
         const participantNames = await Promise.all(this.editParticipantsList.map(async (participant) => {
+            console.log('Caricando partecipante:', participant);
             // Retrocompatibilità: se è una stringa corta, è il vecchio formato (nome diretto)
             if (participant.length < 20) {
+                console.log('Formato vecchio:', participant);
                 return { id: participant, name: participant, syncCode: null };
             }
 
             // Nuovo formato: è un ID, leggi il nome da Firebase
             try {
                 const snapshot = await database.ref(`devices/${participant}`).once('value');
+                console.log('Snapshot dispositivo:', participant, snapshot.exists(), snapshot.val());
                 if (snapshot.exists()) {
                     const deviceData = snapshot.val();
-                    return { id: participant, name: deviceData.name, syncCode: deviceData.syncCode || null };
+                    console.log('Dati dispositivo:', deviceData);
+                    let name = deviceData.name;
+                    let syncCode = deviceData.syncCode || null;
+
+                    // Se il nome non è disponibile, leggi dal syncCode
+                    if (!name && syncCode) {
+                        console.log('Nome mancante, cercando in syncCode:', syncCode);
+                        const syncSnapshot = await database.ref(`syncCodes/${syncCode}`).once('value');
+                        if (syncSnapshot.exists()) {
+                            const syncData = syncSnapshot.val();
+                            name = syncData.name;
+                            console.log('Nome trovato dal syncCode:', name);
+
+                            // Salva il nome nel dispositivo per la prossima volta
+                            await database.ref(`devices/${participant}`).update({
+                                name: name
+                            }).catch(err => console.error('Errore aggiornamento nome:', err));
+                        }
+                    }
+
+                    console.log('Ritornando partecipante con nome:', { id: participant, name: name || 'Senza nome', syncCode });
+                    return { id: participant, name: name || 'Senza nome', syncCode };
                 }
+                console.log('Dispositivo non trovato:', participant);
                 return { id: participant, name: 'Sconosciuto', syncCode: null };
             } catch (error) {
+                console.error('Errore caricamento dispositivo:', participant, error);
                 return { id: participant, name: 'Errore', syncCode: null };
             }
         }));
@@ -1556,6 +1566,7 @@ class BacheaCalendar {
         });
 
         displayedParticipants.forEach((participantData) => {
+            console.log('Renderizzando partecipante:', participantData);
             // Controlla se è l'utente corrente (per syncCode o deviceId)
             let isCurrentUser = participantData.id === this.deviceId;
             if (!isCurrentUser && this.syncCode && participantData.syncCode) {
@@ -1575,6 +1586,7 @@ class BacheaCalendar {
                     <span>${this.escapeHtml(participantData.name)}</span>
                 `;
             }
+            console.log('HTML generato:', itemEl.innerHTML);
 
             const removeBtn = itemEl.querySelector('.btn-remove-participant');
             if (removeBtn) {
@@ -1595,7 +1607,11 @@ class BacheaCalendar {
             }
 
             listEl.appendChild(itemEl);
+            console.log('Partecipante aggiunto al DOM:', itemEl);
         });
+
+        console.log('Final listEl innerHTML:', listEl.innerHTML);
+        console.log('editParticipantsList:', this.editParticipantsList);
 
         // Aggiorna il button "Voglio partecipare"
         await this.updateParticipateButton();
@@ -1856,6 +1872,10 @@ class BacheaCalendar {
             if (eventId) {
                 database.ref(`eventChats/${eventId}`).remove().catch(error => {
                     console.error('Errore eliminazione chat:', error);
+                });
+                // Elimina anche i dati di lettura della chat
+                database.ref(`chatReadStatus/${eventId}`).remove().catch(error => {
+                    console.error('Errore eliminazione chatReadStatus:', error);
                 });
             }
             this.saveNotes();
@@ -3073,9 +3093,7 @@ class BacheaCalendar {
 
             // Pulisci l'input
             document.getElementById('chatMessageInput').value = '';
-
-            // Ricarica i messaggi
-            this.loadAndDisplayChatMessages(eventId);
+            // Il listener su Firebase carica i messaggi automaticamente
         } catch (error) {
             console.error('Errore invio messaggio:', error);
         }

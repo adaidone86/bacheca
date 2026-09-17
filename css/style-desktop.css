@@ -353,6 +353,14 @@ button {
     color: white;
 }
 
+.modal-content .form-group p {
+    color: white !important;
+}
+
+.modal-content .form-group span {
+    color: white;
+}
+
 @keyframes slideDown {
     from {
         opacity: 0;
@@ -368,7 +376,7 @@ button {
     font-size: 1.5rem;
     font-weight: 600;
     margin-bottom: 20px;
-    color: #667eea;
+    color: white;
 }
 
 .modal-tabs {
@@ -785,6 +793,10 @@ footer {
     font-size: 0.9rem;
     color: #333;
     font-weight: 500;
+}
+
+.participant-item span {
+    color: #333 !important;
 }
 
 .participant-item button {
