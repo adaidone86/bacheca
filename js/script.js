@@ -309,11 +309,25 @@ class BacheaCalendar {
             const syncCodeGroup = document.getElementById('nameSyncCodeGroup');
             const syncCodeInput = document.getElementById('nameSyncCodeInput');
 
+            // Elementi da nascondere quando il checkbox è flaggato
+            const nameInputGroup = document.getElementById('nameInputGroup');
+            const dividerGroup = document.getElementById('dividerGroup');
+
             modal.classList.add('active');
 
-            // Mostra/nascondi il campo syncCode in base al checkbox
+            // Mostra/nascondi il campo nome quando checkbox cambia (divider sempre visibile)
             syncCheckbox.addEventListener('change', (e) => {
-                syncCodeGroup.style.display = e.target.checked ? 'block' : 'none';
+                if (e.target.checked) {
+                    // Nascondi nome, mostra syncCode (divider rimane sempre visibile)
+                    nameInputGroup.style.display = 'none';
+                    syncCodeGroup.style.display = 'block';
+                    syncCodeInput.focus();
+                } else {
+                    // Mostra nome, nascondi syncCode (divider rimane sempre visibile)
+                    nameInputGroup.style.display = 'block';
+                    syncCodeGroup.style.display = 'none';
+                    input.focus();
+                }
             });
 
             form.onsubmit = async (e) => {
@@ -895,6 +909,12 @@ class BacheaCalendar {
             infoModal.addEventListener('click', (e) => {
                 if (e.target === infoModal) this.closeInfo();
             });
+        }
+
+        // Reset SyncCode
+        const resetSyncCodeBtn = document.getElementById('resetSyncCodeBtn');
+        if (resetSyncCodeBtn) {
+            resetSyncCodeBtn.addEventListener('click', () => this.resetSyncCode());
         }
 
         // Color filters
@@ -2415,6 +2435,75 @@ class BacheaCalendar {
 
     closeInfo() {
         document.getElementById('infoModal').classList.remove('active');
+    }
+
+    async resetSyncCode() {
+        if (!this.syncCode) {
+            this.showErrorPopup('Nessun codice di sincronizzazione trovato');
+            return;
+        }
+
+        // Chiudi il menu dropdown
+        const menuDropdown = document.getElementById('menuDropdown');
+        if (menuDropdown) menuDropdown.style.display = 'none';
+
+        const confirmed = await this.showConfirmDialog(
+            `Sei sicuro? Questo eliminerà:\n\n` +
+            `• Il codice di sincronizzazione (${this.syncCode})\n` +
+            `• Tutti i tuoi dispositivi\n` +
+            `• I dati di lettura chat\n\n` +
+            `Gli eventi rimarranno visibili agli altri utenti.\n\n` +
+            `Questa azione NON può essere annullata.`
+        );
+
+        if (!confirmed) return;
+
+        try {
+            // Carica il syncCode per ottenere la lista dei deviceIds
+            const syncCodeRef = await database.ref(`syncCodes/${this.syncCode}`).once('value');
+            if (!syncCodeRef.exists()) {
+                this.showErrorPopup('Codice non trovato. Reset non riuscito.');
+                return;
+            }
+
+            const syncCodeData = syncCodeRef.val();
+            const deviceIds = syncCodeData.deviceIds || [];
+
+            // Cancella il syncCode
+            await database.ref(`syncCodes/${this.syncCode}`).remove();
+
+            // Cancella tutti i devices associati al syncCode
+            for (const deviceId of deviceIds) {
+                await database.ref(`devices/${deviceId}`).remove();
+            }
+
+            // Cancella i chatReadStatus per questo syncCode
+            const chatReadStatusRef = await database.ref('chatReadStatus').once('value');
+            if (chatReadStatusRef.exists()) {
+                const chatReadStatus = chatReadStatusRef.val();
+                for (const eventId in chatReadStatus) {
+                    if (chatReadStatus[eventId][this.syncCode]) {
+                        await database.ref(`chatReadStatus/${eventId}/${this.syncCode}`).remove();
+                    }
+                }
+            }
+
+            // Mostra successo e reimposta la pagina
+            this.showSuccessPopup('Reset completato. La pagina si ricaricherà...');
+
+            // Pulisci localStorage
+            localStorage.removeItem('deviceId');
+            localStorage.clear();
+
+            // Ricarica dopo 1.5 secondi
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+
+        } catch (error) {
+            console.error('Errore durante il reset:', error);
+            this.showErrorPopup('Errore durante il reset: ' + error.message);
+        }
     }
 
     autoSync() {
