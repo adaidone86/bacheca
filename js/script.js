@@ -315,6 +315,11 @@ class BacheaCalendar {
 
             modal.classList.add('active');
 
+            // Rimuovi i listener precedenti (se il modal è stato aperto prima)
+            syncCheckbox.removeEventListener('change', null);
+            form.onsubmit = null;
+            cancelBtn.onclick = null;
+
             // Mostra/nascondi il campo nome quando checkbox cambia (divider sempre visibile)
             syncCheckbox.addEventListener('change', (e) => {
                 if (e.target.checked) {
@@ -350,7 +355,13 @@ class BacheaCalendar {
                         resolve();
                         return;
                     } else {
-                        alert('Codice di sincronizzazione non valido. Verifica e riprova.');
+                        // Chiudi il modal prima di mostrare l'errore
+                        modal.classList.remove('active');
+                        modal.style.display = 'none';
+                        // Dai un po' di tempo per far scomparire il modal
+                        setTimeout(() => {
+                            this.showErrorPopup('Codice di sincronizzazione non valido. Verifica e riprova.');
+                        }, 100);
                         return;
                     }
                 }
@@ -1694,6 +1705,12 @@ class BacheaCalendar {
 
         if (!this.editParticipantsList.includes(this.deviceId)) {
             this.editParticipantsList.push(this.deviceId);
+
+            // Assicura che il dispositivo corrente sia nella cache dei nomi
+            if (!this.deviceNames[this.deviceId]) {
+                this.deviceNames[this.deviceId] = this.deviceName;
+            }
+
             console.log('Aggiunto utente ai partecipanti:', this.editParticipantsList);
             this.renderEditParticipants();
 
