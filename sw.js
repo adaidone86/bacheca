@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bacheca-v1';
+const CACHE_NAME = 'bacheca-v3';
 const URLS_TO_CACHE = [
   '/bacheca/',
   '/bacheca/index.html',
@@ -47,6 +47,12 @@ self.addEventListener('fetch', event => {
           );
         })
     );
+    return;
+  }
+
+  // Se è config.js, usa sempre la rete (ambiente deve essere aggiornato)
+  if (event.request.url.includes('config.js')) {
+    event.respondWith(fetch(event.request));
     return;
   }
 

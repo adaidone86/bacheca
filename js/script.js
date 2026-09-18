@@ -1,3 +1,25 @@
+// Version check - Auto-update quando env o versione cambia
+let APP_FILE_VERSION = 'unknown';
+fetch('./descrizioni/versione')
+    .then(r => r.text())
+    .then(text => {
+        APP_FILE_VERSION = text.trim();
+        const APP_VERSION = `${APP_CONFIG.ENV}-${APP_FILE_VERSION}`;
+        const STORED_VERSION = localStorage.getItem('APP_VERSION');
+        if (STORED_VERSION && STORED_VERSION !== APP_VERSION) {
+            console.log(`🔄 Versione app cambiata (${STORED_VERSION} → ${APP_VERSION}), ricaricare...`);
+            if ('caches' in window) {
+                caches.keys().then(names => {
+                    names.forEach(name => caches.delete(name));
+                });
+            }
+            localStorage.setItem('APP_VERSION', APP_VERSION);
+            location.reload(true);
+        }
+        localStorage.setItem('APP_VERSION', APP_VERSION);
+    })
+    .catch(err => console.warn('⚠️ Non riesco a leggere la versione:', err));
+
 // Firebase Config da config.js
 const currentConfig = APP_CONFIG.getConfig();
 const firebaseConfig = APP_CONFIG.getFirebaseConfig();
@@ -438,6 +460,10 @@ class BacheaCalendar {
         try {
             const syncCodeRef = database.ref(`syncCodes/${syncCode}`);
             const snapshot = await syncCodeRef.once('value');
+
+            console.log('🔍 Ricerca syncCode:', syncCode);
+            console.log('📊 Dati trovati:', snapshot.val());
+            console.log('✅ Exists:', snapshot.exists());
 
             if (!snapshot.exists()) {
                 console.error('SyncCode non valido:', syncCode);
@@ -919,6 +945,41 @@ class BacheaCalendar {
         if (infoModal) {
             infoModal.addEventListener('click', (e) => {
                 if (e.target === infoModal) this.closeInfo();
+            });
+        }
+
+        // User Profile
+        const userProfileBtn = document.getElementById('userProfileBtn');
+        if (userProfileBtn) {
+            userProfileBtn.addEventListener('click', () => this.openUserProfile());
+        }
+
+        const userProfileCloseBtn = document.getElementById('userProfileCloseBtn');
+        if (userProfileCloseBtn) {
+            userProfileCloseBtn.addEventListener('click', () => this.closeUserProfile());
+        }
+
+        const userProfileResetBtn = document.getElementById('userProfileResetBtn');
+        if (userProfileResetBtn) {
+            userProfileResetBtn.addEventListener('click', () => {
+                this.closeUserProfile();
+                this.resetSyncCode();
+            });
+        }
+
+        const userProfileCopySyncCodeBtn = document.getElementById('userProfileCopySyncCodeBtn');
+        if (userProfileCopySyncCodeBtn) {
+            userProfileCopySyncCodeBtn.addEventListener('click', () => {
+                const syncCode = document.getElementById('userProfileSyncCode')?.textContent;
+                if (syncCode && syncCode.trim()) {
+                    navigator.clipboard.writeText(syncCode).then(() => {
+                        const originalText = userProfileCopySyncCodeBtn.textContent;
+                        userProfileCopySyncCodeBtn.textContent = '✅ Copiato!';
+                        setTimeout(() => {
+                            userProfileCopySyncCodeBtn.textContent = originalText;
+                        }, 2000);
+                    });
+                }
             });
         }
 
@@ -2455,6 +2516,33 @@ class BacheaCalendar {
 
     closeInfo() {
         document.getElementById('infoModal').classList.remove('active');
+    }
+
+    openUserProfile() {
+        // Chiudi il menu dropdown
+        const menuDropdown = document.getElementById('menuDropdown');
+        if (menuDropdown) menuDropdown.style.display = 'none';
+
+        // Popola le informazioni nel modal
+        document.getElementById('userProfileName').textContent = this.deviceName || 'Non impostato';
+        document.getElementById('userProfileSyncCode').textContent = this.syncCode || 'Non disponibile';
+        document.getElementById('userProfileDeviceId').textContent = this.deviceId || 'Non disponibile';
+
+        const deviceInfo = this.getDeviceInfo();
+        document.getElementById('userProfileDevice').textContent = `${deviceInfo.browser} (${deviceInfo.deviceType})`;
+
+        // Mostra il modal
+        const modal = document.getElementById('userProfileModal');
+        if (modal) {
+            modal.style.display = 'flex';
+        }
+    }
+
+    closeUserProfile() {
+        const modal = document.getElementById('userProfileModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
     }
 
     async resetSyncCode() {
