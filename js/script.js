@@ -1,17 +1,27 @@
-// Firebase Config
-const firebaseConfig = {
-    apiKey: "AIzaSyBGy1u-1qF5qv8234rkEvjvEunyJAiogd4",
-    authDomain: "bacheca-c0441.firebaseapp.com",
-    databaseURL: "https://bacheca-c0441-default-rtdb.europe-west1.firebasedatabase.app",
-    projectId: "bacheca-c0441",
-    storageBucket: "bacheca-c0441.firebasestorage.app",
-    messagingSenderId: "800396955473",
-    appId: "1:800396955473:web:2e0a0607a0666122a58d70"
-};
+// Firebase Config da config.js
+const currentConfig = APP_CONFIG.getConfig();
+const firebaseConfig = APP_CONFIG.getFirebaseConfig();
 
-// Initialize Firebase
-firebase.initializeApp(firebaseConfig);
-const database = firebase.database();
+// Log configurazione
+console.log(`🔧 Configurazione: ${currentConfig.name}`);
+if (!currentConfig.enabled) {
+    console.warn('⚠️ OFFLINE MODE - Database disabilitato!');
+}
+
+// Initialize Firebase (solo se abilitato)
+let database = null;
+if (firebaseConfig) {
+    firebase.initializeApp(firebaseConfig);
+    database = firebase.database();
+}
+
+// Mostra badge per TEST
+if (APP_CONFIG.ENV === 'test') {
+    setTimeout(() => {
+        const testBadge = document.getElementById('testBadge');
+        if (testBadge) testBadge.style.display = 'inline-block';
+    }, 100);
+}
 
 class BacheaCalendar {
     constructor() {
