@@ -2360,7 +2360,10 @@ class BacheaCalendar {
         eventsList.appendChild(addBtn);
 
         if (visibleEvents.length === 0) {
-            eventsList.innerHTML += '<div class="empty-list">Nessun evento programmato 📭</div>';
+            const emptyDiv = document.createElement('div');
+            emptyDiv.className = 'empty-list';
+            emptyDiv.textContent = 'Nessun evento programmato 📭';
+            eventsList.appendChild(emptyDiv);
             return;
         }
         visibleEvents.forEach(event => {
