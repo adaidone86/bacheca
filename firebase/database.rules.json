@@ -1,0 +1,50 @@
+{
+  "rules": {
+    "events": {
+      ".read": true,
+      ".write": true
+    },
+    "eventImages": {
+      ".read": true,
+      "$eventId": {
+        ".write": true,
+        ".validate": "newData.isString() && newData.val().beginsWith('data:image/') && newData.val().length < 3000000"
+      }
+    },
+    "devices": {
+      ".read": true,
+      "$deviceId": {
+        ".write": true
+      }
+    },
+    "syncCodes": {
+      "$code": {
+        ".read": true,
+        ".write": true
+      }
+    },
+    "eventChats": {
+      ".read": true,
+      "$eventId": {
+        ".write": true,
+        "messages": {
+          "$messageId": {
+            ".validate": "newData.hasChildren(['deviceId', 'name', 'text', 'timestamp']) && newData.child('text').isString() && newData.child('text').val().length <= 2000"
+          }
+        }
+      }
+    },
+    "chatReadStatus": {
+      ".read": true,
+      "$eventId": {
+        ".write": true
+      }
+    },
+    "proposals": {
+      ".read": true,
+      "$proposalId": {
+        ".write": true
+      }
+    }
+  }
+}
