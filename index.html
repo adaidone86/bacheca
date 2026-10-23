@@ -74,6 +74,9 @@
         </div>
 
         <div id="calendarView" class="calendar-wrapper">
+            <!-- Eventi da fissare (senza data) -->
+            <div id="proposalsBanner" style="margin-bottom: 16px;"></div>
+
             <div class="calendar-header">
                 <button class="btn-nav" id="prevBtn" style="display: none;">← Mese precedente</button>
                 <div class="month-year" id="monthYear"></div>
@@ -361,6 +364,93 @@
         </div>
     </div>
 
+    <!-- Proposal Modal (evento da fissare, senza data) -->
+    <div class="modal" id="proposalModal" style="z-index: 1100;">
+        <div class="modal-content" style="max-width: 460px; max-height: 90vh; overflow-y: auto;">
+            <div style="padding: 20px 30px 0 30px;">
+                <div class="modal-header" id="proposalModalTitle" style="color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">🗳️ Evento da fissare</div>
+            </div>
+
+            <!-- Creazione -->
+            <form id="proposalCreateForm">
+                <div class="form-group">
+                    <label for="proposalTitle">📌 Nome evento</label>
+                    <input type="text" id="proposalTitle" placeholder="Es: CENA DI CLASSE" required style="height: 44px;">
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <div class="form-group" style="flex: 0 0 35%;">
+                        <label for="proposalTime">🕐 Ora</label>
+                        <input type="time" id="proposalTime" style="height: 44px; border-radius: 6px; width: 100%;">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="proposalLocation">📍 Luogo</label>
+                        <input type="text" id="proposalLocation" placeholder="Anche da decidere" style="height: 44px;">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="proposalNotes">📝 Note aggiuntive</label>
+                    <textarea id="proposalNotes" style="height: 80px; resize: vertical;"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="proposalColor">🎨 Categoria</label>
+                    <select id="proposalColor" style="width: 100%; padding: 10px; border: 2px solid #eee; border-radius: 8px; font-size: 1rem;">
+                        <option value="color-neutral">⚪ Senza categoria</option>
+                        <option value="color-yellow">🍽️ Gastronomia/Cibo</option>
+                        <option value="color-pink">👥 Serate/Sociali</option>
+                        <option value="color-green">⛹️ Sport/Attività</option>
+                        <option value="color-blue">🎮 Intrattenimento</option>
+                        <option value="color-purple">🎵 Cultura/Musica</option>
+                        <option value="color-orange">🏞️ Escursioni/Turismo</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="proposalFirstDate">📅 Prima data proposta (facoltativa)</label>
+                    <input type="date" id="proposalFirstDate" style="width: 100%; height: 44px; padding: 8px; border: 2px solid #eee; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
+                </div>
+                <div class="modal-buttons" style="padding: 0;">
+                    <button type="submit" class="btn-save" style="background: #4CAF50; color: white;">Crea proposta</button>
+                    <button type="button" class="btn-cancel" id="proposalCreateCancelBtn" style="background: #ccc; color: #333;">Annulla</button>
+                </div>
+            </form>
+
+            <!-- Dettaglio e voto -->
+            <div id="proposalViewSection" style="display: none; padding: 20px 30px 30px 30px;">
+                <!-- Schede (non usano .modal-tab: quella classe ha un handler globale legato al modal di modifica) -->
+                <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                    <button type="button" class="proposal-tab" data-pane="proposalDatesPane" style="flex: 1; padding: 10px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">🗳️ Date</button>
+                    <button type="button" class="proposal-tab" data-pane="proposalChatPane" id="proposalChatTabBtn" style="flex: 1; padding: 10px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">💬 Chat</button>
+                </div>
+
+                <div id="proposalDatesPane">
+                    <div id="proposalDetails" style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; margin-bottom: 16px; font-size: 0.95rem;"></div>
+
+                    <div style="font-weight: 600; margin-bottom: 8px;">📅 Date proposte</div>
+                    <div id="proposalOptionsList" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px;"></div>
+
+                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                        <input type="date" id="proposalNewDate" style="flex: 1; min-width: 0; padding: 8px; border: 2px solid #eee; border-radius: 8px; font-size: 1rem;">
+                        <button type="button" id="proposalAddDateBtn" style="padding: 8px 14px; background: #FF9800; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; white-space: nowrap;">➕ Proponi</button>
+                    </div>
+                    <p style="font-size: 0.8rem; opacity: 0.85; margin: 0 0 16px 0;">Vota tutte le date in cui puoi esserci. Chi ha votato può fissare la data: l'evento finisce nel calendario e chi ha votato quella data diventa partecipante.</p>
+                </div>
+
+                <div id="proposalChatPane" style="display: none; margin-bottom: 16px;">
+                    <div id="proposalChatMessages" style="overflow-y: auto; padding: 12px; max-height: 350px; min-height: 120px; display: flex; flex-direction: column; gap: 12px; background: #f5f5f5; border-radius: 8px; margin-bottom: 12px;"></div>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="proposalChatInput" placeholder="Es: io posso solo nel weekend..." style="flex: 1; min-width: 0; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 0.95rem;">
+                        <button type="button" id="proposalChatSendBtn" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Invia</button>
+                    </div>
+                    <p style="font-size: 0.8rem; opacity: 0.85; margin: 8px 0 0 0;">La chat è aperta a tutti. Quando la data viene fissata, continua nell'evento.</p>
+                </div>
+
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn-cancel" id="proposalDeleteBtn" style="background: #f44336; color: white; display: none;">Elimina</button>
+                    <button type="button" class="btn-cancel" id="proposalCloseBtn" style="background: #ccc; color: #333;">Chiudi</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Edit Modal -->
     <div class="modal" id="editModal">
         <div class="modal-content">
@@ -378,6 +468,11 @@
                     <div class="form-group">
                         <label for="editTitle">📌 Nome evento</label>
                         <input type="text" id="editTitle" required style="height: 44px;">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editDate">📅 Data</label>
+                        <input type="date" id="editDate" style="width: 100%; height: 44px; padding: 8px; border: 2px solid #eee; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
                     </div>
 
                     <div style="display: flex; gap: 12px;">
@@ -597,22 +692,17 @@
         function isAppInstalled() {
             const standalone = window.matchMedia('(display-mode: standalone)').matches;
             const iOSStandalone = window.navigator.standalone === true;
-            console.log('Display mode standalone:', standalone);
-            console.log('iOS standalone:', iOSStandalone);
             return standalone || iOSStandalone;
         }
 
         // Nascondi il bottone se l'app è già installata
         function hideInstallButton() {
             if (isAppInstalled()) {
-                console.log('App già installata, nascondo il bottone');
                 if (installBtn) {
                     installBtn.style.display = 'none !important';
                     installBtn.removeAttribute('style');
                     installBtn.setAttribute('style', 'display: none !important;');
                 }
-            } else {
-                console.log('App non installata, bottone visibile');
             }
         }
 
@@ -636,7 +726,6 @@
                 e.preventDefault();
 
                 if (!deferredPrompt) {
-                    console.log('Install prompt non disponibile');
                     // Mostra messaggio all'utente con popup personalizzato
                     if (bacheaInstance && bacheaInstance.showErrorPopup) {
                         bacheaInstance.showErrorPopup('Installazione non disponibile su questo browser');
@@ -654,12 +743,9 @@
                     const { outcome } = await deferredPrompt.userChoice;
 
                     if (outcome === 'accepted') {
-                        console.log('Installazione accettata');
                         installBtn.style.display = 'none';
-                    } else {
-                        console.log('Installazione rifiutata');
-                        // Non nascondere il button se l'utente rifiuta
                     }
+                    // Se l'utente rifiuta, il button resta visibile
 
                     // Pulisci il prompt
                     deferredPrompt = null;
@@ -671,7 +757,6 @@
 
         // Nascondi il button quando l'app è già installata
         window.addEventListener('appinstalled', () => {
-            console.log('App installata');
             if (installBtn) {
                 installBtn.style.display = 'none';
             }
@@ -681,8 +766,6 @@
         // Registra il service worker
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js', { scope: '/bacheca/' }).then((registration) => {
-                console.log('Service Worker registrato correttamente:', registration);
-                console.log('Scope:', registration.scope);
             }).catch((error) => {
                 console.error('Errore Service Worker:', error);
             });

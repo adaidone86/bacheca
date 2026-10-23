@@ -1,185 +1,137 @@
 # 📅 Bacheca Collaborativa
 
-Una bacheca interattiva basata su calendario dove le persone possono aggiungere proposte di cose da fare come post-it colorati.
+Una bacheca interattiva basata su calendario dove le persone propongono eventi come post-it colorati, si iscrivono e ne parlano in una chat dedicata. I dati sono condivisi in tempo reale tramite **Firebase Realtime Database**.
 
 ## ✨ Caratteristiche
 
-- 📱 **Responsive design** — Funziona perfettamente su mobile, tablet e desktop
-- 🎨 **Post-it colorati** — 6 colori diversi per organizzare le proposte
-- 💾 **Persistenza locale** — I dati vengono salvati automaticamente nel browser
-- 🗓️ **Navigazione calendario** — Visualizza facilmente i mesi precedenti e successivi
-- 🎯 **Intuitiva** — Click su un giorno per aggiungere una proposta
-- ⚡ **Zero dipendenze** — Solo HTML, CSS e JavaScript vanilla
-- 🚀 **Pronto per GitHub Pages** — Deploy direttamente dal repository
+- 📱 **PWA responsive** — installabile su mobile e desktop, layout dedicati sotto/sopra i 768px
+- 🗓️ **Due viste** — calendario mensile oppure lista degli eventi futuri (default: lista su mobile, calendario su desktop)
+- 🎨 **7 categorie colorate** con filtri di visualizzazione
+- 👥 **Partecipanti** — pulsante "Voglio partecipare" / "Non posso più"
+- 💬 **Chat per evento** — riservata ai partecipanti, con badge dei messaggi non letti
+- 🖼️ **Immagine di copertina** — da file o URL, ritagliata in 3:1 (Cropper.js)
+- 🔗 **Multi-dispositivo** — lo stesso utente su più dispositivi tramite un codice di sincronizzazione di 5 caratteri
+- ↔️ **Drag & drop** dei post-it tra i giorni (desktop)
+- ⚡ **Nessuna build** — HTML, CSS e JavaScript vanilla
 
 ## 📁 Struttura progetto
 
 ```
 bacheca/
-├── index.html          # File principale HTML
+├── index.html              # Markup, modal e registrazione PWA/Service Worker
+├── config.js               # Scelta dell'ambiente Firebase (NONE / TEST / PROD)
+├── manifest.json           # Manifest PWA
+├── sw.js                   # Service Worker
 ├── css/
-│   └── style.css       # Tutti gli stili CSS
+│   ├── style-desktop.css   # Stili per schermi > 768px
+│   └── style-mobile.css    # Stili per schermi ≤ 768px
 ├── js/
-│   └── script.js       # Logica JavaScript
-├── README.md           # Documentazione
-└── .gitignore         # File da ignorare
+│   └── script.js           # Tutta la logica (classe BacheaCalendar)
+├── descrizioni/            # Testi caricati a runtime
+│   ├── titolo              # 3 righe: titolo, sottotitolo, slogan
+│   ├── info                # Testo del modal "Info"
+│   └── versione            # Versione in formato x.x.x
+├── icons/                  # Icone PWA
+├── immagini/               # Immagini statiche
+└── backup/                 # Esportazioni JSON degli eventi (non usate dal codice)
 ```
 
 ## 🚀 Come usarla
 
 ### Localmente
-1. Clona il repository
-2. Apri `index.html` nel browser
-3. Inizia ad aggiungere proposte!
+Il Service Worker è registrato con scope `/bacheca/`, quindi servi il sito dalla cartella **superiore** al progetto:
+
+```bash
+python -m http.server 8000
+```
+
+e apri `http://localhost:8000/bacheca/`.
 
 ### Su GitHub Pages
-1. Fai il push del repository
-2. Vai in **Impostazioni → Pages**
-3. Seleziona "Deploy from a branch" e scegli `main`
-4. La bacheca sarà accessibile a `https://tuo-username.github.io/bacheca/`
+1. Fai il push su `main`
+2. **Impostazioni → Pages** → "Deploy from a branch" → `main`
+3. La bacheca sarà su `https://tuo-username.github.io/bacheca/`
 
 ## 📝 Come funziona
 
-1. **Clicca su un giorno** del calendario
-2. **Scrivi la tua proposta** (cosa vuoi fare?)
-3. **Scegli un colore** per distinguere le proposte
-4. **Salva** — Apparirà come post-it sul giorno
+1. Al primo accesso ti viene chiesto il nome, oppure il codice di sincronizzazione se sei già registrato su un altro dispositivo
+2. **Clicca su un giorno** (da domani in poi) o su "➕ Aggiungi evento" nella lista
+3. Compila nome, ora, luogo e note; nella scheda **Dettagli** scegli categoria, link e immagine
+4. Clicca su un evento per aprirlo: puoi modificarlo, eliminarlo, partecipare e usare la chat
 
-### Altre azioni
-- **Elimina una proposta**: Clicca sulla ✕ sul post-it
-- **Cambia mese**: Usa i pulsanti di navigazione
-- **Torna a oggi**: Clicca il pulsante "Oggi"
+### Regole sulle date
+- **Giorni passati**: sola lettura
+- **Oggi**: non si aggiungono eventi, ma quelli esistenti si possono modificare o eliminare
+- **Da domani**: tutto consentito
+
+### Menu ⚙️
+- 👤 Inserisci / cambia il tuo nome
+- 📋 Cambia modalità (lista ↔ calendario)
+- 🎨 Visualizzazione (filtri per categoria)
+- ℹ️ Info
+- 👤 Utente — nome, codice di sincronizzazione (copiabile), device ID, reset
 
 ## 🎨 Categorie di Eventi per Colore
 
-Ogni colore rappresenta una categoria di evento. Usa il colore appropriato quando aggiungi una proposta:
+| Colore | Categoria | Esempi |
+|--------|-----------|--------|
+| ⚪ Grigio | Senza categoria | — |
+| 🟨 Giallo | 🍽️ Gastronomia/Cibo | Sagre, cene, aperitivi |
+| 🔴 Rosa | 👥 Serate/Sociali | Party, serate, incontri |
+| 🟩 Verde | ⛹️ Sport/Attività | Trekking, running, palestra |
+| 🟦 Blu | 🎮 Intrattenimento | Board game, cinema |
+| 🟪 Viola | 🎵 Cultura/Musica | Concerti, mostre, teatro |
+| 🟧 Arancione | 🏞️ Escursioni/Turismo | Gite, weekend |
 
-| Colore | Categoria | Emoji | Esempi |
-|--------|-----------|-------|--------|
-| 🟨 Giallo | 🍽️ Gastronomia/Cibo | 🍴 | Sagre, cene, aperitivi |
-| 🔴 Rosa | 👥 Serate/Sociali | 🎉 | Party, serate ragazze, incontri |
-| 🟩 Verde | ⛹️ Sport/Attività Fisica | 🏃 | Trekking, running, palestra |
-| 🟦 Blu | 🎮 Intrattenimento/Giochi | 🎯 | Gigacon, board game, cinema |
-| 🟪 Viola | 🎵 Cultura/Arte/Musica | 🎭 | Concerti, mostre, teatro |
-| 🟧 Arancione | 🏞️ Escursioni/Turismo | 🧳 | Gite, escursioni, weekend |
+## 💾 Dati
 
-**💡 Puoi filtrare gli eventi per colore** usando le impostazioni (⚙️) per vedere solo le categorie che ti interessano!
-
-## 🎨 Personalizzazione
-
-### Cambiar colori del tema
-Modifica le variabili CSS in `index.html`:
-```css
-/* Cambia questo gradiente nella sezione <style> */
-background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+### Firebase (condiviso)
+```
+events/{YYYY-MM-DD}: [ {id, title, time, location, notes, color, link, imageVersion, participants: [deviceId], creatorId} ]
+eventImages/{eventId}: "data:image/jpeg;base64,..."   (copertina, max 1200×400)
+devices/{deviceId}: {id, name, syncCode, browser, deviceType, createdAt, lastSeen}
+syncCodes/{CODICE}: {name, deviceIds: [...], createdAt}
+eventChats/{eventId}/messages/{id}: {deviceId, name, text, timestamp}
+chatReadStatus/{eventId}/{syncCode}: {lastReadTimestamp}
+proposals/{id}: {id, title, time, location, notes, color, creatorId, creatorSyncCode, creatorName, createdAt,
+                 dateOptions/{YYYY-MM-DD}: {addedBy, createdAt},
+                 votes/{YYYY-MM-DD}/{syncCode}: {name, deviceId}}
 ```
 
-### Modificare le categorie di colore
-Per cambiare l'associazione colore-categoria, semplicemente usa i colori diversamente quando aggiungi gli eventi. Non c'è configurazione da cambiare nel codice — il colore è una proprietà dell'evento!
+### Eventi da fissare
+Un evento può essere creato **senza data** ("➕ Evento senza data", nel riquadro 🗳️ *Da fissare* sopra il calendario e in cima alla lista). Tutti possono proporre date e votarle; chi ha votato può premere **📅 Fissa questa data**: l'evento viene aggiunto a quel giorno con lo stesso id e chi ha votato quella data diventa partecipante. Voti e date sono scritture puntuali, quindi utenti diversi non si sovrascrivono. Ogni proposta ha una **chat aperta a tutti**, salvata in `eventChats/{id}` come quella degli eventi: quando la data viene fissata, la chat continua nell'evento.
 
-## 💾 Come funzionano i dati
+Gli eventi vengono letti e scritti **solo su Firebase**; il listener in tempo reale aggiorna tutti i client aperti.
 
-### Archiviazione locale
-- Le proposte vengono salvate in **localStorage** del browser
-- Ogni giorno ha una chiave univoca (YYYY-MM-DD)
-- I dati persistono anche dopo il refresh della pagina
+Le immagini stanno in `eventImages`, separate dagli eventi, così la sincronizzazione di `events` resta leggera. Nell'evento c'è solo `imageVersion` (timestamp), che cambia a ogni nuova immagine e invalida la cache locale. Gli eventi nel vecchio formato (campo `image` in base64) vengono migrati in automatico al primo caricamento.
 
-### Sincronizzazione Cloud con Firebase 🔥
-La bacheca utilizza **Firebase Realtime Database** per sincronizzare i dati tra più utenti in tempo reale!
+### Browser (locale)
+- `localStorage`: `deviceId`, `preferredView`, `colorFilters`, `APP_VERSION`
+- `IndexedDB` (`BacheaDB`): copia di riserva del `deviceId`
 
-**Come funziona:**
-1. Al caricamento della pagina, sincronizza automaticamente con Firebase
-2. Carica gli eventi salvati da altri utenti
-3. Salva i tuoi eventi nel cloud
-4. Tutti vedono gli stessi eventi condivisi
+## 🔧 Configurazione
 
-**Struttura Firebase:**
-```
-bacheca-c0441 (progetto)
-└── events/
-    ├── 2024-09-01/
-    │   ├── evento1
-    │   ├── evento2
-    ├── 2024-09-02/
-    │   └── evento3
-    └── ...
-```
+### Ambiente
+In [config.js](config.js) imposta `ENV`:
 
-## 🔧 Configurazione Firebase
+| Valore | Database |
+|--------|----------|
+| `'TEST'` | `bacheca-test` — per lo sviluppo |
+| `'PROD'` | `bacheca-c0441` — produzione |
+| `'NONE'` | nessun database (non ancora supportato dal codice) |
 
-### Come è configurato
-- **Progetto:** `bacheca-c0441`
-- **Database:** Realtime Database (Europe West 1)
-- **Credenziali:** Salvate in `js/script.js` (top del file)
-- **SDK:** Firebase compat (via CDN)
+⚠️ Sul branch di sviluppo lascia `TEST`; passa a `PROD` solo quando porti le modifiche su `main`.
 
-### Se devi creare un nuovo progetto Firebase
+### Versione
+Aggiorna `descrizioni/versione` (formato `x.x.x`) a ogni rilascio: al cambio di versione o di ambiente l'app svuota le cache e si ricarica. Un formato non valido nasconde il sito.
 
-1. Vai su https://console.firebase.google.com/
-2. Clicca **"Crea un progetto"**
-   - Nome: `Bacheca` (o quello che preferisci)
-   - Disabilita Google Analytics (gratis)
-3. Vai su **"Realtime Database"**
-   - Clicca **"Crea database"**
-   - Modalità test (per sviluppo/test)
-   - Region: Europa
-4. Vai su **Impostazioni progetto** → **App** → **Aggiungi app** → **Web**
-5. Copia il `firebaseConfig`
-6. Incolla in `js/script.js` (linee 1-12)
+### Nuovo progetto Firebase
+1. https://console.firebase.google.com/ → **Crea un progetto**
+2. **Realtime Database** → Crea database (regione Europa)
+3. **Impostazioni progetto → App → Web** → copia il `firebaseConfig`
+4. Incollalo nella sezione corrispondente di `config.js`
 
-### Credenziali attuali
-```javascript
-const firebaseConfig = {
-    apiKey: "AIzaSyBGy1u-1qF5qv8234rkEvjvEunyJAiogd4",
-    authDomain: "bacheca-c0441.firebaseapp.com",
-    databaseURL: "https://bacheca-c0441-default-rtdb.europe-west1.firebasedatabase.app",
-    projectId: "bacheca-c0441",
-    storageBucket: "bacheca-c0441.firebasestorage.app",
-    messagingSenderId: "800396955473",
-    appId: "1:800396955473:web:2e0a0607a0666122a58d70"
-};
-```
-
-⚠️ **Nota:** Le API keys sono pubbliche (è normale). Usa le **regole di sicurezza** in Firebase per proteggere i dati.
-
-## 🔐 Regole di Sicurezza Firebase
-
-Attualmente il database è in **modalità test** (chiunque può leggere/scrivere).
-
-**Per produzione, usa queste regole:**
-```json
-{
-  "rules": {
-    "events": {
-      ".read": true,
-      ".write": true
-    }
-  }
-}
-```
-
-Per restrizioni maggiori:
-- Usa **Firebase Authentication** per login
-- Restrizione per utente: `".write": "auth.uid === $uid"`
-
-## 🔄 Flusso di sincronizzazione
-
-1. **Al caricamento:** `autoSync()` legge da Firebase e fonde con i dati locali
-2. **Modifche locali:** Salvate in `localStorage` (subito)
-3. **Prossimo caricamento:** Sincronizza di nuovo
-
-**Per sync realtime durante la modifica:**
-Aggiungi una chiamata a `autoSync()` dopo ogni `saveNotes()` in:
-- `submitNote()` (dopo aggiunta evento)
-- `saveEditedNote()` (dopo modifica)
-- `deleteNote()` (dopo eliminazione)
-
-## 📱 Responsive
-
-Ottimizzato per:
-- 📱 Mobile (< 768px)
-- 📱 Tablet (768px - 1024px)
-- 🖥️ Desktop (> 1024px)
+Le API key di Firebase sono pubbliche per natura: i dati vanno protetti con le **regole di sicurezza** del database. Al momento le regole sono aperte (chiunque può leggere e scrivere).
 
 ## 📄 Licenza
 

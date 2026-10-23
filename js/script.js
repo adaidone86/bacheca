@@ -58,6 +58,7 @@ class BacheaCalendar {
         this.visibleColors = this.loadColorFilters(); // Colori visibili
         this.eventImageData = null;
         this.editImageData = null;
+        this.imageCache = {}; // Cache immagini: `${eventId}:${imageVersion}` -> dataURL
         this.currentEventLink = ''; // Link in aggiunta
         this.cropper = null;
         this.currentCropType = null; // 'event' o 'edit'
@@ -67,6 +68,8 @@ class BacheaCalendar {
         this.deviceNames = {}; // Mappa di deviceId -> nome
         this.eventsListener = null; // Listener per cambiamenti Firebase
         this.suppressSync = false; // Flag per evitare loop di sync
+        this.proposals = {}; // Eventi da fissare (senza data): proposals/{id}
+        this.openProposalId = null; // Proposta aperta nel modal
         this.setupCustomPopup();
         this.initializeDevice().then(() => this.init());
     }
@@ -95,7 +98,7 @@ class BacheaCalendar {
         popup.style.display = 'flex';
     }
 
-    showConfirmDialog(message) {
+    showConfirmDialog(message, okLabel = 'Elimina', okColor = '#f44336') {
         return new Promise((resolve) => {
             const modal = document.getElementById('confirmModal');
             const messageEl = document.getElementById('confirmMessage');
@@ -103,6 +106,8 @@ class BacheaCalendar {
             const okBtn = document.getElementById('confirmOkBtn');
 
             messageEl.textContent = message;
+            okBtn.textContent = okLabel;
+            okBtn.style.background = okColor;
             modal.style.display = 'flex';
 
             const handleCancel = () => {
@@ -205,7 +210,6 @@ class BacheaCalendar {
         // Prova localStorage prima
         const localId = localStorage.getItem('deviceId');
         if (localId) {
-            console.log('DeviceId da localStorage:', localId);
             return localId;
         }
 
@@ -213,7 +217,6 @@ class BacheaCalendar {
         try {
             const idbId = await this.getFromIndexedDB('deviceId');
             if (idbId) {
-                console.log('DeviceId da IndexedDB:', idbId);
                 localStorage.setItem('deviceId', idbId);
                 return idbId;
             }
@@ -277,7 +280,6 @@ class BacheaCalendar {
         }
 
         this.deviceId = deviceId;
-        console.log('Device ID inizializzato:', this.deviceId);
 
         // Verifica se il dispositivo esiste su Firebase
         const deviceRef = database.ref(`devices/${deviceId}`);
@@ -294,14 +296,12 @@ class BacheaCalendar {
 
             // Se il device non ha un nome, chiedi di impostarlo
             if (!this.deviceName || this.deviceName.trim() === '') {
-                console.log('Device senza nome detected. Richiedendo nome...');
                 await this.promptForDeviceName();
                 return;
             }
 
             // Migrazione retrocompatibile: se il device non ha un syncCode, generane uno
             if (!this.syncCode) {
-                console.log('Device vecchio senza syncCode detected. Generazione nuovo syncCode...');
                 this.syncCode = this.generateSyncCode();
 
                 // Aggiorna il device con il nuovo syncCode
@@ -316,7 +316,6 @@ class BacheaCalendar {
                     });
                 });
 
-                console.log('SyncCode assegnato al device vecchio:', this.syncCode);
             }
         }
     }
@@ -461,9 +460,6 @@ class BacheaCalendar {
             const syncCodeRef = database.ref(`syncCodes/${syncCode}`);
             const snapshot = await syncCodeRef.once('value');
 
-            console.log('🔍 Ricerca syncCode:', syncCode);
-            console.log('📊 Dati trovati:', snapshot.val());
-            console.log('✅ Exists:', snapshot.exists());
 
             if (!snapshot.exists()) {
                 console.error('SyncCode non valido:', syncCode);
@@ -493,7 +489,6 @@ class BacheaCalendar {
                 lastSeen: new Date().getTime()
             });
 
-            console.log('Sincronizzazione riuscita con il codice:', syncCode);
             return true;
         } catch (error) {
             console.error('Errore durante la sincronizzazione:', error);
@@ -624,17 +619,15 @@ class BacheaCalendar {
         this.loadDeviceNames(); // Carica i nomi dei devices
         // Aggiorna lastSeen ogni minuto
         setInterval(() => this.updateLastSeen(), 60000);
-        // Carica da GitHub PRIMA di renderizzare
-        this.loadFromGitHub().then(() => {
-            // Sincronizza con Firebase PRIMA di renderizzare
-            this.autoSync().then(() => {
-                this.render();
-                // Nascondi il loading quando tutto è pronto
-                const loadingScreen = document.getElementById('loadingScreen');
-                if (loadingScreen) {
-                    loadingScreen.style.display = 'none';
-                }
-            });
+        // Sincronizza con Firebase PRIMA di renderizzare
+        this.autoSync().then(() => {
+            this.render();
+            this.listenProposals();
+            // Nascondi il loading quando tutto è pronto
+            const loadingScreen = document.getElementById('loadingScreen');
+            if (loadingScreen) {
+                loadingScreen.style.display = 'none';
+            }
         });
     }
 
@@ -728,39 +721,16 @@ class BacheaCalendar {
         const menuBtn = document.getElementById('menuBtn');
         const menuDropdown = document.getElementById('menuDropdown');
         const changeModalBtn = document.getElementById('changeModalBtn');
-        const syncCodeSection = document.getElementById('syncCodeSection');
-        const syncCodeDisplay = document.getElementById('syncCodeDisplay');
-        const copySyncCodeBtn = document.getElementById('copySyncCodeBtn');
 
         if (menuBtn && menuDropdown) {
             menuBtn.addEventListener('click', () => {
                 menuDropdown.style.display = menuDropdown.style.display === 'none' ? 'block' : 'none';
-                // Aggiorna il syncCode quando il menu viene aperto
-                if (syncCodeDisplay && this.syncCode) {
-                    syncCodeDisplay.textContent = this.syncCode;
-                    syncCodeSection.style.display = 'block';
-                } else if (syncCodeSection) {
-                    syncCodeSection.style.display = 'none';
-                }
             });
 
             // Chiudi menu quando clicca fuori
             document.addEventListener('click', (e) => {
                 if (e.target !== menuBtn && !menuDropdown.contains(e.target)) {
                     menuDropdown.style.display = 'none';
-                }
-            });
-        }
-
-        if (copySyncCodeBtn) {
-            copySyncCodeBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                if (this.syncCode) {
-                    navigator.clipboard.writeText(this.syncCode).then(() => {
-                        this.showSuccessPopup('Codice copiato: ' + this.syncCode);
-                    }).catch(() => {
-                        this.showErrorPopup('Errore nella copia del codice');
-                    });
                 }
             });
         }
@@ -851,84 +821,8 @@ class BacheaCalendar {
             });
         });
 
-        // Gestione partecipanti form aggiunta
-        this.eventParticipantsList = [];
-
-        const eventWantToParticipateBtn = document.getElementById('eventWantToParticipateBtn');
-        if (eventWantToParticipateBtn) {
-            eventWantToParticipateBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                const inputGroup = document.getElementById('eventParticipantsInputGroup');
-                if (inputGroup) inputGroup.style.display = 'flex';
-                const input = document.getElementById('eventParticipantInput');
-                if (input) input.focus();
-            });
-        }
-
-        const eventParticipantSaveBtn = document.getElementById('eventParticipantSaveBtn');
-        if (eventParticipantSaveBtn) {
-            eventParticipantSaveBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                const name = document.getElementById('eventParticipantInput').value.trim();
-                if (name) {
-                    this.eventParticipantsList.push(name);
-                    const input = document.getElementById('eventParticipantInput');
-                    if (input) input.value = '';
-                    const inputGroup = document.getElementById('eventParticipantsInputGroup');
-                    if (inputGroup) inputGroup.style.display = 'none';
-                    this.renderEventParticipants();
-                }
-            });
-        }
-
-        // Gestione partecipanti form modifica (LEGACY - non più utilizzati nel nuovo sistema)
+        // Partecipanti del modal di modifica
         this.editParticipantsList = [];
-
-        const editHasParticipants = document.getElementById('editHasParticipants');
-        if (editHasParticipants) {
-            editHasParticipants.addEventListener('change', (e) => {
-                const group = document.getElementById('editParticipantsGroup');
-                if (group) group.style.display = e.target.checked ? 'block' : 'none';
-                if (e.target.checked) {
-                    this.renderEditParticipants();
-                }
-            });
-        }
-
-        const editAddParticipantBtn = document.getElementById('editAddParticipantBtn');
-        if (editAddParticipantBtn) {
-            editAddParticipantBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                const inputGroup = document.getElementById('editParticipantsInputGroup');
-                if (inputGroup) inputGroup.style.display = 'flex';
-                const input = document.getElementById('editParticipantInput');
-                if (input) input.focus();
-            });
-        }
-
-        const editParticipantSaveBtn = document.getElementById('editParticipantSaveBtn');
-        if (editParticipantSaveBtn) {
-            editParticipantSaveBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                const name = document.getElementById('editParticipantInput').value.trim();
-                if (name) {
-                    this.editParticipantsList.push(name);
-                    const input = document.getElementById('editParticipantInput');
-                    if (input) input.value = '';
-                    const group = document.getElementById('editParticipantsInputGroup');
-                    if (group) group.style.display = 'none';
-                    this.renderEditParticipants();
-
-                    // Salva immediatamente su Firebase
-                    if (this.editingNote) {
-                        const { dateKey, noteIndex } = this.editingNote;
-                        this.notes[dateKey][noteIndex].participants = this.editParticipantsList;
-                        this.saveNotes();
-                        this.autoSync();
-                    }
-                }
-            });
-        }
 
         // Settings
         const settingsBtn = document.getElementById('settingsBtn');
@@ -983,12 +877,6 @@ class BacheaCalendar {
             });
         }
 
-        // Reset SyncCode
-        const resetSyncCodeBtn = document.getElementById('resetSyncCodeBtn');
-        if (resetSyncCodeBtn) {
-            resetSyncCodeBtn.addEventListener('click', () => this.resetSyncCode());
-        }
-
         // Color filters
         document.querySelectorAll('.color-filter').forEach(checkbox => {
             checkbox.addEventListener('change', () => this.handleColorFilterChange());
@@ -1018,7 +906,6 @@ class BacheaCalendar {
         if (participateBtn) {
             participateBtn.addEventListener('click', (e) => {
                 e.preventDefault();
-                console.log('Click "Voglio partecipare"', this.deviceId);
                 this.addCurrentUserToParticipants();
             });
         } else {
@@ -1130,8 +1017,10 @@ class BacheaCalendar {
             document.getElementById('eventCoverContainer').style.backgroundImage = 'none';
             if (this.editingNote) {
                 const { dateKey, noteIndex } = this.editingNote;
-                this.notes[dateKey][noteIndex].image = null;
-                this.saveNotes();
+                const note = this.notes[dateKey][noteIndex];
+                this.saveEventImage(note.id, null);
+                delete note.image;
+                delete note.imageVersion;
             }
             this.syncToFirebase();
             this.render();
@@ -1196,7 +1085,6 @@ class BacheaCalendar {
                 if (this.editingNote) {
                     const { dateKey, noteIndex } = this.editingNote;
                     this.notes[dateKey][noteIndex].link = newLink;
-                    this.saveNotes();
                     this.syncToFirebase();
                     this.renderEditLink(newLink);
                     this.showSuccessPopup('Link salvato');
@@ -1211,7 +1099,6 @@ class BacheaCalendar {
             if (this.editingNote) {
                 const { dateKey, noteIndex } = this.editingNote;
                 this.notes[dateKey][noteIndex].link = '';
-                this.saveNotes();
                 this.autoSync();
                 this.renderEditLink('');
                 this.showSuccessPopup('Link eliminato');
@@ -1307,6 +1194,8 @@ class BacheaCalendar {
                 }
             });
         }
+
+        this.setupProposalListeners();
     }
 
     showLoading() {
@@ -1474,6 +1363,7 @@ class BacheaCalendar {
                     if (!isPastDay) {
                         noteEl.querySelector('.note-text').addEventListener('click', (e) => {
                             e.stopPropagation();
+                            if (this.suppressNextClick) return; // Click generato dalla fine di un trascinamento touch
                             this.openEditModal(dateKey, index);
                         });
                         // Abilita drag and drop solo se il giorno non è passato
@@ -1490,7 +1380,10 @@ class BacheaCalendar {
             // Aggiungi listener di click solo se il giorno non è passato e è del mese corrente
             const canAddEvents = !isDisabledDay && dayObj.isCurrentMonth;
             if (canAddEvents) {
-                dayEl.addEventListener('click', () => this.openModal(dayObj.date));
+                dayEl.addEventListener('click', () => {
+                    if (this.suppressNextClick) return;
+                    this.openModal(dayObj.date);
+                });
                 dayEl.style.cursor = 'pointer';
             } else {
                 dayEl.style.cursor = 'default';
@@ -1500,6 +1393,8 @@ class BacheaCalendar {
 
             daysGrid.appendChild(dayEl);
         });
+
+        this.renderProposals();
     }
 
     openModal(date) {
@@ -1519,8 +1414,6 @@ class BacheaCalendar {
         document.getElementById('eventNotes').value = '';
         document.getElementById('eventLink').value = '';
         document.getElementById('eventImage').value = '';
-        this.eventParticipantsList = [];
-        this.renderEventParticipants();
         this.eventImageData = null;
 
         // Reset immagine nel container (mantieni il gradiente viola)
@@ -1552,9 +1445,7 @@ class BacheaCalendar {
         document.getElementById('eventLocation').value = '';
         document.getElementById('eventNotes').value = '';
         document.getElementById('eventLink').value = '';
-        this.eventParticipantsList = [];
         this.currentEventLink = '';
-        this.renderEventParticipants();
 
         // Resetta i tab del modal di aggiunta
         const modal = document.getElementById('modal');
@@ -1567,29 +1458,6 @@ class BacheaCalendar {
         document.getElementById('modal').classList.remove('active');
         document.getElementById('modal').style.display = 'none';
         this.selectedDate = null;
-    }
-
-    renderEventParticipants() {
-        const listEl = document.getElementById('eventParticipantsList');
-        if (!listEl) return; // La sezione partecipanti non esiste nel form di aggiunta
-        listEl.innerHTML = '';
-
-        this.eventParticipantsList.forEach((participant, index) => {
-            const itemEl = document.createElement('div');
-            itemEl.className = 'participant-item';
-            itemEl.innerHTML = `
-                <span>${this.escapeHtml(participant)}</span>
-                <button type="button" class="btn-remove-participant" data-index="${index}">Elimina</button>
-            `;
-
-            itemEl.querySelector('.btn-remove-participant').addEventListener('click', (e) => {
-                e.preventDefault();
-                this.eventParticipantsList.splice(index, 1);
-                this.renderEventParticipants();
-            });
-
-            listEl.appendChild(itemEl);
-        });
     }
 
     async renderEditParticipants() {
@@ -1605,31 +1473,25 @@ class BacheaCalendar {
 
         // Carica i nomi di tutti i partecipanti
         const participantNames = await Promise.all(this.editParticipantsList.map(async (participant) => {
-            console.log('Caricando partecipante:', participant);
             // Retrocompatibilità: se è una stringa corta, è il vecchio formato (nome diretto)
             if (participant.length < 20) {
-                console.log('Formato vecchio:', participant);
                 return { id: participant, name: participant, syncCode: null };
             }
 
             // Nuovo formato: è un ID, leggi il nome da Firebase
             try {
                 const snapshot = await database.ref(`devices/${participant}`).once('value');
-                console.log('Snapshot dispositivo:', participant, snapshot.exists(), snapshot.val());
                 if (snapshot.exists()) {
                     const deviceData = snapshot.val();
-                    console.log('Dati dispositivo:', deviceData);
                     let name = deviceData.name;
                     let syncCode = deviceData.syncCode || null;
 
                     // Se il nome non è disponibile, leggi dal syncCode
                     if (!name && syncCode) {
-                        console.log('Nome mancante, cercando in syncCode:', syncCode);
                         const syncSnapshot = await database.ref(`syncCodes/${syncCode}`).once('value');
                         if (syncSnapshot.exists()) {
                             const syncData = syncSnapshot.val();
                             name = syncData.name;
-                            console.log('Nome trovato dal syncCode:', name);
 
                             // Salva il nome nel dispositivo per la prossima volta
                             await database.ref(`devices/${participant}`).update({
@@ -1638,10 +1500,8 @@ class BacheaCalendar {
                         }
                     }
 
-                    console.log('Ritornando partecipante con nome:', { id: participant, name: name || 'Senza nome', syncCode });
                     return { id: participant, name: name || 'Senza nome', syncCode };
                 }
-                console.log('Dispositivo non trovato:', participant);
                 return { id: participant, name: 'Sconosciuto', syncCode: null };
             } catch (error) {
                 console.error('Errore caricamento dispositivo:', participant, error);
@@ -1668,7 +1528,6 @@ class BacheaCalendar {
         });
 
         displayedParticipants.forEach((participantData) => {
-            console.log('Renderizzando partecipante:', participantData);
             // Controlla se è l'utente corrente (per syncCode o deviceId)
             let isCurrentUser = participantData.id === this.deviceId;
             if (!isCurrentUser && this.syncCode && participantData.syncCode) {
@@ -1688,7 +1547,6 @@ class BacheaCalendar {
                     <span>${this.escapeHtml(participantData.name)}</span>
                 `;
             }
-            console.log('HTML generato:', itemEl.innerHTML);
 
             const removeBtn = itemEl.querySelector('.btn-remove-participant');
             if (removeBtn) {
@@ -1702,18 +1560,14 @@ class BacheaCalendar {
                     if (this.editingNote) {
                         const { dateKey, noteIndex } = this.editingNote;
                         this.notes[dateKey][noteIndex].participants = this.editParticipantsList;
-                        this.saveNotes();
                         this.autoSync();
                     }
                 });
             }
 
             listEl.appendChild(itemEl);
-            console.log('Partecipante aggiunto al DOM:', itemEl);
         });
 
-        console.log('Final listEl innerHTML:', listEl.innerHTML);
-        console.log('editParticipantsList:', this.editParticipantsList);
 
         // Aggiorna il button "Voglio partecipare"
         await this.updateParticipateButton();
@@ -1752,7 +1606,6 @@ class BacheaCalendar {
             });
         }
 
-        console.log('updateParticipateButton:', { isParticipant, deviceId: this.deviceId, syncCode: this.syncCode, participants: this.editParticipantsList });
 
         if (isParticipant) {
             btn.style.display = 'none';
@@ -1762,8 +1615,6 @@ class BacheaCalendar {
     }
 
     addCurrentUserToParticipants() {
-        console.log('addCurrentUserToParticipants called', { deviceId: this.deviceId, editingNote: this.editingNote });
-
         if (!this.editParticipantsList.includes(this.deviceId)) {
             this.editParticipantsList.push(this.deviceId);
 
@@ -1772,7 +1623,6 @@ class BacheaCalendar {
                 this.deviceNames[this.deviceId] = this.deviceName;
             }
 
-            console.log('Aggiunto utente ai partecipanti:', this.editParticipantsList);
             this.renderEditParticipants();
 
             // Aggiorna la visibilità dell'input chat
@@ -1782,12 +1632,9 @@ class BacheaCalendar {
             if (this.editingNote) {
                 const { dateKey, noteIndex } = this.editingNote;
                 this.notes[dateKey][noteIndex].participants = this.editParticipantsList;
-                this.saveNotes();
                 this.autoSync();
                 this.showSuccessPopup('Adesso sei un partecipante!');
             }
-        } else {
-            console.log('Utente già partecipante');
         }
     }
 
@@ -1822,9 +1669,14 @@ class BacheaCalendar {
     saveCrop() {
         if (!this.cropper) return;
 
-        const canvas = this.cropper.getCroppedCanvas();
-        // Comprimi l'immagine a qualità 0.7 (70%) per occupare meno spazio
-        const croppedImage = canvas.toDataURL('image/jpeg', 0.7);
+        // Limita la risoluzione (3:1) e comprimi per occupare meno spazio
+        const canvas = this.cropper.getCroppedCanvas({
+            maxWidth: 1200,
+            maxHeight: 400,
+            fillColor: '#fff',
+            imageSmoothingQuality: 'high'
+        });
+        const croppedImage = canvas.toDataURL('image/jpeg', 0.65);
 
         if (this.currentCropType === 'event') {
             this.eventImageData = croppedImage;
@@ -1841,12 +1693,16 @@ class BacheaCalendar {
             coverDiv.style.backgroundAttachment = 'scroll';
             coverDiv.style.minHeight = '180px';
 
-            // Auto-save dell'immagine
+            // Auto-save dell'immagine: prima l'immagine, poi l'evento che la referenzia
             if (this.editingNote) {
                 const { dateKey, noteIndex } = this.editingNote;
-                this.notes[dateKey][noteIndex].image = croppedImage;
-                this.saveNotes();
-                this.syncToFirebase();
+                const note = this.notes[dateKey][noteIndex];
+                const imageVersion = Date.now();
+                this.saveEventImage(note.id, croppedImage, imageVersion).then(() => {
+                    delete note.image;
+                    note.imageVersion = imageVersion;
+                    this.syncToFirebase();
+                });
             }
         }
 
@@ -1946,6 +1802,12 @@ class BacheaCalendar {
         // Genera un ID unico
         const id = 'evt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
+        // L'immagine va salvata prima dell'evento, così gli altri client la trovano già
+        const imageVersion = this.eventImageData ? Date.now() : null;
+        const imageSaved = this.eventImageData
+            ? this.saveEventImage(id, this.eventImageData, imageVersion)
+            : Promise.resolve();
+
         this.notes[dateKey].push({
             id: id,
             title: title,
@@ -1954,13 +1816,12 @@ class BacheaCalendar {
             notes: document.getElementById('eventNotes').value.trim(),
             color: this.selectedColor,
             link: this.currentEventLink,
-            image: this.eventImageData,
-            participants: this.eventParticipantsList,
+            imageVersion: imageVersion,
+            participants: [],
             creatorId: this.deviceId
         });
 
-        this.saveNotes();
-        this.syncToFirebase(); // Sincronizza con Firebase in real-time
+        imageSaved.then(() => this.syncToFirebase()); // Sincronizza con Firebase in real-time
         this.closeModal();
         this.render(); // Usa render() per renderizzare la vista corretta
         setTimeout(() => this.showSuccessPopup('Evento aggiunto con successo!'), 100);
@@ -1985,8 +1846,11 @@ class BacheaCalendar {
                 database.ref(`chatReadStatus/${eventId}`).remove().catch(error => {
                     console.error('Errore eliminazione chatReadStatus:', error);
                 });
+                // Elimina l'immagine dell'evento
+                this.saveEventImage(eventId, null).catch(error => {
+                    console.error('Errore eliminazione immagine:', error);
+                });
             }
-            this.saveNotes();
             this.syncToFirebase(); // Sincronizza con Firebase in real-time
         }
     }
@@ -2008,21 +1872,6 @@ class BacheaCalendar {
         this.render();
     }
 
-    deleteEventsForMonth(monthDate) {
-        const year = monthDate.getFullYear();
-        const month = String(monthDate.getMonth() + 1).padStart(2, '0');
-
-        const keysToDelete = Object.keys(this.notes).filter(dateKey =>
-            dateKey.startsWith(`${year}-${month}-`)
-        );
-
-        keysToDelete.forEach(dateKey => {
-            delete this.notes[dateKey];
-        });
-
-        this.saveNotes();
-    }
-
     today() {
         this.currentDate = new Date();
         this.render();
@@ -2042,21 +1891,105 @@ class BacheaCalendar {
         prevBtn.style.display = isCurrentMonth ? 'none' : 'block';
     }
 
-    saveNotes() {
-        // I dati vengono salvati SOLO su Firebase via autoSync()
-        // Non salviamo più su localStorage per evitare conflitti al refresh
-    }
-
-    loadNotes() {
-        // I dati vengono caricati SOLO da Firebase via autoSync()
-        // Non carichiamo più da localStorage
-        return {};
-    }
-
     escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    // Immagini: salvate a parte in eventImages/{eventId}.
+    // Nell'evento resta solo imageVersion (timestamp), che cambia a ogni nuova immagine.
+    getEventImage(event) {
+        if (!event || !event.id) return Promise.resolve(null);
+        if (event.image) return Promise.resolve(event.image); // Formato vecchio, non ancora migrato
+        if (!event.imageVersion) return Promise.resolve(null);
+
+        const cacheKey = `${event.id}:${event.imageVersion}`;
+        if (this.imageCache[cacheKey]) return Promise.resolve(this.imageCache[cacheKey]);
+
+        return database.ref(`eventImages/${event.id}`).once('value')
+            .then(snapshot => {
+                const image = snapshot.val();
+                if (image) this.imageCache[cacheKey] = image;
+                return image;
+            })
+            .catch(error => {
+                console.error('Errore caricamento immagine:', error);
+                return null;
+            });
+    }
+
+    saveEventImage(eventId, image, imageVersion) {
+        const ref = database.ref(`eventImages/${eventId}`);
+        if (image) {
+            this.imageCache[`${eventId}:${imageVersion}`] = image;
+            return ref.set(image);
+        }
+        return ref.remove();
+    }
+
+    // Ridimensiona e ricomprime un'immagine (usata per migrare le immagini vecchie)
+    compressImage(dataUrl, maxWidth = 1200, quality = 0.65) {
+        return new Promise(resolve => {
+            const img = new Image();
+            img.onload = () => {
+                try {
+                    const scale = Math.min(1, maxWidth / img.width);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.round(img.width * scale);
+                    canvas.height = Math.round(img.height * scale);
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#fff';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const compressed = canvas.toDataURL('image/jpeg', quality);
+                    resolve(compressed.length < dataUrl.length ? compressed : dataUrl);
+                } catch (e) {
+                    resolve(dataUrl);
+                }
+            };
+            img.onerror = () => resolve(dataUrl);
+            img.src = dataUrl;
+        });
+    }
+
+    // Migrazione una tantum: sposta le immagini base64 dagli eventi a eventImages/{id}.
+    // L'immagine viene tolta dall'evento solo dopo che è stata scritta nel nuovo nodo.
+    async migrateLegacyImages() {
+        const writes = [];
+        for (const dayNotes of Object.values(this.notes)) {
+            if (!dayNotes) continue;
+            for (const note of Object.values(dayNotes)) {
+                if (!note || !note.image || !note.id) continue;
+                writes.push(
+                    this.compressImage(note.image)
+                        .then(image => {
+                            const imageVersion = Date.now();
+                            return this.saveEventImage(note.id, image, imageVersion).then(() => {
+                                note.imageVersion = imageVersion;
+                                delete note.image;
+                            });
+                        })
+                        .catch(error => console.error('Errore migrazione immagine:', note.id, error))
+                );
+            }
+        }
+        await Promise.all(writes);
+    }
+
+    // Mostra la copertina nel modal di modifica, se l'evento aperto è ancora lo stesso
+    showEditCover(note) {
+        this.getEventImage(note).then(image => {
+            const current = this.editingNote
+                && this.notes[this.editingNote.dateKey]
+                && this.notes[this.editingNote.dateKey][this.editingNote.noteIndex];
+            if (!current || current.id !== note.id) return;
+
+            this.editImageData = image;
+            const coverContainer = document.getElementById('eventCoverContainer');
+            coverContainer.style.backgroundImage = image ? `url("${image}")` : 'none';
+            coverContainer.style.backgroundAttachment = image ? 'scroll' : 'fixed';
+        });
     }
 
     // Drag and Drop
@@ -2091,6 +2024,117 @@ class BacheaCalendar {
         noteEl.addEventListener('mouseleave', () => {
             isDragging = false;
         });
+
+        // Touch (mobile): tieni premuto il post-it, poi trascinalo sul giorno.
+        // Se il dito si muove prima della pressione lunga è uno scroll e non si trascina nulla.
+        const longPressDelay = 400;
+        let longPressTimer = null;
+        let touchStartX = 0;
+        let touchStartY = 0;
+
+        // Niente menu contestuale o selezione del testo durante la pressione lunga
+        noteEl.style.webkitTouchCallout = 'none';
+        noteEl.style.webkitUserSelect = 'none';
+        noteEl.style.userSelect = 'none';
+
+        const cancelLongPress = () => {
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+        };
+
+        noteEl.addEventListener('touchstart', (e) => {
+            if (e.touches.length !== 1) return;
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            cancelLongPress();
+            longPressTimer = setTimeout(() => {
+                longPressTimer = null;
+                if (navigator.vibrate) navigator.vibrate(30);
+                this.startTouchDrag(noteEl, dateKey, noteIndex, touchStartX, touchStartY);
+            }, longPressDelay);
+        }, { passive: true });
+
+        noteEl.addEventListener('touchmove', (e) => {
+            if (!longPressTimer) return;
+            const touch = e.touches[0];
+            if (Math.abs(touch.clientX - touchStartX) > dragThreshold || Math.abs(touch.clientY - touchStartY) > dragThreshold) {
+                cancelLongPress();
+            }
+        }, { passive: true });
+
+        noteEl.addEventListener('touchend', cancelLongPress);
+        noteEl.addEventListener('touchcancel', cancelLongPress);
+        noteEl.addEventListener('contextmenu', (e) => {
+            if (this.isTouchDragging) e.preventDefault();
+        });
+    }
+
+    startTouchDrag(noteEl, sourceDateKey, noteIndex, startX, startY) {
+        this.isTouchDragging = true;
+
+        const dragGhost = noteEl.cloneNode(true);
+        dragGhost.style.position = 'fixed';
+        dragGhost.style.opacity = '0.8';
+        dragGhost.style.pointerEvents = 'none';
+        dragGhost.style.zIndex = '10000';
+        dragGhost.style.width = noteEl.offsetWidth + 'px';
+        dragGhost.style.transform = 'scale(1.1)';
+        dragGhost.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.3)';
+        document.body.appendChild(dragGhost);
+
+        const daysGrid = document.getElementById('daysGrid');
+        const daysElements = Array.from(daysGrid.querySelectorAll('.day'));
+        let lastX = startX;
+        let lastY = startY;
+
+        const findDayAt = (x, y) => {
+            const el = document.elementFromPoint(x, y);
+            return el ? el.closest('#daysGrid .day') : null;
+        };
+
+        const moveGhost = (x, y) => {
+            // Il fantasma sta sopra il dito, così resta visibile
+            dragGhost.style.left = (x - noteEl.offsetWidth / 2) + 'px';
+            dragGhost.style.top = (y - 50) + 'px';
+            daysElements.forEach(dayEl => dayEl.classList.remove('drag-over'));
+            const dayEl = findDayAt(x, y);
+            if (dayEl) dayEl.classList.add('drag-over');
+        };
+        moveGhost(startX, startY);
+
+        const handleTouchMove = (e) => {
+            e.preventDefault(); // Blocca lo scroll mentre si trascina
+            const touch = e.touches[0];
+            lastX = touch.clientX;
+            lastY = touch.clientY;
+            moveGhost(lastX, lastY);
+        };
+
+        const finish = (drop) => {
+            document.removeEventListener('touchmove', handleTouchMove);
+            document.removeEventListener('touchend', handleTouchEnd);
+            document.removeEventListener('touchcancel', handleTouchCancel);
+            dragGhost.remove();
+            daysElements.forEach(dayEl => dayEl.classList.remove('drag-over'));
+            this.isTouchDragging = false;
+
+            // Il browser può generare un click alla fine del tocco: non deve aprire modal
+            this.suppressNextClick = true;
+            setTimeout(() => { this.suppressNextClick = false; }, 400);
+
+            if (drop) {
+                const targetDay = findDayAt(lastX, lastY);
+                if (targetDay) this.dropEvent(targetDay, sourceDateKey, noteIndex);
+            }
+        };
+        const handleTouchEnd = () => finish(true);
+        const handleTouchCancel = () => finish(false);
+
+        document.addEventListener('touchmove', handleTouchMove, { passive: false });
+        document.addEventListener('touchend', handleTouchEnd);
+        document.addEventListener('touchcancel', handleTouchCancel);
     }
 
     startDrag(noteEl, sourceDateKey, noteIndex, sourceDayObj) {
@@ -2158,26 +2202,29 @@ class BacheaCalendar {
 
         const targetDateKey = notesContainer.id.replace('notes-', '');
 
-        // Valida il giorno target
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const [year, month, day] = targetDateKey.split('-').map(Number);
-        const targetDate = new Date(year, month - 1, day);
+        if (this.moveEvent(sourceDateKey, noteIndex, targetDateKey)) {
+            this.render();
+            this.showSuccessPopup('Evento spostato con successo!');
+        }
+    }
+
+    // Sposta un evento in un altro giorno (drag & drop o campo Data del modal).
+    // Stesso id: chat, immagine e partecipanti restano collegati.
+    moveEvent(sourceDateKey, noteIndex, targetDateKey) {
+        if (sourceDateKey === targetDateKey) {
+            return false; // Stesso giorno
+        }
 
         // Non puoi spostare su giorni passati o oggi
-        if (targetDate <= today) {
+        if (!this.isFutureDateKey(targetDateKey)) {
             this.showErrorPopup('Non puoi spostare su giorni passati o di oggi');
-            return;
+            return false;
         }
 
-        if (sourceDateKey === targetDateKey) {
-            return; // Stesso giorno
-        }
+        const note = this.notes[sourceDateKey] && this.notes[sourceDateKey][noteIndex];
+        if (!note) return false;
 
-        // Sposta l'evento
-        const note = this.notes[sourceDateKey][noteIndex];
         this.notes[sourceDateKey].splice(noteIndex, 1);
-
         if (this.notes[sourceDateKey].length === 0) {
             delete this.notes[sourceDateKey];
         }
@@ -2185,13 +2232,10 @@ class BacheaCalendar {
         if (!this.notes[targetDateKey]) {
             this.notes[targetDateKey] = [];
         }
-
         this.notes[targetDateKey].push(note);
 
-        this.saveNotes();
-        this.autoSync();
-        this.render();
-        this.showSuccessPopup('Evento spostato con successo!');
+        this.syncToFirebase();
+        return true;
     }
 
     // Ordina eventi per orario
@@ -2437,6 +2481,13 @@ class BacheaCalendar {
         addBtn.addEventListener('click', () => this.openSelectDayModal());
         eventsList.appendChild(addBtn);
 
+        // Eventi da fissare, sotto il tasto "+"
+        const proposalsSection = document.createElement('div');
+        proposalsSection.id = 'proposalsSection';
+        proposalsSection.style.marginBottom = '8px';
+        eventsList.appendChild(proposalsSection);
+        this.renderProposals();
+
         if (visibleEvents.length === 0) {
             const emptyDiv = document.createElement('div');
             emptyDiv.className = 'empty-list';
@@ -2462,7 +2513,7 @@ class BacheaCalendar {
             eventEl.setAttribute('data-event-id', event.id);
             eventEl.style.position = 'relative';
             eventEl.innerHTML = `
-                <div style="position: relative; background-image: url(${event.image || ''}); background-size: cover; background-position: center;">
+                <div class="event-cover" style="position: relative; background-size: cover; background-position: center;">
                     <div style="position: relative; z-index: 10; padding: 16px; background: rgba(255, 255, 255, 0.95);">
                         <div class="event-date">${dateStr.charAt(0).toUpperCase() + dateStr.slice(1)}</div>
                         <div class="event-title">${this.escapeHtml(event.title)}</div>
@@ -2472,9 +2523,21 @@ class BacheaCalendar {
                         ${participantsHtml}
                     </div>
                     <span class="list-event-badge" style="position: absolute; top: 10px; right: 10px; background: #f44336; color: white; border-radius: 50%; width: 24px; height: 24px; display: none; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; z-index: 11;"></span>
-                    ${event.image ? `<div style="position: absolute; top: 0; right: 0; width: 100%; height: 100%; background-image: url(${event.image}); background-size: cover; background-position: center; clip-path: polygon(15% 0%, 100% 0%, 100% 100%, 0% 100%, 15% 75%, 0% 50%, 15% 25%); z-index: 1;"></div>` : ''}
                 </div>
             `;
+
+            // Copertina caricata a parte (da eventImages)
+            if (event.image || event.imageVersion) {
+                this.getEventImage(event).then(image => {
+                    if (!image) return;
+                    const cover = eventEl.querySelector('.event-cover');
+                    cover.style.backgroundImage = `url("${image}")`;
+                    const decoration = document.createElement('div');
+                    decoration.style.cssText = 'position: absolute; top: 0; right: 0; width: 100%; height: 100%; background-size: cover; background-position: center; clip-path: polygon(15% 0%, 100% 0%, 100% 100%, 0% 100%, 15% 75%, 0% 50%, 15% 25%); z-index: 1;';
+                    decoration.style.backgroundImage = `url("${image}")`;
+                    cover.appendChild(decoration);
+                });
+            }
 
             eventEl.addEventListener('click', () => {
                 this.openEditModal(event.dateKey, event.index);
@@ -2623,7 +2686,7 @@ class BacheaCalendar {
             this.isSyncing = true;
 
             // Carica i dati da Firebase per il caricamento iniziale
-            database.ref('events').once('value', (snapshot) => {
+            database.ref('events').once('value', async (snapshot) => {
                 // Se this.notes è vuoto (caricamento iniziale), usa i dati da Firebase
                 if (Object.keys(this.notes).length === 0 && snapshot.exists()) {
                     this.notes = snapshot.val();
@@ -2642,12 +2705,18 @@ class BacheaCalendar {
                             const eventYear = parseInt(year);
                             const eventMonth = parseInt(month);
 
-                            // Se l'evento è di un mese precedente, cancellalo
+                            // Se l'evento è di un mese precedente, cancellalo (con la sua immagine)
                             if (eventYear < currentYear || (eventYear === currentYear && eventMonth < currentMonth)) {
+                                Object.values(this.notes[dateKey] || {}).forEach(note => {
+                                    if (note && note.id && note.imageVersion) this.saveEventImage(note.id, null);
+                                });
                                 delete this.notes[dateKey];
                             }
                         });
                     }
+
+                    // Sposta le immagini vecchie (base64 dentro l'evento) in eventImages
+                    await this.migrateLegacyImages();
                 }
 
                 // Salva i dati locali su Firebase (sovrascrivi completamente)
@@ -2728,6 +2797,9 @@ class BacheaCalendar {
                 }
             }
         });
+
+        // Badge delle proposte "Da fissare"
+        this.updateProposalBadges();
 
         // Aggiorna il badge del pulsante Chat se il modal è aperto
         if (this.editingNote) {
@@ -2924,6 +2996,7 @@ class BacheaCalendar {
 
         // Aggiorna i campi del modal
         document.getElementById('editTitle').value = note.title || '';
+        this.setEditDateField(dateKey);
         document.getElementById('editTime').value = note.time || '';
         document.getElementById('editLocation').value = note.location || '';
         document.getElementById('editNotes').value = note.notes || '';
@@ -2941,13 +3014,7 @@ class BacheaCalendar {
         }
 
         // Aggiorna l'immagine
-        this.editImageData = note.image || null;
-        const coverContainer = document.getElementById('eventCoverContainer');
-        if (note.image) {
-            coverContainer.style.backgroundImage = `url(${note.image})`;
-        } else {
-            coverContainer.style.backgroundImage = 'none';
-        }
+        this.showEditCover(note);
 
         // Ricarica la lista dei partecipanti
         this.updateParticipateButton();
@@ -2962,6 +3029,7 @@ class BacheaCalendar {
         const note = this.notes[dateKey][noteIndex];
 
         document.getElementById('editTitle').value = note.title || '';
+        this.setEditDateField(dateKey);
         document.getElementById('editTime').value = note.time || '';
         document.getElementById('editLocation').value = note.location || '';
         document.getElementById('editNotes').value = note.notes || '';
@@ -2984,18 +3052,14 @@ class BacheaCalendar {
             colorRadio.checked = true;
         }
 
-        // Carica l'immagine se esiste
-        this.editImageData = note.image || null;
+        // Parti dal gradiente viola, poi carica l'immagine se esiste
+        this.editImageData = null;
         const coverContainer = document.getElementById('eventCoverContainer');
-        if (note.image) {
-            coverContainer.style.backgroundImage = `url(${note.image})`;
-            coverContainer.style.backgroundAttachment = 'scroll';
-        } else {
-            coverContainer.style.backgroundImage = 'none';
-            coverContainer.style.backgroundAttachment = 'fixed';
-        }
+        coverContainer.style.backgroundImage = 'none';
+        coverContainer.style.backgroundAttachment = 'fixed';
         // Mantieni sempre una min-height per mostrare il gradiente viola
         coverContainer.style.minHeight = '180px';
+        this.showEditCover(note);
 
         // Carica e visualizza i messaggi della chat
         this.loadAndDisplayChatMessages(note.id);
@@ -3045,106 +3109,7 @@ class BacheaCalendar {
                 database.ref(`chatReadStatus/${eventId}/${this.syncCode}`).once('value', (statusSnapshot) => {
                     const lastReadTimestamp = statusSnapshot.exists() ? statusSnapshot.val().lastReadTimestamp : 0;
 
-                    const messages = snapshot.val();
-                    const messageIds = Object.keys(messages).sort((a, b) => messages[a].timestamp - messages[b].timestamp);
-
-                    // Accorpa messaggi consecutivi dello stesso utente
-                    let groupedMessages = [];
-                    let currentGroup = null;
-
-                    messageIds.forEach(msgId => {
-                        const msg = messages[msgId];
-
-                        if (!currentGroup || currentGroup.deviceId !== msg.deviceId) {
-                            // Nuovo utente, crea un nuovo gruppo
-                            if (currentGroup) {
-                                groupedMessages.push(currentGroup);
-                            }
-                            currentGroup = {
-                                deviceId: msg.deviceId,
-                                name: msg.name,
-                                texts: [msg.text],
-                                timestamp: msg.timestamp
-                            };
-                        } else {
-                            // Stesso utente, aggiungi il testo al gruppo
-                            currentGroup.texts.push(msg.text);
-                        }
-                    });
-
-                    if (currentGroup) {
-                        groupedMessages.push(currentGroup);
-                    }
-
-                    // Visualizza i gruppi di messaggi con separatore
-                    let separatorAdded = false;
-                    let separatorElement = null;
-                    groupedMessages.forEach(group => {
-                        // Aggiungi il separatore prima del primo messaggio non letto
-                        if (!separatorAdded && group.timestamp > lastReadTimestamp) {
-                            const separatorEl = document.createElement('div');
-                            separatorEl.style.cssText = `
-                                width: 100%;
-                                height: 2px;
-                                background: linear-gradient(to right, transparent, #667eea, transparent);
-                                margin: 12px 0;
-                                position: relative;
-                            `;
-                            const labelEl = document.createElement('div');
-                            labelEl.style.cssText = `
-                                text-align: center;
-                                font-size: 0.75rem;
-                                color: #667eea;
-                                margin-top: -10px;
-                                margin-bottom: 12px;
-                            `;
-                            labelEl.textContent = 'Nuovi messaggi';
-                            messagesContainer.appendChild(separatorEl);
-                            messagesContainer.appendChild(labelEl);
-                            separatorElement = separatorEl;
-                            separatorAdded = true;
-                        }
-
-                        const isYou = group.deviceId === this.deviceId;
-                        const messageEl = document.createElement('div');
-                        messageEl.style.cssText = `
-                            display: flex;
-                            flex-direction: column;
-                            align-items: ${isYou ? 'flex-end' : 'flex-start'};
-                            gap: 4px;
-                        `;
-
-                        const bubbleEl = document.createElement('div');
-                        bubbleEl.style.cssText = `
-                            max-width: 70%;
-                            padding: 10px 14px;
-                            border-radius: 12px;
-                            word-wrap: break-word;
-                            font-size: 0.95rem;
-                            white-space: pre-wrap;
-                            ${isYou
-                                ? 'background: #667eea; color: white; border-radius: 18px 18px 4px 18px;'
-                                : 'background: white; color: #333; border: 1px solid #ddd; border-radius: 18px 18px 18px 4px;'}
-                        `;
-                        bubbleEl.textContent = group.texts.join('\n');
-
-                        const nameEl = document.createElement('div');
-                        nameEl.style.cssText = `font-size: 0.75rem; color: #999; ${isYou ? 'text-align: right;' : 'text-align: left;'}`;
-                        nameEl.textContent = group.name;
-
-                        messageEl.appendChild(nameEl);
-                        messageEl.appendChild(bubbleEl);
-                        messagesContainer.appendChild(messageEl);
-                    });
-
-                    // Scroll sempre al fondo
-                    setTimeout(() => {
-                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                        // Assicurati che lo scroll avvenga anche se il container non è ancora renderizzato
-                        setTimeout(() => {
-                            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                        }, 50);
-                    }, 150);
+                    this.renderChatInto(messagesContainer, snapshot.val(), lastReadTimestamp);
                 });
 
                 // Aggiorna i badge quando i messaggi cambiano
@@ -3161,6 +3126,109 @@ class BacheaCalendar {
         } catch (error) {
             console.error('Errore caricamento messaggi chat:', error);
         }
+    }
+
+    // Disegna i messaggi di una chat (eventi e proposte): gruppi per mittente e separatore "Nuovi messaggi"
+    renderChatInto(messagesContainer, messages, lastReadTimestamp) {
+        const messageIds = Object.keys(messages).sort((a, b) => messages[a].timestamp - messages[b].timestamp);
+
+        // Accorpa messaggi consecutivi dello stesso utente
+        let groupedMessages = [];
+        let currentGroup = null;
+
+        messageIds.forEach(msgId => {
+            const msg = messages[msgId];
+
+            if (!currentGroup || currentGroup.deviceId !== msg.deviceId) {
+                // Nuovo utente, crea un nuovo gruppo
+                if (currentGroup) {
+                    groupedMessages.push(currentGroup);
+                }
+                currentGroup = {
+                    deviceId: msg.deviceId,
+                    name: msg.name,
+                    texts: [msg.text],
+                    timestamp: msg.timestamp
+                };
+            } else {
+                // Stesso utente, aggiungi il testo al gruppo
+                currentGroup.texts.push(msg.text);
+            }
+        });
+
+        if (currentGroup) {
+            groupedMessages.push(currentGroup);
+        }
+
+        // Visualizza i gruppi di messaggi con separatore
+        let separatorAdded = false;
+        let separatorElement = null;
+        groupedMessages.forEach(group => {
+            // Aggiungi il separatore prima del primo messaggio non letto
+            if (!separatorAdded && group.timestamp > lastReadTimestamp) {
+                const separatorEl = document.createElement('div');
+                separatorEl.style.cssText = `
+                    width: 100%;
+                    height: 2px;
+                    background: linear-gradient(to right, transparent, #667eea, transparent);
+                    margin: 12px 0;
+                    position: relative;
+                `;
+                const labelEl = document.createElement('div');
+                labelEl.style.cssText = `
+                    text-align: center;
+                    font-size: 0.75rem;
+                    color: #667eea;
+                    margin-top: -10px;
+                    margin-bottom: 12px;
+                `;
+                labelEl.textContent = 'Nuovi messaggi';
+                messagesContainer.appendChild(separatorEl);
+                messagesContainer.appendChild(labelEl);
+                separatorElement = separatorEl;
+                separatorAdded = true;
+            }
+
+            const isYou = group.deviceId === this.deviceId;
+            const messageEl = document.createElement('div');
+            messageEl.style.cssText = `
+                display: flex;
+                flex-direction: column;
+                align-items: ${isYou ? 'flex-end' : 'flex-start'};
+                gap: 4px;
+            `;
+
+            const bubbleEl = document.createElement('div');
+            bubbleEl.style.cssText = `
+                max-width: 70%;
+                padding: 10px 14px;
+                border-radius: 12px;
+                word-wrap: break-word;
+                font-size: 0.95rem;
+                white-space: pre-wrap;
+                ${isYou
+                    ? 'background: #667eea; color: white; border-radius: 18px 18px 4px 18px;'
+                    : 'background: white; color: #333; border: 1px solid #ddd; border-radius: 18px 18px 18px 4px;'}
+            `;
+            bubbleEl.textContent = group.texts.join('\n');
+
+            const nameEl = document.createElement('div');
+            nameEl.style.cssText = `font-size: 0.75rem; color: #999; ${isYou ? 'text-align: right;' : 'text-align: left;'}`;
+            nameEl.textContent = group.name;
+
+            messageEl.appendChild(nameEl);
+            messageEl.appendChild(bubbleEl);
+            messagesContainer.appendChild(messageEl);
+        });
+
+        // Scroll sempre al fondo
+        setTimeout(() => {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            // Assicurati che lo scroll avvenga anche se il container non è ancora renderizzato
+            setTimeout(() => {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }, 50);
+        }, 150);
     }
 
     markChatAsRead(eventId) {
@@ -3306,12 +3374,28 @@ class BacheaCalendar {
         }
     }
 
+    // Campo Data del modal di modifica: si può spostare solo da domani in poi
+    setEditDateField(dateKey) {
+        const dateInput = document.getElementById('editDate');
+        dateInput.value = dateKey;
+        dateInput.min = this.getTomorrowKey();
+    }
+
     saveEditedNote() {
         if (!this.editingNote) return;
 
         const { dateKey, noteIndex } = this.editingNote;
-        const eventId = this.notes[dateKey][noteIndex].id;
-        const creatorId = this.notes[dateKey][noteIndex].creatorId; // Mantieni il creatore originale
+        const current = this.notes[dateKey][noteIndex];
+
+        // Cambio data: validato prima di toccare l'evento
+        const newDateKey = document.getElementById('editDate').value || dateKey;
+        const isMoving = newDateKey !== dateKey;
+        if (isMoving && !this.isFutureDateKey(newDateKey)) {
+            this.showErrorPopup('Puoi spostare un evento solo da domani in poi');
+            return;
+        }
+        const eventId = current.id;
+        const creatorId = current.creatorId || null; // Mantieni il creatore originale (null se manca: Firebase rifiuta undefined)
 
         this.notes[dateKey][noteIndex] = {
             id: eventId, // Mantieni l'ID originale
@@ -3321,16 +3405,24 @@ class BacheaCalendar {
             notes: document.getElementById('editNotes').value.trim(),
             color: this.selectedColor,
             link: document.getElementById('editLink').value.trim(),
-            image: this.editImageData,
+            // L'immagine si salva da sola (ritaglio/elimina): qui si conserva il riferimento
+            imageVersion: current.imageVersion || null,
+            image: current.image || null, // Formato vecchio, finché non viene migrato
             participants: this.editParticipantsList,
             creatorId: creatorId // Mantieni il creatore originale
         };
 
-        this.saveNotes();
-        this.syncToFirebase(); // Sincronizza con Firebase in real-time
+        if (isMoving) {
+            this.moveEvent(dateKey, noteIndex, newDateKey); // Sposta e sincronizza
+        } else {
+            this.syncToFirebase(); // Sincronizza con Firebase in real-time
+        }
         this.closeEditModal();
         this.render(); // Usa render() per renderizzare la vista corretta (calendario o lista)
-        setTimeout(() => this.showSuccessPopup('Evento modificato con successo!'), 100);
+        const message = isMoving
+            ? `Evento spostato a ${this.formatDateKey(newDateKey)}`
+            : 'Evento modificato con successo!';
+        setTimeout(() => this.showSuccessPopup(message), 100);
     }
 
     async deleteCurrentNote() {
@@ -3352,12 +3444,555 @@ class BacheaCalendar {
         }, 500);
     }
 
-    async loadFromGitHub() {
-        // Caricamento dati delegato a Firebase via autoSync()
-        // Non carichiamo più da data.json per evitare conflitti
-        return Promise.resolve();
+    // Eventi da fissare: proposte senza data, salvate in proposals/{id} (separate da events).
+    //   proposals/{id}: {id, title, time, location, notes, color, creatorId, creatorSyncCode, creatorName, createdAt,
+    //                    dateOptions/{YYYY-MM-DD}: {addedBy, createdAt},
+    //                    votes/{YYYY-MM-DD}/{voterKey}: {name, deviceId}}
+    // Ogni scrittura tocca un solo percorso, così voti contemporanei non si sovrascrivono.
+    // Chi ha votato può fissare una data: la proposta diventa un evento normale con lo stesso id.
+
+    setupProposalListeners() {
+        document.getElementById('proposalCreateForm').addEventListener('submit', (e) => this.createProposal(e));
+        document.getElementById('proposalCreateCancelBtn').addEventListener('click', () => this.closeProposalModal());
+        document.getElementById('proposalCloseBtn').addEventListener('click', () => this.closeProposalModal());
+        document.getElementById('proposalAddDateBtn').addEventListener('click', () => this.addProposalDate());
+        document.getElementById('proposalDeleteBtn').addEventListener('click', () => this.deleteProposal());
+
+        // Schede Date / Chat
+        document.querySelectorAll('.proposal-tab').forEach(tab => {
+            tab.addEventListener('click', () => this.showProposalPane(tab.dataset.pane));
+        });
+
+        // Chat della proposta
+        document.getElementById('proposalChatSendBtn').addEventListener('click', () => this.sendProposalChatMessage());
+        document.getElementById('proposalChatInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                this.sendProposalChatMessage();
+            }
+        });
+
+        const proposalModal = document.getElementById('proposalModal');
+        proposalModal.addEventListener('click', (e) => {
+            if (e.target === proposalModal) this.closeProposalModal();
+        });
     }
 
+    listenProposals() {
+        database.ref('proposals').on('value', (snapshot) => {
+            this.proposals = snapshot.val() || {};
+            this.renderProposals();
+
+            if (this.openProposalId) {
+                if (this.proposals[this.openProposalId] && this.proposals[this.openProposalId].id) {
+                    this.renderProposalView();
+                } else {
+                    // Fissata o eliminata da un altro utente mentre era aperta
+                    this.closeProposalModal();
+                    this.showSuccessPopup('Questa proposta è stata fissata o eliminata');
+                }
+            }
+        });
+    }
+
+    // Identifica l'utente, non il dispositivo: lo stesso utente su più device vota una volta sola
+    getVoterKey() {
+        return this.syncCode || this.deviceId;
+    }
+
+    isFutureDateKey(dateKey) {
+        return dateKey > this.getDateKey(new Date()); // YYYY-MM-DD si confronta come stringa
+    }
+
+    getTomorrowKey() {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        return this.getDateKey(tomorrow);
+    }
+
+    formatDateKey(dateKey, short = false) {
+        const [year, month, day] = dateKey.split('-').map(Number);
+        const options = short
+            ? { weekday: 'short', day: 'numeric', month: 'short' }
+            : { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
+        const text = new Date(year, month - 1, day).toLocaleDateString('it-IT', options);
+        return text.charAt(0).toUpperCase() + text.slice(1);
+    }
+
+    // Date proposte in ordine cronologico, con i votanti
+    getProposalOptions(proposal) {
+        const votes = proposal.votes || {};
+        return Object.keys(proposal.dateOptions || {}).sort().map(date => {
+            const voters = Object.entries(votes[date] || {}).map(([key, vote]) => ({ key, ...vote }));
+            return { date, voters, count: voters.length, isFuture: this.isFutureDateKey(date) };
+        });
+    }
+
+    // Data futura con più voti (a parità, la più vicina)
+    getBestProposalOption(proposal) {
+        let best = null;
+        this.getProposalOptions(proposal).forEach(option => {
+            if (option.isFuture && option.count > 0 && (!best || option.count > best.count)) {
+                best = option;
+            }
+        });
+        return best;
+    }
+
+    hasVotedProposal(proposal) {
+        const voterKey = this.getVoterKey();
+        return Object.values(proposal.votes || {}).some(dateVotes => dateVotes && dateVotes[voterKey]);
+    }
+
+    isProposalCreator(proposal) {
+        return proposal.creatorId === this.deviceId
+            || (this.syncCode && proposal.creatorSyncCode === this.syncCode);
+    }
+
+    renderProposals() {
+        const proposals = Object.values(this.proposals || {})
+            .filter(p => p && p.id && this.isColorVisible(p.color))
+            .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+
+        ['proposalsBanner', 'proposalsSection'].forEach(containerId => {
+            const container = document.getElementById(containerId);
+            if (container) this.fillProposalsContainer(container, proposals);
+        });
+    }
+
+    fillProposalsContainer(container, proposals) {
+        container.innerHTML = '';
+
+        const box = document.createElement('div');
+        box.style.cssText = 'background: #f3f0ff; border: 2px dashed #667eea; border-radius: 12px; padding: 12px;';
+
+        const header = document.createElement('div');
+        header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;';
+        const label = document.createElement('strong');
+        label.style.color = '#667eea';
+        label.textContent = `🗳️ Da fissare (${proposals.length})`;
+        const newBtn = document.createElement('button');
+        newBtn.type = 'button';
+        newBtn.style.cssText = 'padding: 8px 12px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;';
+        newBtn.textContent = '➕ Evento senza data';
+        newBtn.addEventListener('click', () => this.openProposalCreate());
+        header.appendChild(label);
+        header.appendChild(newBtn);
+        box.appendChild(header);
+
+        proposals.forEach(proposal => {
+            const best = this.getBestProposalOption(proposal);
+            const optionsCount = Object.keys(proposal.dateOptions || {}).length;
+            const voted = this.hasVotedProposal(proposal);
+
+            let summary = 'Nessuna data proposta';
+            if (best) {
+                summary = `⭐ ${this.formatDateKey(best.date, true)} · ${best.count} ${best.count === 1 ? 'voto' : 'voti'}`;
+            } else if (optionsCount > 0) {
+                summary = 'Nessun voto ancora';
+            }
+            if (optionsCount > 0) {
+                summary += ` · ${optionsCount} ${optionsCount === 1 ? 'data' : 'date'}`;
+            }
+
+            const categoryColors = {
+                'color-neutral': '#999', 'color-yellow': '#ffd54f', 'color-pink': '#ff6b9d', 'color-green': '#81c784',
+                'color-blue': '#64b5f6', 'color-purple': '#ba68c8', 'color-orange': '#ffb74d'
+            };
+            const card = document.createElement('div');
+            card.style.cssText = `margin-top: 10px; padding: 10px 12px; background: white; border-left: 5px solid ${categoryColors[proposal.color] || '#999'}; border-radius: 8px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.1);`;
+            card.setAttribute('data-proposal-id', proposal.id);
+            card.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                    <span style="font-weight: 600; color: #333;">${this.escapeHtml(proposal.title)}</span>
+                    <span class="proposal-badge" style="display: none; background: #f44336; color: white; border-radius: 10px; padding: 2px 8px; font-size: 0.75rem; font-weight: bold; white-space: nowrap;"></span>
+                </div>
+                <div style="font-size: 0.85rem; color: #666; margin-top: 2px;">${this.escapeHtml(summary)}${voted ? ' · <span style="color: #4CAF50;">✓ hai votato</span>' : ''}</div>
+            `;
+            card.addEventListener('click', () => this.openProposalView(proposal.id));
+            box.appendChild(card);
+        });
+
+        container.appendChild(box);
+        this.updateProposalBadges();
+    }
+
+    showProposalModal() {
+        const modal = document.getElementById('proposalModal');
+        modal.classList.add('active');
+        modal.style.display = 'flex';
+    }
+
+    closeProposalModal() {
+        const modal = document.getElementById('proposalModal');
+        modal.classList.remove('active');
+        modal.style.display = 'none';
+
+        // Chiude la chat: se è stata aperta, i messaggi contano come letti
+        if (this.proposalChatRef) {
+            this.proposalChatRef.off('value', this.proposalChatListener);
+            this.proposalChatRef = null;
+            this.proposalChatListener = null;
+        }
+        if (this.openProposalId && this.proposalChatSeen) {
+            this.markChatAsRead(this.openProposalId);
+            setTimeout(() => this.updateProposalBadges(), 300);
+        }
+        this.proposalChatSeen = false;
+        document.getElementById('proposalChatInput').value = '';
+        document.getElementById('proposalChatMessages').innerHTML = '';
+
+        this.openProposalId = null;
+    }
+
+    showProposalPane(paneId) {
+        ['proposalDatesPane', 'proposalChatPane'].forEach(id => {
+            document.getElementById(id).style.display = id === paneId ? 'block' : 'none';
+        });
+        document.querySelectorAll('.proposal-tab').forEach(tab => {
+            const active = tab.dataset.pane === paneId;
+            tab.style.background = active ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.4)';
+            tab.style.color = active ? '#667eea' : '#333';
+        });
+
+        if (paneId === 'proposalChatPane') {
+            this.proposalChatSeen = true;
+            const messagesContainer = document.getElementById('proposalChatMessages');
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            document.getElementById('proposalChatInput').focus();
+        }
+    }
+
+    // Stessa chat degli eventi (eventChats/{id}): quando la data viene fissata, l'evento ha lo stesso id
+    listenProposalChat(proposalId) {
+        const messagesContainer = document.getElementById('proposalChatMessages');
+        messagesContainer.innerHTML = '';
+
+        if (this.proposalChatRef) {
+            this.proposalChatRef.off('value', this.proposalChatListener);
+        }
+        this.proposalChatRef =database.ref(`eventChats/${proposalId}/messages`);
+        this.proposalChatListener = this.proposalChatRef.on('value', (snapshot) => {
+            if (this.openProposalId !== proposalId) return;
+
+            const count = snapshot.exists() ? Object.keys(snapshot.val()).length : 0;
+            document.getElementById('proposalChatTabBtn').textContent = count > 0 ? `💬 Chat (${count})` : '💬 Chat';
+
+            if (!snapshot.exists()) {
+                messagesContainer.innerHTML = '<div style="text-align: center; color: #999; padding: 20px;">Nessun messaggio ancora. Scrivi quando puoi esserci!</div>';
+                return;
+            }
+
+            database.ref(`chatReadStatus/${proposalId}/${this.syncCode}`).once('value', (statusSnapshot) => {
+                if (this.openProposalId !== proposalId) return;
+                const lastReadTimestamp = statusSnapshot.exists() ? statusSnapshot.val().lastReadTimestamp : 0;
+                messagesContainer.innerHTML = '';
+                this.renderChatInto(messagesContainer, snapshot.val(), lastReadTimestamp);
+            });
+        });
+    }
+
+    async sendProposalChatMessage() {
+        const proposalId = this.openProposalId;
+        if (!proposalId || !this.proposals[proposalId]) return;
+
+        const input = document.getElementById('proposalChatInput');
+        const text = input.value.trim();
+        if (!text) return;
+
+        try {
+            await database.ref(`eventChats/${proposalId}/messages`).push().set({
+                deviceId: this.deviceId,
+                name: this.deviceName,
+                text: text,
+                timestamp: new Date().getTime()
+            });
+            input.value = '';
+        } catch (error) {
+            console.error('Errore invio messaggio proposta:', error);
+            this.showErrorPopup('Errore nell\'invio del messaggio');
+        }
+    }
+
+    // Badge dei messaggi non letti sulle card "Da fissare" (solo per chi ha votato o creato la proposta)
+    updateProposalBadges() {
+        document.querySelectorAll('[data-proposal-id]').forEach(card => {
+            const proposal = this.proposals[card.getAttribute('data-proposal-id')];
+            const badge = card.querySelector('.proposal-badge');
+            if (!badge) return;
+            if (!proposal || !(this.hasVotedProposal(proposal) || this.isProposalCreator(proposal))) {
+                badge.style.display = 'none';
+                return;
+            }
+            this.getUnreadMessageCount(proposal.id).then(count => {
+                badge.textContent = `💬 ${count}`;
+                badge.style.display = count > 0 ? 'inline-block' : 'none';
+            });
+        });
+    }
+
+    openProposalCreate() {
+        this.openProposalId = null;
+        document.getElementById('proposalCreateForm').reset();
+        document.getElementById('proposalFirstDate').min = this.getTomorrowKey();
+        document.getElementById('proposalModalTitle').textContent = '🗳️ Nuovo evento senza data';
+        document.getElementById('proposalCreateForm').style.display = 'block';
+        document.getElementById('proposalViewSection').style.display = 'none';
+        this.showProposalModal();
+        document.getElementById('proposalTitle').focus();
+    }
+
+    createProposal(e) {
+        e.preventDefault();
+        const title = document.getElementById('proposalTitle').value.trim();
+        if (!title) return;
+
+        const firstDate = document.getElementById('proposalFirstDate').value;
+        if (firstDate && !this.isFutureDateKey(firstDate)) {
+            this.showErrorPopup('Puoi proporre date solo da domani in poi');
+            return;
+        }
+
+        const id = 'evt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        const proposal = {
+            id: id,
+            title: title,
+            time: document.getElementById('proposalTime').value.trim(),
+            location: document.getElementById('proposalLocation').value.trim(),
+            notes: document.getElementById('proposalNotes').value.trim(),
+            color: document.getElementById('proposalColor').value,
+            creatorId: this.deviceId,
+            creatorSyncCode: this.syncCode || null,
+            creatorName: this.deviceName || '',
+            createdAt: Date.now()
+        };
+        // Chi crea non vota in automatico: magari non può esserci
+        if (firstDate) {
+            proposal.dateOptions = { [firstDate]: { addedBy: this.deviceName || '', createdAt: Date.now() } };
+        }
+
+        database.ref(`proposals/${id}`).set(proposal)
+            .then(() => {
+                this.openProposalView(id);
+                this.showSuccessPopup('Proposta creata! Ora tutti possono votare le date.');
+            })
+            .catch(error => {
+                console.error('Errore creazione proposta:', error);
+                this.showErrorPopup('Errore nella creazione della proposta');
+            });
+    }
+
+    openProposalView(proposalId) {
+        if (!this.proposals[proposalId]) return;
+        this.openProposalId = proposalId;
+        document.getElementById('proposalCreateForm').style.display = 'none';
+        document.getElementById('proposalViewSection').style.display = 'block';
+        const newDateInput = document.getElementById('proposalNewDate');
+        newDateInput.value = '';
+        newDateInput.min = this.getTomorrowKey();
+        this.proposalChatSeen = false;
+        this.showProposalPane('proposalDatesPane');
+        this.listenProposalChat(proposalId);
+        this.renderProposalView();
+        this.showProposalModal();
+    }
+
+    renderProposalView() {
+        const proposal = this.proposals[this.openProposalId];
+        if (!proposal) return;
+
+        document.getElementById('proposalModalTitle').textContent = `🗳️ ${proposal.title}`;
+
+        const details = [];
+        if (proposal.time) details.push(`🕐 ${this.escapeHtml(proposal.time)}`);
+        if (proposal.location) details.push(`📍 ${this.escapeHtml(proposal.location)}`);
+        if (proposal.notes) details.push(`📝 ${this.escapeHtml(proposal.notes).replace(/\n/g, '<br>')}`);
+        details.push(`👤 Proposta da: ${this.escapeHtml(proposal.creatorName || 'Anonimo')}`);
+        document.getElementById('proposalDetails').innerHTML = details.map(d => `<div style="margin-bottom: 4px;">${d}</div>`).join('');
+
+        document.getElementById('proposalDeleteBtn').style.display = this.isProposalCreator(proposal) ? 'block' : 'none';
+
+        const listEl = document.getElementById('proposalOptionsList');
+        listEl.innerHTML = '';
+
+        const options = this.getProposalOptions(proposal);
+        if (options.length === 0) {
+            listEl.innerHTML = '<div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; text-align: center;">Ancora nessuna data: proponine una qui sotto 👇</div>';
+            return;
+        }
+
+        const best = this.getBestProposalOption(proposal);
+        const voterKey = this.getVoterKey();
+        const canFix = this.hasVotedProposal(proposal) && !proposal.fixedDate;
+
+        options.forEach(option => {
+            const isBest = best && best.date === option.date;
+            const mine = option.voters.some(v => v.key === voterKey);
+
+            const row = document.createElement('div');
+            row.style.cssText = `background: white; color: #333; border-radius: 8px; padding: 10px 12px; ${isBest ? 'border: 2px solid #4CAF50;' : 'border: 2px solid transparent;'} ${option.isFuture ? '' : 'opacity: 0.6;'}`;
+
+            const names = option.voters.map(v => this.escapeHtml(v.name || 'Anonimo')).join(', ');
+            row.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                    <strong>${this.formatDateKey(option.date)}</strong>
+                    <span style="white-space: nowrap; font-weight: 600;">👍 ${option.count}</span>
+                </div>
+                ${isBest ? '<div style="font-size: 0.8rem; color: #4CAF50; font-weight: 600;">⭐ La più votata</div>' : ''}
+                <div style="font-size: 0.8rem; color: #888; margin-top: 2px;">${names || 'Nessun voto'}</div>
+                <div class="proposal-option-actions" style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;"></div>
+            `;
+
+            const actions = row.querySelector('.proposal-option-actions');
+            if (!option.isFuture) {
+                actions.innerHTML = '<span style="font-size: 0.85rem; color: #999;">⏳ Data passata</span>';
+            } else {
+                const voteBtn = document.createElement('button');
+                voteBtn.type = 'button';
+                voteBtn.style.cssText = `flex: 1; padding: 8px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; ${mine ? 'background: #e8f5e9; color: #2e7d32;' : 'background: #667eea; color: white;'}`;
+                voteBtn.textContent = mine ? '✓ Ci sono (togli)' : '👍 Ci sono';
+                voteBtn.addEventListener('click', () => this.toggleProposalVote(option.date, mine));
+                actions.appendChild(voteBtn);
+
+                if (canFix && option.count > 0) {
+                    const fixBtn = document.createElement('button');
+                    fixBtn.type = 'button';
+                    fixBtn.style.cssText = 'flex: 1; padding: 8px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;';
+                    fixBtn.textContent = '📅 Fissa questa data';
+                    fixBtn.addEventListener('click', () => this.fixProposalDate(option.date));
+                    actions.appendChild(fixBtn);
+                }
+            }
+
+            listEl.appendChild(row);
+        });
+    }
+
+    toggleProposalVote(dateKey, alreadyVoted) {
+        const proposalId = this.openProposalId;
+        if (!proposalId || !this.isFutureDateKey(dateKey)) return;
+
+        const ref = database.ref(`proposals/${proposalId}/votes/${dateKey}/${this.getVoterKey()}`);
+        const write = alreadyVoted
+            ? ref.remove()
+            : ref.set({ name: this.deviceName || 'Anonimo', deviceId: this.deviceId });
+        write.catch(error => {
+            console.error('Errore voto proposta:', error);
+            this.showErrorPopup('Errore nel salvataggio del voto');
+        });
+    }
+
+    addProposalDate() {
+        const proposalId = this.openProposalId;
+        const proposal = this.proposals[proposalId];
+        if (!proposal) return;
+
+        const input = document.getElementById('proposalNewDate');
+        const dateKey = input.value;
+        if (!dateKey) {
+            this.showErrorPopup('Scegli una data');
+            return;
+        }
+        if (!this.isFutureDateKey(dateKey)) {
+            this.showErrorPopup('Puoi proporre date solo da domani in poi');
+            return;
+        }
+        if (proposal.dateOptions && proposal.dateOptions[dateKey]) {
+            this.showErrorPopup('Questa data è già stata proposta: votala dalla lista');
+            return;
+        }
+
+        // Chi propone una data la vota anche (può sempre togliere il voto)
+        database.ref(`proposals/${proposalId}`).update({
+            [`dateOptions/${dateKey}`]: { addedBy: this.deviceName || '', createdAt: Date.now() },
+            [`votes/${dateKey}/${this.getVoterKey()}`]: { name: this.deviceName || 'Anonimo', deviceId: this.deviceId }
+        }).then(() => {
+            input.value = '';
+        }).catch(error => {
+            console.error('Errore aggiunta data:', error);
+            this.showErrorPopup('Errore nel salvataggio della data');
+        });
+    }
+
+    async fixProposalDate(dateKey) {
+        const proposalId = this.openProposalId;
+        const proposal = this.proposals[proposalId];
+        if (!proposal || !this.hasVotedProposal(proposal)) return;
+        if (!this.isFutureDateKey(dateKey)) {
+            this.showErrorPopup('Puoi fissare solo date da domani in poi');
+            return;
+        }
+
+        const confirmed = await this.showConfirmDialog(
+            `Fissare "${proposal.title}" per ${this.formatDateKey(dateKey)}? ` +
+            `L'evento andrà nel calendario e chi ha votato questa data diventerà partecipante.`,
+            '📅 Fissa', '#4CAF50'
+        );
+        if (!confirmed) return;
+
+        const proposalRef = database.ref(`proposals/${proposalId}`);
+        try {
+            // 1. Blocca la proposta: se due persone fissano insieme, passa solo la prima
+            const lock = await proposalRef.child('fixedDate').transaction(current => current ? undefined : dateKey);
+            if (!lock.committed) {
+                this.showErrorPopup('Qualcun altro ha appena fissato questa proposta');
+                return;
+            }
+
+            const fresh = (await proposalRef.once('value')).val() || proposal;
+            const voters = Object.values((fresh.votes || {})[dateKey] || {});
+            const participants = [...new Set(voters.map(v => v.deviceId).filter(Boolean))];
+
+            const event = {
+                id: proposalId, // Stesso id: chat e immagine restano collegate
+                title: fresh.title || proposal.title,
+                time: fresh.time || '',
+                location: fresh.location || '',
+                notes: fresh.notes || '',
+                color: fresh.color || 'color-neutral',
+                link: '',
+                imageVersion: null,
+                participants: participants,
+                creatorId: fresh.creatorId || this.deviceId
+            };
+
+            // 2. Aggiunge l'evento solo a quel giorno, senza riscrivere gli altri
+            this.closeProposalModal();
+            await database.ref(`events/${dateKey}`).transaction(dayNotes => {
+                const list = Array.isArray(dayNotes) ? dayNotes : Object.values(dayNotes || {});
+                if (list.some(note => note && note.id === proposalId)) return list;
+                return [...list, event];
+            });
+
+            // 3. La proposta non serve più
+            await proposalRef.remove();
+            this.showSuccessPopup(`Data fissata! L'evento è nel calendario per ${this.formatDateKey(dateKey)}.`);
+        } catch (error) {
+            console.error('Errore nel fissare la data:', error);
+            proposalRef.child('fixedDate').remove().catch(() => {});
+            this.showErrorPopup('Errore nel fissare la data. Riprova.');
+        }
+    }
+
+    async deleteProposal() {
+        const proposalId = this.openProposalId;
+        const proposal = this.proposals[proposalId];
+        if (!proposal || !this.isProposalCreator(proposal)) return;
+
+        const confirmed = await this.showConfirmDialog(`Eliminare la proposta "${proposal.title}"?`);
+        if (!confirmed) return;
+
+        this.closeProposalModal();
+        // La chat serve solo alla proposta: si elimina con lei
+        database.ref(`eventChats/${proposalId}`).remove().catch(() => {});
+        database.ref(`chatReadStatus/${proposalId}`).remove().catch(() => {});
+        database.ref(`proposals/${proposalId}`).remove()
+            .then(() => this.showSuccessPopup('Proposta eliminata'))
+            .catch(error => {
+                console.error('Errore eliminazione proposta:', error);
+                this.showErrorPopup('Errore nell\'eliminazione della proposta');
+            });
+    }
 }
 
 // Inizializza il calendario
