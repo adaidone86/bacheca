@@ -3104,7 +3104,7 @@ class BacheaCalendar {
 
         const { dateKey, noteIndex } = this.editingNote;
         const eventId = this.notes[dateKey][noteIndex].id;
-        const creatorId = this.notes[dateKey][noteIndex].creatorId; // Mantieni il creatore originale
+        const creatorId = this.notes[dateKey][noteIndex].creatorId || null; // Mantieni il creatore originale (null se manca: Firebase rifiuta undefined)
 
         this.notes[dateKey][noteIndex] = {
             id: eventId, // Mantieni l'ID originale
