@@ -8,7 +8,7 @@
 
 const APP_CONFIG = {
     // SCEGLI QUI: 'TEST' | 'PROD'
-    ENV: 'TEST',
+    ENV: 'PROD',
 
     databases: {
         TEST: {
