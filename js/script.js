@@ -411,14 +411,39 @@ class BacheaCalendar {
         try {
             const usersSnap = await database.ref('users').once('value');
             const names = {};
-            Object.entries(usersSnap.val() || {}).forEach(([id, user]) => {
-                if (user) names[id] = user.name || user.username || 'Sconosciuto';
+            const users = Object.entries(usersSnap.val() || {}).filter(([, user]) => user);
+            users.forEach(([id, user]) => {
+                names[id] = user.name || user.username || 'Sconosciuto';
             });
             this.userNames = names;
+
+            // Colore di ogni utente: in ordine di registrazione, così chi si registra dopo
+            // non cambia il colore degli altri e i primi 12 hanno tutti colori diversi
+            this.userColorIndex = {};
+            users
+                .sort(([idA, a], [idB, b]) => (a.createdAt || 0) - (b.createdAt || 0) || idA.localeCompare(idB))
+                .forEach(([id], index) => { this.userColorIndex[id] = index; });
             if (this.userId) this.userNames[this.userId] = this.userName;
         } catch (error) {
             console.error('Errore caricamento nomi utenti:', error);
         }
+    }
+
+    // Colore fisso di un utente (nuvolette della chat, pallino nei partecipanti)
+    getUserColor(userId) {
+        const palette = [
+            { bg: '#1e88e5', text: '#fff' }, { bg: '#e53935', text: '#fff' }, { bg: '#43a047', text: '#fff' },
+            { bg: '#8e24aa', text: '#fff' }, { bg: '#fb8c00', text: '#fff' }, { bg: '#00897b', text: '#fff' },
+            { bg: '#d81b60', text: '#fff' }, { bg: '#3949ab', text: '#fff' }, { bg: '#6d4c41', text: '#fff' },
+            { bg: '#c0ca33', text: '#333' }, { bg: '#00acc1', text: '#fff' }, { bg: '#f4511e', text: '#fff' }
+        ];
+        let index = this.userColorIndex ? this.userColorIndex[userId] : undefined;
+        if (index === undefined) {
+            // Utente non in elenco (registrato dopo l'apertura o vecchio dispositivo): colore dal suo id
+            index = 0;
+            for (const char of String(userId || '')) index = (index * 31 + char.charCodeAt(0)) >>> 0;
+        }
+        return palette[index % palette.length];
     }
 
     // Nome di un utente: dalla cache, altrimenti da users/
@@ -786,6 +811,13 @@ class BacheaCalendar {
                 e.target.classList.add('active');
                 modal.querySelector(`#${tabName}`).classList.add('active');
 
+                // La chat è nella scheda Partecipanti: aprendola si va all'ultimo messaggio
+                // (finché la scheda è nascosta lo scroll non ha effetto)
+                if (tabName === 'edit-participants-tab') {
+                    const messages = document.getElementById('chatMessagesContainer');
+                    if (messages) messages.scrollTop = messages.scrollHeight;
+                }
+
                 // Mostra/nascondi il button Salva solo nella tab Evento
                 const saveEditBtn = document.getElementById('saveEditBtn');
                 if (saveEditBtn) {
@@ -800,6 +832,13 @@ class BacheaCalendar {
 
         // Partecipanti del modal di modifica
         this.editParticipantsList = [];
+
+        // Elenco partecipanti: si apre e si chiude toccando l'intestazione
+        document.getElementById('participantsToggleBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            const list = document.getElementById('editParticipantsList');
+            this.setParticipantsListOpen(list.style.display === 'none');
+        });
 
         // Settings
         const settingsBtn = document.getElementById('settingsBtn');
@@ -873,30 +912,6 @@ class BacheaCalendar {
             });
         } else {
             console.warn('Button "editWantToParticipateBtn" non trovato');
-        }
-
-        // Open chat from participants tab
-        const openChatBtn = document.getElementById('openChatFromParticipantsBtn');
-        if (openChatBtn) {
-            openChatBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                // Attiva la tab chat
-                document.querySelectorAll('.modal-tab').forEach(tab => tab.classList.remove('active'));
-                document.querySelectorAll('.modal-tab-content').forEach(content => content.classList.remove('active'));
-
-                // Se la tab chat esiste, attivala
-                const chatTabBtn = document.querySelector('[data-tab="edit-chat-tab"]');
-                const chatContent = document.getElementById('edit-chat-tab');
-
-                if (chatContent) {
-                    chatContent.classList.add('active');
-                    // Se il bottone tab esiste, attivalo
-                    if (chatTabBtn) chatTabBtn.classList.add('active');
-                } else {
-                    // Se la tab chat non esiste in pagina, mostra un messaggio
-                    console.warn('Chat tab non trovata');
-                }
-            });
         }
 
         // Chat send button
@@ -1382,6 +1397,7 @@ class BacheaCalendar {
         document.getElementById('eventTitle').value = '';
         document.getElementById('eventTime').value = '';
         document.getElementById('eventLocation').value = '';
+        this.setFeeInput('event', 0);
         document.getElementById('eventNotes').value = '';
         document.getElementById('eventLink').value = '';
         document.getElementById('eventImage').value = '';
@@ -1440,10 +1456,16 @@ class BacheaCalendar {
         const listEl = document.getElementById('editParticipantsList');
         if (!listEl) return;
 
-        // Aggiorna il numero di partecipanti
+        // Aggiorna il numero di partecipanti e i pallini colorati (visibili anche con l'elenco chiuso)
         const countEl = document.getElementById('participantCountDisplay');
         if (countEl) {
             countEl.textContent = this.editParticipantsList.length;
+        }
+        const dotsEl = document.getElementById('participantDots');
+        if (dotsEl) {
+            dotsEl.innerHTML = this.editParticipantsList.map(id =>
+                `<span style="flex: 0 0 auto; width: 12px; height: 12px; border-radius: 50%; background: ${this.getUserColor(id).bg}; border: 1px solid rgba(255,255,255,0.7);"></span>`
+            ).join('');
         }
 
         // Carica i nomi di tutti i partecipanti (dalla cache o da users/)
@@ -1459,12 +1481,12 @@ class BacheaCalendar {
 
             if (isCurrentUser) {
                 itemEl.innerHTML = `
-                    <span>${this.escapeHtml(names[index])} (tu)</span>
+                    <span><span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: ${this.getUserColor(participantId).bg};"></span>${this.escapeHtml(names[index])} (tu)</span>
                     <button type="button" class="btn-remove-participant" style="background: #f44336;">Non posso più</button>
                 `;
             } else {
                 itemEl.innerHTML = `
-                    <span>${this.escapeHtml(names[index])}</span>
+                    <span><span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: ${this.getUserColor(participantId).bg};"></span>${this.escapeHtml(names[index])}</span>
                 `;
             }
 
@@ -1489,6 +1511,21 @@ class BacheaCalendar {
 
         // Aggiorna il button "Voglio partecipare"
         this.updateParticipateButton();
+
+        // Chi non partecipa più: i suoi messaggi diventano grigi
+        if (this.currentChat && this.editingNote && this.currentChat.eventId === this.editingNote.id) {
+            const messagesContainer = document.getElementById('chatMessagesContainer');
+            const scrollTop = messagesContainer.scrollTop;
+            messagesContainer.innerHTML = '';
+            this.renderChatInto(messagesContainer, this.currentChat.messages, this.currentChat.lastReadTimestamp, this.editParticipantsList, false);
+            messagesContainer.scrollTop = scrollTop;
+        }
+    }
+
+    setParticipantsListOpen(open) {
+        document.getElementById('editParticipantsList').style.display = open ? 'block' : 'none';
+        document.getElementById('participantsToggleArrow').textContent = open ? '▴' : '▾';
+        document.getElementById('participantsToggleBtn').setAttribute('aria-expanded', open ? 'true' : 'false');
     }
 
     updateParticipateButton() {
@@ -1675,6 +1712,29 @@ class BacheaCalendar {
         modifyBtn.style.display = this.canEditCurrentEvent === false ? 'none' : 'block';
     }
 
+    // ===== Quota: vuota o 0 = Gratis, altrimenti l'importo in euro scritto dall'organizzatore =====
+    formatFee(fee) {
+        if (!fee) return 'Gratis';
+        const decimals = Number.isInteger(Number(fee)) ? 0 : 2; // 12,50 € e non 12,5 €
+        return `${Number(fee).toLocaleString('it-IT', { minimumFractionDigits: decimals, maximumFractionDigits: 2 })} €`;
+    }
+
+    setFeeInput(prefix, fee) {
+        document.getElementById(`${prefix}Fee`).value = fee ? String(fee).replace('.', ',') : '';
+    }
+
+    // Legge la quota dal modal: {ok, value}. Vuota = 0 (Gratis). Accetta "15", "15,50", "15.5", "15 €"
+    readFeeInput(prefix) {
+        const raw = document.getElementById(`${prefix}Fee`).value.replace('€', '').replace(',', '.').trim();
+        if (!raw) return { ok: true, value: 0 };
+        const value = Number(raw);
+        if (!/^\d+(\.\d{1,2})?$/.test(raw) || !isFinite(value) || value > 100000) {
+            this.showErrorPopup('Quota non valida: scrivi un importo (es. 15 o 12,50), oppure lascia vuoto per Gratis');
+            return { ok: false };
+        }
+        return { ok: true, value: Math.round(value * 100) / 100 };
+    }
+
     // Categoria (crea e modifica): il pulsante mostra la categoria scelta col suo colore
     updateCategoryDisplay(selectId) {
         const select = document.getElementById(selectId);
@@ -1713,6 +1773,8 @@ class BacheaCalendar {
             this.showErrorPopup('Puoi aggiungere eventi solo da domani in poi');
             return;
         }
+        const fee = this.readFeeInput('event');
+        if (!fee.ok) return;
 
         // Genera un ID unico
         const id = 'evt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -1730,6 +1792,7 @@ class BacheaCalendar {
             time: document.getElementById('eventTime').value.trim(),
             location: document.getElementById('eventLocation').value.trim(),
             notes: document.getElementById('eventNotes').value.trim(),
+            fee: fee.value,
             color: this.selectedColor,
             link: this.currentEventLink,
             imageVersion: imageVersion,
@@ -2400,6 +2463,7 @@ class BacheaCalendar {
                         <div class="event-title">${this.escapeHtml(event.title)}</div>
                         ${event.time ? `<div class="event-time">🕐 ${this.escapeHtml(event.time)}</div>` : ''}
                         ${event.location ? `<div class="event-location">📍 ${this.escapeHtml(event.location)}</div>` : ''}
+                        <div class="event-location">💶 ${this.formatFee(event.fee)}</div>
                         ${event.notes ? `<div class="event-notes">${this.escapeHtml(event.notes).replace(/\n/g, '<br>')}</div>` : ''}
                         ${participantsHtml}
                     </div>
@@ -2560,7 +2624,7 @@ class BacheaCalendar {
     applyEditPermissions(event) {
         const canEdit = this.canEditEvent(event);
         this.canEditCurrentEvent = canEdit;
-        ['editTitle', 'editDate', 'editTime', 'editLocation', 'editNotes', 'editCategoryCurrent'].forEach(id => {
+        ['editTitle', 'editDate', 'editTime', 'editLocation', 'editFee', 'editNotes', 'editCategoryCurrent'].forEach(id => {
             document.getElementById(id).disabled = !canEdit;
         });
         const show = (id, visible, display = 'inline-block') => {
@@ -2793,31 +2857,19 @@ class BacheaCalendar {
         }
     }
 
+    // Messaggi non letti sulla scheda "Partecipanti" (dove c'è la chat), solo per chi partecipa
     updateChatButtonBadge(eventId) {
-        const chatBtn = document.getElementById('openChatFromParticipantsBtn');
-        if (!chatBtn) return;
+        const tabBtn = document.getElementById('editParticipantsTabBtn');
+        if (!tabBtn) return;
 
-        // Controlla se sei partecipante
         const isParticipant = this.editParticipantsList && this.editParticipantsList.includes(this.userId);
-
-        // Se non sei partecipante, non mostrare il badge
         if (!isParticipant) {
-            chatBtn.style.setProperty('background', 'rgba(255, 255, 255, 0.3)', 'important');
-            chatBtn.style.setProperty('color', 'white', 'important');
-            chatBtn.textContent = '💬 Chat';
+            tabBtn.textContent = '👥 Partecipanti';
             return;
         }
 
         this.getUnreadMessageCount(eventId).then(count => {
-            if (count > 0) {
-                chatBtn.style.setProperty('background', '#4CAF50', 'important');
-                chatBtn.style.setProperty('color', 'white', 'important');
-                chatBtn.textContent = `💬 Chat (${count})`;
-            } else {
-                chatBtn.style.setProperty('background', 'rgba(255, 255, 255, 0.3)', 'important');
-                chatBtn.style.setProperty('color', 'white', 'important');
-                chatBtn.textContent = '💬 Chat';
-            }
+            tabBtn.textContent = count > 0 ? `👥 Partecipanti 💬${count}` : '👥 Partecipanti';
         });
     }
 
@@ -2951,6 +3003,7 @@ class BacheaCalendar {
         document.getElementById('editTime').value = note.time || '';
         document.getElementById('editLocation').value = note.location || '';
         document.getElementById('editNotes').value = note.notes || '';
+        this.setFeeInput('edit', note.fee);
         document.getElementById('editLink').value = note.link || '';
 
         // Gestisci visualizzazione link
@@ -2959,8 +3012,9 @@ class BacheaCalendar {
         // Carica il nome del creatore
         this.loadAndDisplayCreatorName(note.creatorId);
 
-        // Set partecipanti
+        // Set partecipanti (elenco chiuso a ogni apertura)
         this.editParticipantsList = this.getParticipantIds(note);
+        this.setParticipantsListOpen(false);
         this.renderEditParticipants();
 
         // Set colore - mantieni il colore originale come default
@@ -3009,12 +3063,15 @@ class BacheaCalendar {
                 chatRef.off('value', this.chatListener);
             }
 
+            this.currentChat = null;
+
             // Crea un nuovo listener per aggiornamenti real-time
             this.chatListener = chatRef.on('value', (snapshot) => {
                 const messagesContainer = document.getElementById('chatMessagesContainer');
                 if (!messagesContainer) return; // Se il container non esiste, esci
 
                 messagesContainer.innerHTML = '';
+                this.currentChat = null;
 
                 if (!snapshot.exists()) {
                     messagesContainer.innerHTML = '<div style="text-align: center; color: #999; padding: 20px;">Nessun messaggio ancora. Inizia una conversazione!</div>';
@@ -3031,7 +3088,9 @@ class BacheaCalendar {
                 database.ref(`chatReadStatus/${eventId}/${this.userId}`).once('value', (statusSnapshot) => {
                     const lastReadTimestamp = statusSnapshot.exists() ? statusSnapshot.val().lastReadTimestamp : 0;
 
-                    this.renderChatInto(messagesContainer, snapshot.val(), lastReadTimestamp);
+                    this.currentChat = { eventId, messages: snapshot.val(), lastReadTimestamp };
+                    messagesContainer.innerHTML = '';
+                    this.renderChatInto(messagesContainer, snapshot.val(), lastReadTimestamp, this.editParticipantsList);
                 });
 
                 // Aggiorna i badge quando i messaggi cambiano
@@ -3047,7 +3106,9 @@ class BacheaCalendar {
     }
 
     // Disegna i messaggi di una chat (eventi e proposte): gruppi per mittente e separatore "Nuovi messaggi"
-    renderChatInto(messagesContainer, messages, lastReadTimestamp) {
+    // participantIds: se indicato (chat degli eventi), chi non è tra i partecipanti è scritto in grigio.
+    // Il grigio non è nella tavolozza degli utenti, quindi non si confonde con nessuno.
+    renderChatInto(messagesContainer, messages, lastReadTimestamp, participantIds = null, scrollToBottom = true) {
         const messageIds = Object.keys(messages).sort((a, b) => messages[a].timestamp - messages[b].timestamp);
 
         // Accorpa messaggi consecutivi dello stesso utente
@@ -3116,30 +3177,34 @@ class BacheaCalendar {
                 gap: 4px;
             `;
 
+            // Ogni persona ha il suo colore: si vede subito se scrive sempre la stessa.
+            // Chi ha lasciato l'evento ("Non posso più") resta, ma in grigio
+            const hasLeft = Array.isArray(participantIds) && !participantIds.includes(group.deviceId);
+            const color = hasLeft ? { bg: '#e0e0e0', text: '#757575' } : this.getUserColor(group.deviceId);
             const bubbleEl = document.createElement('div');
             bubbleEl.style.cssText = `
                 max-width: 70%;
                 padding: 10px 14px;
-                border-radius: 12px;
                 word-wrap: break-word;
                 font-size: 0.95rem;
                 white-space: pre-wrap;
-                ${isYou
-                    ? 'background: #667eea; color: white; border-radius: 18px 18px 4px 18px;'
-                    : 'background: white; color: #333; border: 1px solid #ddd; border-radius: 18px 18px 18px 4px;'}
+                background: ${color.bg};
+                color: ${color.text};
+                border-radius: ${isYou ? '18px 18px 4px 18px' : '18px 18px 18px 4px'};
             `;
             bubbleEl.textContent = group.texts.join('\n');
 
             const nameEl = document.createElement('div');
-            nameEl.style.cssText = `font-size: 0.75rem; color: #999; ${isYou ? 'text-align: right;' : 'text-align: left;'}`;
-            nameEl.textContent = group.name;
+            nameEl.style.cssText = `font-size: 0.75rem; font-weight: 600; color: ${hasLeft ? '#9e9e9e' : color.bg}; ${isYou ? 'text-align: right;' : 'text-align: left;'}`;
+            nameEl.textContent = (isYou ? `${group.name} (tu)` : group.name) + (hasLeft ? ' · non partecipa più' : '');
 
             messageEl.appendChild(nameEl);
             messageEl.appendChild(bubbleEl);
             messagesContainer.appendChild(messageEl);
         });
 
-        // Scroll sempre al fondo
+        // Scroll al fondo (non quando si ridisegna solo per i partecipanti)
+        if (!scrollToBottom) return;
         setTimeout(() => {
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
             // Assicurati che lo scroll avvenga anche se il container non è ancora renderizzato
@@ -3290,12 +3355,16 @@ class BacheaCalendar {
             return;
         }
 
+        const fee = this.readFeeInput('edit');
+        if (!fee.ok) return;
+
         // Solo i campi del modal: partecipanti, immagine e creatore restano come sono su Firebase
         const fields = {
             title: title,
             time: document.getElementById('editTime').value.trim(),
             location: document.getElementById('editLocation').value.trim(),
             notes: document.getElementById('editNotes').value.trim(),
+            fee: fee.value, // 0 = Gratis
             color: this.selectedColor,
             link: document.getElementById('editLink').value.trim()
         };

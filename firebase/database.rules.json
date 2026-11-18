@@ -29,6 +29,9 @@
             ".write": "auth != null && auth.uid === $uid",
             ".validate": "newData.val() === true"
           }
+        },
+        "fee": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100000"
         }
       }
     },
