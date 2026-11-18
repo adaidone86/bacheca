@@ -65,7 +65,19 @@
     "proposals": {
       ".read": "auth != null",
       "$proposalId": {
-        ".write": "auth != null"
+        ".write": "auth != null && (!data.exists() || !data.child('creatorId').exists() || data.child('creatorId').val() === auth.uid)",
+        "dateOptions": {
+          "$optionKey": {
+            ".write": "auth != null"
+          }
+        },
+        "votes": {
+          "$optionKey": {
+            "$voter": {
+              ".write": "auth != null && auth.uid === $voter"
+            }
+          }
+        }
       }
     }
   }

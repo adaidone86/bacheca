@@ -789,7 +789,7 @@ class BacheaCalendar {
         });
 
         // Matita sulla copertina (crea e modifica): mostra/nasconde i pulsanti dell'immagine
-        [['editImageToggleBtn', 'editImagePanel'], ['addImageToggleBtn', 'addImagePanel']].forEach(([buttonId, panelId]) => {
+        [['editImageToggleBtn', 'editImagePanel'], ['addImageToggleBtn', 'addImagePanel'], ['proposalImageToggleBtn', 'proposalImagePanel']].forEach(([buttonId, panelId]) => {
             document.getElementById(buttonId).addEventListener('click', (e) => {
                 e.preventDefault();
                 const panel = document.getElementById(panelId);
@@ -832,6 +832,84 @@ class BacheaCalendar {
 
         // Partecipanti del modal di modifica
         this.editParticipantsList = [];
+
+        // Form "Evento senza data": immagine (si chiude dopo ogni azione)
+        document.getElementById('proposalImageUploadBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('proposalImage').click();
+        });
+        document.getElementById('proposalImage').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            this.closeProposalImagePanel();
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                this.currentCropType = 'proposal';
+                this.openCropperModal(event.target.result);
+            };
+            reader.readAsDataURL(file);
+        });
+        document.getElementById('proposalImageDeleteBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.proposalImageData = null;
+            this.proposalImageRemoved = true; // In modifica: l'immagine attuale si cancella con "Salva"
+            document.getElementById('proposalImage').value = '';
+            this.setProposalCover(null);
+            this.closeProposalImagePanel();
+            this.showSuccessPopup('Immagine rimossa');
+        });
+        document.getElementById('proposalImageUrlBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('proposalImageUrlInputContainer').style.display = 'flex';
+        });
+        document.getElementById('proposalImageUrlSaveBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            const url = document.getElementById('proposalImageUrl').value.trim();
+            if (!url) {
+                this.showErrorPopup('Inserisci un URL valido');
+                return;
+            }
+            this.loadImageFromUrl(url, 'proposal');
+            document.getElementById('proposalImageUrl').value = '';
+            this.closeProposalImagePanel();
+        });
+
+        // Form "Evento senza data": categoria e link
+        document.querySelectorAll('input[name="proposalColor"]').forEach(option => {
+            option.addEventListener('change', () => {
+                this.updateCategoryDisplay('proposalCategorySelect');
+                this.closeCategorySelects();
+            });
+        });
+        document.getElementById('proposalLinkOpenBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            if (!this.currentProposalLink) return;
+            const url = /^https?:\/\//i.test(this.currentProposalLink) ? this.currentProposalLink : `https://${this.currentProposalLink}`;
+            window.open(url, '_blank');
+        });
+        document.getElementById('proposalLinkModifyBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('proposalLinkContainer').style.display = 'none';
+            document.getElementById('proposalLinkInputContainer').style.display = 'flex';
+            document.getElementById('proposalLink').focus();
+        });
+        document.getElementById('proposalLinkSaveBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            const link = document.getElementById('proposalLink').value.trim();
+            if (!link) {
+                this.showErrorPopup('Inserisci un link valido oppure annulla');
+                return;
+            }
+            this.renderProposalLink(link);
+        });
+        document.getElementById('proposalLinkDeleteBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.renderProposalLink('');
+        });
+        document.getElementById('proposalLinkCancelBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            this.renderProposalLink(this.currentProposalLink);
+        });
 
         // Elenco partecipanti: si apre e si chiude toccando l'intestazione
         document.getElementById('participantsToggleBtn').addEventListener('click', (e) => {
@@ -1611,6 +1689,9 @@ class BacheaCalendar {
             coverDiv.style.backgroundImage = `url(${croppedImage})`;
             coverDiv.style.backgroundAttachment = 'scroll';
             coverDiv.style.minHeight = '120px';
+        } else if (this.currentCropType === 'proposal') {
+            this.proposalImageData = croppedImage;
+            this.setProposalCover(croppedImage);
         } else if (this.currentCropType === 'edit') {
             this.editImageData = croppedImage;
             // Visualizza l'immagine come copertina
@@ -1654,7 +1735,7 @@ class BacheaCalendar {
                     this.openCropperModal(event.target.result);
                 };
                 reader.readAsDataURL(blob);
-                document.getElementById(type === 'event' ? 'eventImageUrl' : 'editImageUrl').value = '';
+                document.getElementById({ event: 'eventImageUrl', edit: 'editImageUrl', proposal: 'proposalImageUrl' }[type]).value = '';
             })
             .catch(error => {
                 this.showErrorPopup('Errore nel caricamento. Verifica l\'URL e i permessi CORS.');
@@ -1733,6 +1814,35 @@ class BacheaCalendar {
             return { ok: false };
         }
         return { ok: true, value: Math.round(value * 100) / 100 };
+    }
+
+    setProposalCover(image) {
+        const cover = document.getElementById('proposalCoverContainer');
+        cover.style.backgroundImage = image ? `url("${image}")` : 'none';
+        cover.style.minHeight = image ? '120px' : '';
+    }
+
+    closeProposalImagePanel() {
+        document.getElementById('proposalImagePanel').style.display = 'none';
+        document.getElementById('proposalImageUrlInputContainer').style.display = 'none';
+    }
+
+    // Link nel form "Evento senza data": come nel crea evento
+    renderProposalLink(link) {
+        this.currentProposalLink = link || '';
+        const hasLink = !!this.currentProposalLink.trim();
+        document.getElementById('proposalLinkContainer').style.display = 'flex';
+        document.getElementById('proposalLinkInputContainer').style.display = 'none';
+        document.getElementById('proposalLink').value = this.currentProposalLink;
+        const openBtn = document.getElementById('proposalLinkOpenBtn');
+        openBtn.disabled = !hasLink;
+        openBtn.style.opacity = hasLink ? '1' : '0.45';
+        openBtn.style.cursor = hasLink ? 'pointer' : 'not-allowed';
+        const modifyBtn = document.getElementById('proposalLinkModifyBtn');
+        modifyBtn.textContent = hasLink ? '✏️' : '🔗 Aggiungi link';
+        modifyBtn.title = hasLink ? 'Modifica link' : '';
+        modifyBtn.style.flex = hasLink ? '0 0 44px' : '1';
+        modifyBtn.style.padding = hasLink ? '0' : '';
     }
 
     // Categoria (crea e modifica): il pulsante mostra la categoria scelta col suo colore
@@ -3399,7 +3509,18 @@ class BacheaCalendar {
 
     setupProposalListeners() {
         document.getElementById('proposalCreateForm').addEventListener('submit', (e) => this.createProposal(e));
-        document.getElementById('proposalCreateCancelBtn').addEventListener('click', () => this.closeProposalModal());
+        document.getElementById('proposalCreateCancelBtn').addEventListener('click', () => {
+            if (this.editingProposalId) {
+                const proposalId = this.editingProposalId;
+                this.editingProposalId = null;
+                this.proposalImageData = null;
+                this.proposalImageRemoved = false;
+                this.openProposalView(proposalId);
+            } else {
+                this.closeProposalModal();
+            }
+        });
+        document.getElementById('proposalEditBtn').addEventListener('click', () => this.openProposalEdit());
         document.getElementById('proposalCloseBtn').addEventListener('click', () => this.closeProposalModal());
         document.getElementById('proposalAddDateBtn').addEventListener('click', () => this.addProposalDate());
         document.getElementById('proposalDeleteBtn').addEventListener('click', () => this.deleteProposal());
@@ -3431,7 +3552,8 @@ class BacheaCalendar {
 
             if (this.openProposalId) {
                 if (this.proposals[this.openProposalId] && this.proposals[this.openProposalId].id) {
-                    this.renderProposalView();
+                    // Durante la modifica non si ridisegna il dettaglio (sovrascriverebbe il form)
+                    if (!this.editingProposalId) this.renderProposalView();
                 } else {
                     // Fissata o eliminata da un altro utente mentre era aperta
                     this.closeProposalModal();
@@ -3466,11 +3588,29 @@ class BacheaCalendar {
     }
 
     // Date proposte in ordine cronologico, con i votanti
+    // Opzione proposta: chiave "YYYY-MM-DD" (solo data) o "YYYY-MM-DD_HHMM" (data e ora).
+    // La chiave identifica l'opzione sia in dateOptions sia in votes.
+    proposalOptionKey(date, time) {
+        return time ? `${date}_${time.replace(':', '')}` : date;
+    }
+
+    parseProposalOptionKey(key) {
+        const date = key.slice(0, 10);
+        const time = key.length >= 15 ? `${key.slice(11, 13)}:${key.slice(13, 15)}` : '';
+        return { date, time };
+    }
+
+    formatProposalOption(key, short = false) {
+        const { date, time } = this.parseProposalOptionKey(key);
+        return this.formatDateKey(date, short) + (time ? ` · 🕐 ${time}` : '');
+    }
+
     getProposalOptions(proposal) {
         const votes = proposal.votes || {};
-        return Object.keys(proposal.dateOptions || {}).sort().map(date => {
-            const voters = Object.entries(votes[date] || {}).map(([key, vote]) => ({ key, ...vote }));
-            return { date, voters, count: voters.length, isFuture: this.isFutureDateKey(date) };
+        return Object.keys(proposal.dateOptions || {}).sort().map(key => {
+            const { date, time } = this.parseProposalOptionKey(key);
+            const voters = Object.entries(votes[key] || {}).map(([voterKey, vote]) => ({ key: voterKey, ...vote }));
+            return { key, date, time, voters, count: voters.length, isFuture: this.isFutureDateKey(date) };
         });
     }
 
@@ -3532,7 +3672,7 @@ class BacheaCalendar {
 
             let summary = 'Nessuna data proposta';
             if (best) {
-                summary = `⭐ ${this.formatDateKey(best.date, true)} · ${best.count} ${best.count === 1 ? 'voto' : 'voti'}`;
+                summary = `⭐ ${this.formatProposalOption(best.key, true)} · ${best.count} ${best.count === 1 ? 'voto' : 'voti'}`;
             } else if (optionsCount > 0) {
                 summary = 'Nessun voto ancora';
             }
@@ -3568,10 +3708,19 @@ class BacheaCalendar {
         modal.style.display = 'flex';
     }
 
+    closeProposalChat() {
+        if (this.proposalChatRef) {
+            this.proposalChatRef.off('value', this.proposalChatListener);
+            this.proposalChatRef = null;
+            this.proposalChatListener = null;
+        }
+    }
+
     closeProposalModal() {
         const modal = document.getElementById('proposalModal');
         modal.classList.remove('active');
         modal.style.display = 'none';
+        this.editingProposalId = null;
 
         // Chiude la chat: se è stata aperta, i messaggi contano come letti
         if (this.proposalChatRef) {
@@ -3678,8 +3827,22 @@ class BacheaCalendar {
 
     openProposalCreate() {
         this.openProposalId = null;
-        document.getElementById('proposalCreateForm').reset();
+        this.editingProposalId = null;
+        this.proposalImageRemoved = false;
+        document.getElementById('proposalFirstDateSection').style.display = 'block';
+        document.getElementById('proposalSubmitBtn').textContent = 'Crea proposta';
+        document.getElementById('proposalImageToggleBtn').textContent = '✏️ Aggiungi immagine';
+        document.getElementById('proposalCreateForm').reset(); // svuota i campi e torna a "Senza categoria"
         document.getElementById('proposalFirstDate').min = this.getTomorrowKey();
+        this.setFeeInput('proposal', 0);
+        this.renderProposalLink('');
+        this.proposalImageData = null;
+        this.setProposalCover(null);
+        this.closeProposalImagePanel();
+        document.getElementById('proposalImage').value = '';
+        document.getElementById('proposalImageTools').style.display = 'block';
+        this.updateCategoryDisplay('proposalCategorySelect');
+        this.closeCategorySelects();
         document.getElementById('proposalModalTitle').textContent = '🗳️ Nuovo evento senza data';
         document.getElementById('proposalCreateForm').style.display = 'block';
         document.getElementById('proposalViewSection').style.display = 'none';
@@ -3687,10 +3850,100 @@ class BacheaCalendar {
         document.getElementById('proposalTitle').focus();
     }
 
+    // Modifica della proposta: solo chi l'ha creata. Stesso form della creazione, senza data/ora:
+    // le date si propongono e si votano dal dettaglio
+    openProposalEdit() {
+        const proposal = this.proposals[this.openProposalId];
+        if (!proposal || !this.isProposalCreator(proposal)) return;
+        const proposalId = proposal.id;
+
+        this.closeProposalChat();
+        this.editingProposalId = proposalId;
+        this.proposalImageData = null;
+        this.proposalImageRemoved = false;
+
+        const form = document.getElementById('proposalCreateForm');
+        form.reset();
+        document.getElementById('proposalTitle').value = proposal.title || '';
+        document.getElementById('proposalLocation').value = proposal.location || '';
+        document.getElementById('proposalNotes').value = proposal.notes || '';
+        this.setFeeInput('proposal', proposal.fee);
+        this.renderProposalLink(proposal.link || '');
+        const colorRadio = document.querySelector(`input[name="proposalColor"][data-color="${proposal.color || 'color-neutral'}"]`);
+        if (colorRadio) colorRadio.checked = true;
+        this.updateCategoryDisplay('proposalCategorySelect');
+        this.closeCategorySelects();
+
+        document.getElementById('proposalFirstDateSection').style.display = 'none';
+        document.getElementById('proposalSubmitBtn').textContent = 'Salva';
+        document.getElementById('proposalImageToggleBtn').textContent = '✏️ Modifica immagine';
+        document.getElementById('proposalImageTools').style.display = 'block';
+        this.closeProposalImagePanel();
+        document.getElementById('proposalImage').value = '';
+        document.getElementById('proposalModalTitle').textContent = '✏️ Modifica proposta';
+        form.style.display = 'block';
+        document.getElementById('proposalViewSection').style.display = 'none';
+        // La copertina resta quella attuale finché non si cambia
+        this.setProposalCover(null);
+        if (proposal.imageVersion) {
+            this.getEventImage(proposal).then(image => {
+                if (this.editingProposalId === proposalId && !this.proposalImageData && !this.proposalImageRemoved) this.setProposalCover(image);
+            });
+        }
+        document.getElementById('proposalTitle').focus();
+    }
+
+    saveProposalEdit(title, fee, color) {
+        const proposalId = this.editingProposalId;
+        const proposal = this.proposals[proposalId];
+        if (!proposal || !this.isProposalCreator(proposal)) return;
+
+        // Solo i campi del form: date, voti e creatore non si toccano
+        const fields = {
+            title: title,
+            location: document.getElementById('proposalLocation').value.trim(),
+            notes: document.getElementById('proposalNotes').value.trim(),
+            fee: fee,
+            link: this.currentProposalLink || '',
+            color: color
+        };
+
+        let imageSaved = Promise.resolve();
+        if (this.proposalImageData) {
+            fields.imageVersion = Date.now();
+            imageSaved = this.saveEventImage(proposalId, this.proposalImageData, fields.imageVersion);
+        } else if (this.proposalImageRemoved) {
+            fields.imageVersion = null;
+            imageSaved = this.saveEventImage(proposalId, null);
+        }
+
+        imageSaved
+            .then(() => database.ref(`proposals/${proposalId}`).update(fields))
+            .then(() => {
+                this.editingProposalId = null;
+                this.proposalImageData = null;
+                this.proposalImageRemoved = false;
+                this.openProposalView(proposalId);
+                this.showSuccessPopup('Proposta modificata');
+            })
+            .catch(error => {
+                console.error('Errore modifica proposta:', error);
+                this.showErrorPopup('Errore nel salvataggio della proposta');
+            });
+    }
+
     createProposal(e) {
         e.preventDefault();
         const title = document.getElementById('proposalTitle').value.trim();
         if (!title) return;
+
+        if (this.editingProposalId) {
+            const editFee = this.readFeeInput('proposal');
+            if (!editFee.ok) return;
+            const editColor = document.querySelector('input[name="proposalColor"]:checked');
+            this.saveProposalEdit(title, editFee.value, editColor ? editColor.dataset.color : 'color-neutral');
+            return;
+        }
 
         const firstDate = document.getElementById('proposalFirstDate').value;
         if (firstDate && !this.isFutureDateKey(firstDate)) {
@@ -3698,25 +3951,38 @@ class BacheaCalendar {
             return;
         }
 
+        const fee = this.readFeeInput('proposal');
+        if (!fee.ok) return;
+        const checkedColor = document.querySelector('input[name="proposalColor"]:checked');
+
         const id = 'evt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
         const proposal = {
             id: id,
             title: title,
-            time: document.getElementById('proposalTime').value.trim(),
+            time: firstDate ? '' : document.getElementById('proposalTime').value.trim(),
             location: document.getElementById('proposalLocation').value.trim(),
             notes: document.getElementById('proposalNotes').value.trim(),
-            color: document.getElementById('proposalColor').value,
+            fee: fee.value,
+            link: this.currentProposalLink || '',
+            color: checkedColor ? checkedColor.dataset.color : 'color-neutral',
             creatorId: this.userId,
             creatorName: this.userName || '',
             createdAt: Date.now()
         };
         // Chi crea non vota in automatico: magari non può esserci
         if (firstDate) {
-            proposal.dateOptions = { [firstDate]: { addedBy: this.userName || '', createdAt: Date.now() } };
+            const firstKey = this.proposalOptionKey(firstDate, document.getElementById('proposalTime').value);
+            proposal.dateOptions = { [firstKey]: { addedBy: this.userName || '', createdAt: Date.now() } };
         }
 
-        database.ref(`proposals/${id}`).set(proposal)
+        const image = this.proposalImageData;
+        if (image) proposal.imageVersion = Date.now();
+        const imageSaved = image ? this.saveEventImage(id, image, proposal.imageVersion) : Promise.resolve();
+
+        imageSaved
+            .then(() => database.ref(`proposals/${id}`).set(proposal))
             .then(() => {
+                this.proposalImageData = null;
                 this.openProposalView(id);
                 this.showSuccessPopup('Proposta creata! Ora tutti possono votare le date.');
             })
@@ -3729,11 +3995,13 @@ class BacheaCalendar {
     openProposalView(proposalId) {
         if (!this.proposals[proposalId]) return;
         this.openProposalId = proposalId;
+        document.getElementById('proposalImageTools').style.display = 'none';
         document.getElementById('proposalCreateForm').style.display = 'none';
         document.getElementById('proposalViewSection').style.display = 'block';
         const newDateInput = document.getElementById('proposalNewDate');
         newDateInput.value = '';
         newDateInput.min = this.getTomorrowKey();
+        document.getElementById('proposalNewTime').value = '';
         this.proposalChatSeen = false;
         this.showProposalPane('proposalDatesPane');
         this.listenProposalChat(proposalId);
@@ -3746,15 +4014,28 @@ class BacheaCalendar {
         if (!proposal) return;
 
         document.getElementById('proposalModalTitle').textContent = `🗳️ ${proposal.title}`;
+        this.setProposalCover(null);
+        if (proposal.imageVersion) {
+            this.getEventImage(proposal).then(image => {
+                if (this.openProposalId === proposal.id) this.setProposalCover(image);
+            });
+        }
 
         const details = [];
         if (proposal.time) details.push(`🕐 ${this.escapeHtml(proposal.time)}`);
         if (proposal.location) details.push(`📍 ${this.escapeHtml(proposal.location)}`);
+        details.push(`💶 ${this.formatFee(proposal.fee)}`);
+        if (proposal.link) {
+            const url = /^https?:\/\//i.test(proposal.link) ? proposal.link : `https://${proposal.link}`;
+            details.push(`🌐 <a href="${this.escapeHtml(url)}" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline;">Vai sul sito</a>`);
+        }
         if (proposal.notes) details.push(`📝 ${this.escapeHtml(proposal.notes).replace(/\n/g, '<br>')}`);
         details.push(`👤 Proposta da: ${this.escapeHtml(proposal.creatorName || 'Anonimo')}`);
         document.getElementById('proposalDetails').innerHTML = details.map(d => `<div style="margin-bottom: 4px;">${d}</div>`).join('');
 
-        document.getElementById('proposalDeleteBtn').style.display = this.isProposalCreator(proposal) ? 'block' : 'none';
+        const isCreator = this.isProposalCreator(proposal);
+        document.getElementById('proposalDeleteBtn').style.display = isCreator ? 'block' : 'none';
+        document.getElementById('proposalEditBtn').style.display = isCreator ? 'block' : 'none';
 
         const listEl = document.getElementById('proposalOptionsList');
         listEl.innerHTML = '';
@@ -3767,10 +4048,11 @@ class BacheaCalendar {
 
         const best = this.getBestProposalOption(proposal);
         const voterKey = this.getVoterKey();
-        const canFix = this.hasVotedProposal(proposal) && !proposal.fixedDate;
+        // "Fissa questa data": solo sull'opzione più votata e solo per chi ha creato la proposta
+        const canFix = this.isProposalCreator(proposal) && !proposal.fixedDate;
 
         options.forEach(option => {
-            const isBest = best && best.date === option.date;
+            const isBest = best && best.key === option.key;
             const mine = option.voters.some(v => v.key === voterKey);
 
             const row = document.createElement('div');
@@ -3779,7 +4061,7 @@ class BacheaCalendar {
             const names = option.voters.map(v => this.escapeHtml(v.name || 'Anonimo')).join(', ');
             row.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                    <strong>${this.formatDateKey(option.date)}</strong>
+                    <strong>${this.formatProposalOption(option.key)}</strong>
                     <span style="white-space: nowrap; font-weight: 600;">👍 ${option.count}</span>
                 </div>
                 ${isBest ? '<div style="font-size: 0.8rem; color: #4CAF50; font-weight: 600;">⭐ La più votata</div>' : ''}
@@ -3795,15 +4077,15 @@ class BacheaCalendar {
                 voteBtn.type = 'button';
                 voteBtn.style.cssText = `flex: 1; padding: 8px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; ${mine ? 'background: #e8f5e9; color: #2e7d32;' : 'background: #667eea; color: white;'}`;
                 voteBtn.textContent = mine ? '✓ Ci sono (togli)' : '👍 Ci sono';
-                voteBtn.addEventListener('click', () => this.toggleProposalVote(option.date, mine));
+                voteBtn.addEventListener('click', () => this.toggleProposalVote(option.key, mine));
                 actions.appendChild(voteBtn);
 
-                if (canFix && option.count > 0) {
+                if (canFix && isBest) {
                     const fixBtn = document.createElement('button');
                     fixBtn.type = 'button';
                     fixBtn.style.cssText = 'flex: 1; padding: 8px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;';
                     fixBtn.textContent = '📅 Fissa questa data';
-                    fixBtn.addEventListener('click', () => this.fixProposalDate(option.date));
+                    fixBtn.addEventListener('click', () => this.fixProposalDate(option.key));
                     actions.appendChild(fixBtn);
                 }
             }
@@ -3812,11 +4094,11 @@ class BacheaCalendar {
         });
     }
 
-    toggleProposalVote(dateKey, alreadyVoted) {
+    toggleProposalVote(optionKey, alreadyVoted) {
         const proposalId = this.openProposalId;
-        if (!proposalId || !this.isFutureDateKey(dateKey)) return;
+        if (!proposalId || !this.isFutureDateKey(this.parseProposalOptionKey(optionKey).date)) return;
 
-        const ref = database.ref(`proposals/${proposalId}/votes/${dateKey}/${this.getVoterKey()}`);
+        const ref = database.ref(`proposals/${proposalId}/votes/${optionKey}/${this.getVoterKey()}`);
         const write = alreadyVoted
             ? ref.remove()
             : ref.set({ name: this.userName, deviceId: this.userId });
@@ -3832,7 +4114,9 @@ class BacheaCalendar {
         if (!proposal) return;
 
         const input = document.getElementById('proposalNewDate');
+        const timeInput = document.getElementById('proposalNewTime');
         const dateKey = input.value;
+        const optionKey = this.proposalOptionKey(dateKey, timeInput.value);
         if (!dateKey) {
             this.showErrorPopup('Scegli una data');
             return;
@@ -3841,34 +4125,41 @@ class BacheaCalendar {
             this.showErrorPopup('Puoi proporre date solo da domani in poi');
             return;
         }
-        if (proposal.dateOptions && proposal.dateOptions[dateKey]) {
-            this.showErrorPopup('Questa data è già stata proposta: votala dalla lista');
+        if (proposal.dateOptions && proposal.dateOptions[optionKey]) {
+            this.showErrorPopup('Questa data (e ora) è già stata proposta: votala dalla lista');
             return;
         }
 
         // Chi propone una data la vota anche (può sempre togliere il voto)
         database.ref(`proposals/${proposalId}`).update({
-            [`dateOptions/${dateKey}`]: { addedBy: this.userName || '', createdAt: Date.now() },
-            [`votes/${dateKey}/${this.getVoterKey()}`]: { name: this.userName, deviceId: this.userId }
+            [`dateOptions/${optionKey}`]: { addedBy: this.userName || '', createdAt: Date.now() },
+            [`votes/${optionKey}/${this.getVoterKey()}`]: { name: this.userName, deviceId: this.userId }
         }).then(() => {
             input.value = '';
+            timeInput.value = '';
         }).catch(error => {
             console.error('Errore aggiunta data:', error);
             this.showErrorPopup('Errore nel salvataggio della data');
         });
     }
 
-    async fixProposalDate(dateKey) {
+    async fixProposalDate(optionKey) {
         const proposalId = this.openProposalId;
         const proposal = this.proposals[proposalId];
-        if (!proposal || !this.hasVotedProposal(proposal)) return;
+        if (!proposal || !this.isProposalCreator(proposal)) return;
+        const best = this.getBestProposalOption(proposal);
+        if (!best || best.key !== optionKey) {
+            this.showErrorPopup('Si può fissare solo la data più votata');
+            return;
+        }
+        const { date: dateKey, time: optionTime } = this.parseProposalOptionKey(optionKey);
         if (!this.isFutureDateKey(dateKey)) {
             this.showErrorPopup('Puoi fissare solo date da domani in poi');
             return;
         }
 
         const confirmed = await this.showConfirmDialog(
-            `Fissare "${proposal.title}" per ${this.formatDateKey(dateKey)}? ` +
+            `Fissare "${proposal.title}" per ${this.formatProposalOption(optionKey)}? ` +
             `L'evento andrà nel calendario e chi ha votato questa data diventerà partecipante.`,
             '📅 Fissa', '#4CAF50'
         );
@@ -3877,14 +4168,14 @@ class BacheaCalendar {
         const proposalRef = database.ref(`proposals/${proposalId}`);
         try {
             // 1. Blocca la proposta: se due persone fissano insieme, passa solo la prima
-            const lock = await proposalRef.child('fixedDate').transaction(current => current ? undefined : dateKey);
+            const lock = await proposalRef.child('fixedDate').transaction(current => current ? undefined : optionKey);
             if (!lock.committed) {
                 this.showErrorPopup('Qualcun altro ha appena fissato questa proposta');
                 return;
             }
 
             const fresh = (await proposalRef.once('value')).val() || proposal;
-            const voters = Object.values((fresh.votes || {})[dateKey] || {});
+            const voters = Object.values((fresh.votes || {})[optionKey] || {});
             const participants = {};
             voters.forEach(v => { if (v.deviceId) participants[v.deviceId] = true; });
 
@@ -3892,12 +4183,13 @@ class BacheaCalendar {
                 id: proposalId, // Stesso id: chat e immagine restano collegate
                 date: dateKey,
                 title: fresh.title || proposal.title,
-                time: fresh.time || '',
+                time: optionTime || fresh.time || '', // L'ora dell'opzione votata, altrimenti quella generale
                 location: fresh.location || '',
                 notes: fresh.notes || '',
+                fee: fresh.fee || 0,
                 color: fresh.color || 'color-neutral',
-                link: '',
-                imageVersion: null,
+                link: fresh.link || '',
+                imageVersion: fresh.imageVersion || null, // Stesso id: eventImages/{id} resta collegata
                 participants: participants,
                 creatorId: fresh.creatorId || this.userId,
                 createdAt: Date.now()
@@ -3909,7 +4201,7 @@ class BacheaCalendar {
 
             // 3. La proposta non serve più
             await proposalRef.remove();
-            this.showSuccessPopup(`Data fissata! L'evento è nel calendario per ${this.formatDateKey(dateKey)}.`);
+            this.showSuccessPopup(`Data fissata! L'evento è nel calendario per ${this.formatProposalOption(optionKey)}.`);
         } catch (error) {
             console.error('Errore nel fissare la data:', error);
             proposalRef.child('fixedDate').remove().catch(() => {});
@@ -3929,6 +4221,7 @@ class BacheaCalendar {
         // La chat serve solo alla proposta: si elimina con lei
         database.ref(`eventChats/${proposalId}`).remove().catch(() => {});
         database.ref(`chatReadStatus/${proposalId}`).remove().catch(() => {});
+        if (proposal.imageVersion) this.saveEventImage(proposalId, null).catch(() => {});
         database.ref(`proposals/${proposalId}`).remove()
             .then(() => this.showSuccessPopup('Proposta eliminata'))
             .catch(error => {

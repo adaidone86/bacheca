@@ -447,50 +447,122 @@
     </div>
 
     <!-- Proposal Modal (evento da fissare, senza data) -->
-    <div class="modal" id="proposalModal" style="z-index: 1100;">
+    <div class="modal event-form-modal" id="proposalModal" style="z-index: 1100;">
         <div class="modal-content" style="max-width: 460px; max-height: 90vh; overflow-y: auto;">
-            <div style="padding: 20px 30px 0 30px;">
+            <div id="proposalCoverContainer" style="padding: 20px 30px 8px 30px; background-size: cover; background-position: center; border-radius: 16px 16px 0 0;">
+                <!-- Immagine: solo nella creazione (nel dettaglio fa da copertina) -->
+                <div id="proposalImageTools" style="display: none;">
+                    <button type="button" id="proposalImageToggleBtn" class="cover-toggle-btn" style="font-size: 0.95rem; font-weight: 600; margin-bottom: 6px;">✏️ Aggiungi immagine</button>
+                    <div id="proposalImagePanel" style="display: none; margin-bottom: 8px;">
+                        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                            <button type="button" id="proposalImageUploadBtn" style="flex: 1; padding: 8px; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; color: white; background: rgba(255,255,255,0.25); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 50px; justify-content: center;">📤<br>Carica Img</button>
+                            <button type="button" id="proposalImageUrlBtn" style="flex: 1; padding: 8px; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; color: white; background: rgba(255,255,255,0.25); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 50px; justify-content: center;">🔗<br>URL Img</button>
+                            <button type="button" id="proposalImageDeleteBtn" style="flex: 1; padding: 8px; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; color: white; background: rgba(255,255,255,0.25); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 50px; justify-content: center;">❌<br>Elimina Img</button>
+                        </div>
+                        <input type="file" id="proposalImage" accept="image/*" style="display: none;">
+                        <div id="proposalImageUrlInputContainer" style="display: none; gap: 8px;">
+                            <input type="url" id="proposalImageUrl" placeholder="Es: https://example.com/image.jpg" style="flex: 1; min-width: 0; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 0.9rem;">
+                            <button type="button" id="proposalImageUrlSaveBtn" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; white-space: nowrap; flex-shrink: 0;">✅ Salva Img</button>
+                        </div>
+                    </div>
+                </div>
                 <div class="modal-header" id="proposalModalTitle" style="color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">🗳️ Evento da fissare</div>
             </div>
 
             <!-- Creazione -->
-            <form id="proposalCreateForm">
+            <form id="proposalCreateForm" class="edit-compact">
+                <div class="form-group">
+                    <div id="proposalLinkContainer" class="edit-row">
+                        <button type="button" id="proposalLinkOpenBtn" style="flex: 1; min-width: 0; height: 40px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: white; background: #2196F3;">🌐 Vai sul sito</button>
+                        <button type="button" id="proposalLinkModifyBtn" style="flex: 1; min-width: 0; height: 40px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: white; background: #FF9800;">🔗 Aggiungi link</button>
+                    </div>
+                    <div id="proposalLinkInputContainer" style="display: none; gap: 6px; align-items: center;">
+                        <input type="url" id="proposalLink" placeholder="https://..." style="flex: 1; min-width: 0; height: 40px; padding: 0 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 0.95rem; box-sizing: border-box;">
+                        <button type="button" id="proposalLinkSaveBtn" title="Salva link" style="flex: 0 0 auto; height: 40px; padding: 0 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #4CAF50; color: white;">✅</button>
+                        <button type="button" id="proposalLinkDeleteBtn" title="Elimina link" style="flex: 0 0 auto; height: 40px; padding: 0 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #f44336; color: white;">🗑️</button>
+                        <button type="button" id="proposalLinkCancelBtn" title="Annulla" style="flex: 0 0 auto; height: 40px; padding: 0 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #ccc; color: #333;">✖</button>
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label for="proposalTitle">📌 Nome evento</label>
-                    <input type="text" id="proposalTitle" placeholder="Es: CENA DI CLASSE" required style="height: 44px;">
+                    <input type="text" id="proposalTitle" placeholder="Es: CENA DI CLASSE" required>
                 </div>
-                <div style="display: flex; gap: 12px;">
-                    <div class="form-group" style="flex: 0 0 35%;">
-                        <label for="proposalTime">🕐 Ora</label>
-                        <input type="time" id="proposalTime" style="height: 44px; border-radius: 6px; width: 100%;">
-                    </div>
-                    <div class="form-group" style="flex: 1;">
+
+                <div class="edit-row">
+                    <div class="form-group">
                         <label for="proposalLocation">📍 Luogo</label>
-                        <input type="text" id="proposalLocation" placeholder="Anche da decidere" style="height: 44px;">
+                        <input type="text" id="proposalLocation" placeholder="Anche da decidere">
+                    </div>
+                    <div class="form-group">
+                        <label>🎨 Categoria</label>
+                        <div class="category-select" id="proposalCategorySelect">
+                            <button type="button" class="category-select-current" id="proposalCategoryCurrent">⚪ Senza categoria</button>
+                            <div class="category-select-options">
+                            <label class="category-option" style="background: #999; color: white;">
+                                <input type="radio" name="proposalColor" class="proposal-color-select" data-color="color-neutral" checked>
+                                <span>⚪ Senza categoria</span>
+                            </label>
+                            <label class="category-option" style="background: #ffd54f; color: #333;">
+                                <input type="radio" name="proposalColor" class="proposal-color-select" data-color="color-yellow">
+                                <span>🍽️ Gastronomia/Cibo</span>
+                            </label>
+                            <label class="category-option" style="background: #ff6b9d; color: white;">
+                                <input type="radio" name="proposalColor" class="proposal-color-select" data-color="color-pink">
+                                <span>👥 Serate/Sociali</span>
+                            </label>
+                            <label class="category-option" style="background: #81c784; color: white;">
+                                <input type="radio" name="proposalColor" class="proposal-color-select" data-color="color-green">
+                                <span>⛹️ Sport/Attività</span>
+                            </label>
+                            <label class="category-option" style="background: #64b5f6; color: white;">
+                                <input type="radio" name="proposalColor" class="proposal-color-select" data-color="color-blue">
+                                <span>🎮 Intrattenimento</span>
+                            </label>
+                            <label class="category-option" style="background: #ba68c8; color: white;">
+                                <input type="radio" name="proposalColor" class="proposal-color-select" data-color="color-purple">
+                                <span>🎵 Cultura/Musica</span>
+                            </label>
+                            <label class="category-option" style="background: #ffb74d; color: white;">
+                                <input type="radio" name="proposalColor" class="proposal-color-select" data-color="color-orange">
+                                <span>🏞️ Escursioni/Turismo</span>
+                            </label>
+                            </div>
+                        </div>
                     </div>
                 </div>
+
+                <div class="form-group">
+                    <label for="proposalFee">💶 Quota</label>
+                    <div style="position: relative;">
+                        <input type="text" id="proposalFee" inputmode="decimal" placeholder="Gratis" style="padding-right: 28px;">
+                        <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: #666; pointer-events: none;">€</span>
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label for="proposalNotes">📝 Note aggiuntive</label>
-                    <textarea id="proposalNotes" style="height: 80px; resize: vertical;"></textarea>
+                    <textarea id="proposalNotes"></textarea>
                 </div>
-                <div class="form-group">
-                    <label for="proposalColor">🎨 Categoria</label>
-                    <select id="proposalColor" style="width: 100%; padding: 10px; border: 2px solid #eee; border-radius: 8px; font-size: 1rem;">
-                        <option value="color-neutral">⚪ Senza categoria</option>
-                        <option value="color-yellow">🍽️ Gastronomia/Cibo</option>
-                        <option value="color-pink">👥 Serate/Sociali</option>
-                        <option value="color-green">⛹️ Sport/Attività</option>
-                        <option value="color-blue">🎮 Intrattenimento</option>
-                        <option value="color-purple">🎵 Cultura/Musica</option>
-                        <option value="color-orange">🏞️ Escursioni/Turismo</option>
-                    </select>
+
+                <!-- Separatore, nota e poi data/ora facoltative (solo in creazione: dopo si propongono e votano) -->
+                <div id="proposalFirstDateSection">
+                <div style="border-top: 1px solid rgba(255,255,255,0.35); margin: 4px 0 8px 0;"></div>
+                <p style="margin: 0 0 10px 0; font-size: 0.8rem; opacity: 0.85;">Data e ora sono facoltative: le date si possono proporre e votare anche dopo.</p>
+                <div class="edit-row">
+                    <div class="form-group">
+                        <label for="proposalFirstDate" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">📅 Prima data proposta</label>
+                        <input type="date" id="proposalFirstDate">
+                    </div>
+                    <div class="form-group">
+                        <label for="proposalTime" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">🕐 Ora proposta</label>
+                        <input type="time" id="proposalTime">
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="proposalFirstDate">📅 Prima data proposta (facoltativa)</label>
-                    <input type="date" id="proposalFirstDate" style="width: 100%; height: 44px; padding: 8px; border: 2px solid #eee; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
                 </div>
+
                 <div class="modal-buttons" style="padding: 0;">
-                    <button type="submit" class="btn-save" style="background: #4CAF50; color: white;">Crea proposta</button>
+                    <button type="submit" class="btn-save" id="proposalSubmitBtn" style="background: #4CAF50; color: white;">Crea proposta</button>
                     <button type="button" class="btn-cancel" id="proposalCreateCancelBtn" style="background: #ccc; color: #333;">Annulla</button>
                 </div>
             </form>
@@ -509,11 +581,13 @@
                     <div style="font-weight: 600; margin-bottom: 8px;">📅 Date proposte</div>
                     <div id="proposalOptionsList" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px;"></div>
 
+                    <!-- Tutti possono proporre una data, con l'ora facoltativa -->
                     <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-                        <input type="date" id="proposalNewDate" style="flex: 1; min-width: 0; padding: 8px; border: 2px solid #eee; border-radius: 8px; font-size: 1rem;">
+                        <input type="date" id="proposalNewDate" style="flex: 1.4; min-width: 0; padding: 8px; border: 2px solid #eee; border-radius: 8px; font-size: 1rem;">
+                        <input type="time" id="proposalNewTime" title="Ora (facoltativa)" style="flex: 1; min-width: 0; padding: 8px; border: 2px solid #eee; border-radius: 8px; font-size: 1rem;">
                         <button type="button" id="proposalAddDateBtn" style="padding: 8px 14px; background: #FF9800; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; white-space: nowrap;">➕ Proponi</button>
                     </div>
-                    <p style="font-size: 0.8rem; opacity: 0.85; margin: 0 0 16px 0;">Vota tutte le date in cui puoi esserci. Chi ha votato può fissare la data: l'evento finisce nel calendario e chi ha votato quella data diventa partecipante.</p>
+                    <p style="font-size: 0.8rem; opacity: 0.85; margin: 0 0 16px 0;">Proponi una data (l'ora è facoltativa) e vota tutte quelle in cui puoi esserci. Chi ha creato la proposta fissa la data più votata: l'evento finisce nel calendario e chi ha votato quella data diventa partecipante.</p>
                 </div>
 
                 <div id="proposalChatPane" style="display: none; margin-bottom: 16px;">
@@ -526,6 +600,7 @@
                 </div>
 
                 <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn-save" id="proposalEditBtn" style="background: #FF9800; color: white; display: none;">✏️ Modifica</button>
                     <button type="button" class="btn-cancel" id="proposalDeleteBtn" style="background: #f44336; color: white; display: none;">Elimina</button>
                     <button type="button" class="btn-cancel" id="proposalCloseBtn" style="background: #ccc; color: #333;">Chiudi</button>
                 </div>
