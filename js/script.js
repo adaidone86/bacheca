@@ -74,7 +74,6 @@ class BacheaCalendar {
         this.isListView = false; // Toggle tra calendario e lista
         this.visibleColors = this.loadColorFilters(); // Colori visibili
         this.eventImageData = null;
-        this.editImageData = null;
         this.imageCache = {}; // Cache immagini: `${eventId}:${imageVersion}` -> dataURL
         this.currentEventLink = ''; // Link in aggiunta
         this.cropper = null;
@@ -183,7 +182,7 @@ class BacheaCalendar {
     // ===== Account: login con username e password =====
     // Firebase Auth (email/password): lo username diventa un'email fittizia "username@bacheca.local",
     // che serve solo a Firebase. Nessuna email viene mai inviata.
-    // users/{uid}: {username, name, createdAt, lastSeen}
+    // users/{uid}: {username, name, createdAt}
 
     getDeviceInfo() {
         // Rileva browser
@@ -277,8 +276,7 @@ class BacheaCalendar {
             await database.ref(`users/${user.uid}`).set({
                 username: this.username,
                 name: this.userName,
-                createdAt: Date.now(),
-                lastSeen: Date.now()
+                createdAt: Date.now()
             });
         }
         this.userNames[this.userId] = this.userName;
@@ -370,8 +368,7 @@ class BacheaCalendar {
                     await database.ref(`users/${cred.user.uid}`).set({
                         username: username,
                         name: name || username,
-                        createdAt: Date.now(),
-                        lastSeen: Date.now()
+                        createdAt: Date.now()
                     });
                     createdUser = null; // profilo salvato: l'account è completo
                     await finish(cred.user);
@@ -391,12 +388,6 @@ class BacheaCalendar {
             showTab('login');
             modal.classList.add('active');
         });
-    }
-
-    updateLastSeen() {
-        if (this.userId) {
-            database.ref(`users/${this.userId}/lastSeen`).set(Date.now()).catch(() => {});
-        }
     }
 
     displayWelcomeMessage() {
@@ -588,8 +579,6 @@ class BacheaCalendar {
         this.loadTitle();
         this.displayWelcomeMessage();
         this.updateEditNameButtonText();
-        // Aggiorna lastSeen ogni minuto
-        setInterval(() => this.updateLastSeen(), 60000);
         // Eventi e nomi degli utenti PRIMA di renderizzare
         Promise.all([this.loadEvents(), this.loadUserNames()]).then(() => {
             this.cleanupPastEvents();
@@ -1078,7 +1067,6 @@ class BacheaCalendar {
 
         document.getElementById('editImageDeleteBtn').addEventListener('click', (e) => {
             e.preventDefault();
-            this.editImageData = null;
             document.getElementById('editImage').value = '';
             document.getElementById('eventCoverContainer').style.backgroundImage = 'none';
             if (this.editingNote) {
@@ -1517,14 +1505,6 @@ class BacheaCalendar {
         document.getElementById('eventLink').value = '';
         this.currentEventLink = '';
 
-        // Resetta i tab del modal di aggiunta
-        const modal = document.getElementById('modal');
-        modal.querySelectorAll('.modal-tab').forEach(tab => tab.classList.remove('active'));
-        modal.querySelectorAll('.modal-tab-content').forEach(content => content.classList.remove('active'));
-        // Attiva il primo tab
-        modal.querySelector('.modal-tab').classList.add('active');
-        modal.querySelector('.modal-tab-content').classList.add('active');
-
         document.getElementById('modal').classList.remove('active');
         document.getElementById('modal').style.display = 'none';
         this.selectedDate = null;
@@ -1693,7 +1673,6 @@ class BacheaCalendar {
             this.proposalImageData = croppedImage;
             this.setProposalCover(croppedImage);
         } else if (this.currentCropType === 'edit') {
-            this.editImageData = croppedImage;
             // Visualizza l'immagine come copertina
             const coverDiv = document.getElementById('eventCoverContainer');
             coverDiv.style.backgroundImage = `url(${croppedImage})`;
@@ -2006,38 +1985,12 @@ class BacheaCalendar {
         return ref.remove();
     }
 
-    // Ridimensiona e ricomprime un'immagine (usata dall'import delle immagini vecchie)
-    compressImage(dataUrl, maxWidth = 1200, quality = 0.65) {
-        return new Promise(resolve => {
-            const img = new Image();
-            img.onload = () => {
-                try {
-                    const scale = Math.min(1, maxWidth / img.width);
-                    const canvas = document.createElement('canvas');
-                    canvas.width = Math.round(img.width * scale);
-                    canvas.height = Math.round(img.height * scale);
-                    const ctx = canvas.getContext('2d');
-                    ctx.fillStyle = '#fff';
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    const compressed = canvas.toDataURL('image/jpeg', quality);
-                    resolve(compressed.length < dataUrl.length ? compressed : dataUrl);
-                } catch (e) {
-                    resolve(dataUrl);
-                }
-            };
-            img.onerror = () => resolve(dataUrl);
-            img.src = dataUrl;
-        });
-    }
-
     // Mostra la copertina nel modal di modifica, se l'evento aperto è ancora lo stesso
     showEditCover(note) {
         this.getEventImage(note).then(image => {
             const current = this.getEditingEvent();
             if (!current || current.id !== note.id) return;
 
-            this.editImageData = image;
             const coverContainer = document.getElementById('eventCoverContainer');
             coverContainer.style.backgroundImage = image ? `url("${image}")` : 'none';
             coverContainer.style.backgroundAttachment = image ? 'scroll' : 'fixed';
@@ -2764,12 +2717,8 @@ class BacheaCalendar {
         });
     }
 
-    // All'apertura dell'app:
-    // - gli eventi dei mesi precedenti si cancellano, con chat, letture e immagine;
-    // - gli eventi ancora nel formato vecchio (events/{YYYY-MM-DD}: [...]) si convertono in
-    //   events/{id} se sono del mese corrente o successivi, altrimenti si cancellano.
-    // Conversione e cancellazione del giorno vecchio vanno nella stessa scrittura, così non si
-    // perde né si duplica niente; se due client lo fanno insieme scrivono gli stessi dati.
+    // All'apertura dell'app gli eventi dei mesi precedenti si cancellano, con chat, letture e immagine.
+    // Ognuno cancella solo i propri (le regole non permettono di più): quelli degli altri non si vedono comunque.
     async cleanupPastEvents() {
         const today = new Date();
         const firstOfMonth = this.getDateKey(new Date(today.getFullYear(), today.getMonth(), 1));
@@ -2782,143 +2731,17 @@ class BacheaCalendar {
 
         try {
             const updates = {};
-            let converted = 0;
-            for (const [key, value] of Object.entries(this.events)) {
-                if (!value) continue;
-
-                if (this.isLegacyDayKey(key)) {
-                    const oldEvents = Object.values(value).filter(old => old && old.title);
-                    updates[`events/${key}`] = null;
-                    if (key < firstOfMonth) {
-                        oldEvents.forEach(old => { if (old.id) removeEvent(updates, old.id); });
-                    } else {
-                        for (const old of oldEvents) {
-                            await this.addLegacyEventToUpdates(old, key, updates, null);
-                            converted++;
-                        }
-                    }
-                } else if (value.id && value.date && value.date < firstOfMonth && this.canEditEvent(value)) {
-                    removeEvent(updates, value.id);
+            Object.values(this.events).forEach(event => {
+                if (event && event.id && event.date && event.date < firstOfMonth && this.canEditEvent(event)) {
+                    removeEvent(updates, event.id);
                 }
-            }
-
+            });
             if (Object.keys(updates).length > 0) {
                 await database.ref().update(updates);
-                if (converted > 0) console.log(`🔄 Convertiti ${converted} eventi dal formato vecchio`);
             }
         } catch (error) {
-            console.error('Errore pulizia/conversione eventi:', error);
+            console.error('Errore pulizia eventi passati:', error);
         }
-    }
-
-    // Formato vecchio: la chiave sotto events era la data e conteneva l'array degli eventi del giorno
-    isLegacyDayKey(key) {
-        return /^\d{4}-\d{2}-\d{2}$/.test(key);
-    }
-
-    // Converte un evento del formato vecchio nel nuovo e lo aggiunge a updates.
-    // Partecipanti e creatore erano legati ai vecchi dispositivi e non si portano.
-    // oldImages: le immagini del backup (import); null se l'immagine è già in eventImages/{id}.
-    async addLegacyEventToUpdates(old, dateKey, updates, oldImages) {
-        const id = old.id || ('evt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
-
-        let imageVersion = null;
-        let image = oldImages ? (oldImages[id] || null) : null;
-        if (!image && old.image) image = await this.compressImage(old.image); // Immagine dentro l'evento (formato antico)
-        if (typeof image === 'string' && image.startsWith('data:image/')) {
-            imageVersion = old.imageVersion || Date.now();
-            updates[`eventImages/${id}`] = image;
-        } else if (!oldImages && old.imageVersion) {
-            imageVersion = old.imageVersion; // Già in eventImages/{id}, con lo stesso id
-        }
-
-        updates[`events/${id}`] = {
-            id: id,
-            date: dateKey,
-            title: old.title,
-            time: old.time || '',
-            location: old.location || '',
-            notes: old.notes || '',
-            color: old.color || 'color-neutral',
-            link: old.link || '',
-            imageVersion: imageVersion,
-            createdAt: Date.now()
-        };
-        return id;
-    }
-
-    // Import una tantum dal vecchio database (JSON esportato dalla console Firebase).
-    // Porta gli eventi da oggi in poi (senza partecipanti, creatore e chat), le loro immagini
-    // e le proposte (con le date future, senza voti). Uso, da loggati, nella console del browser:
-    //   await bacheaInstance.importBackupFromFile()   (si apre la scelta del file JSON)
-    // oppure: await bacheaInstance.importBackup(<oggetto JSON incollato>)
-    importBackupFromFile() {
-        return new Promise((resolve, reject) => {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = 'application/json,.json';
-            input.onchange = async () => {
-                try {
-                    const backup = JSON.parse(await input.files[0].text());
-                    resolve(await this.importBackup(backup));
-                } catch (error) {
-                    console.error('Errore import:', error);
-                    reject(error);
-                }
-            };
-            input.click();
-        });
-    }
-
-    async importBackup(backup) {
-        if (!this.userId) throw new Error('Fai prima il login');
-        const today = this.getDateKey(new Date());
-        const oldImages = backup.eventImages || {};
-        const updates = {};
-        const counts = { events: 0, images: 0, proposals: 0 };
-
-        for (const [dateKey, dayEvents] of Object.entries(backup.events || {})) {
-            if (!this.isLegacyDayKey(dateKey) || dateKey < today) continue;
-            for (const old of Object.values(dayEvents || {})) {
-                if (!old || !old.title) continue;
-                if (old.id && this.events[old.id]) continue; // Già importato
-
-                const id = await this.addLegacyEventToUpdates(old, dateKey, updates, oldImages);
-                if (updates[`eventImages/${id}`]) counts.images++;
-                counts.events++;
-            }
-        }
-
-        for (const old of Object.values(backup.proposals || {})) {
-            if (!old || !old.id || !old.title || old.fixedDate || this.proposals[old.id]) continue;
-            const dateOptions = {};
-            Object.keys(old.dateOptions || {}).filter(d => d > today).forEach(d => {
-                dateOptions[d] = { addedBy: (old.dateOptions[d] && old.dateOptions[d].addedBy) || '', createdAt: Date.now() };
-            });
-            updates[`proposals/${old.id}`] = {
-                id: old.id,
-                title: old.title,
-                time: old.time || '',
-                location: old.location || '',
-                notes: old.notes || '',
-                color: old.color || 'color-neutral',
-                creatorId: this.userId, // Chi importa può eliminarle
-                creatorName: old.creatorName || '',
-                createdAt: old.createdAt || Date.now(),
-                ...(Object.keys(dateOptions).length > 0 ? { dateOptions } : {})
-            };
-            counts.proposals++;
-        }
-
-        // A blocchi, così una scrittura non diventa troppo grande (le immagini pesano)
-        const keys = Object.keys(updates);
-        for (let i = 0; i < keys.length; i += 20) {
-            const chunk = {};
-            keys.slice(i, i + 20).forEach(key => { chunk[key] = updates[key]; });
-            await database.ref().update(chunk);
-        }
-        console.log(`📥 Import completato: ${counts.events} eventi, ${counts.images} immagini, ${counts.proposals} proposte`);
-        return counts;
     }
 
     updateAllBadges() {
@@ -3141,7 +2964,6 @@ class BacheaCalendar {
         this.closeEditImagePanel();
 
         // Parti dal gradiente viola, poi carica l'immagine se esiste
-        this.editImageData = null;
         const coverContainer = document.getElementById('eventCoverContainer');
         coverContainer.style.backgroundImage = 'none';
         coverContainer.style.backgroundAttachment = 'fixed';

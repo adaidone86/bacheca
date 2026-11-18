@@ -170,7 +170,7 @@
         <div class="modal-content" style="max-width: 400px;">
             <div class="modal-header" style="text-align: center;">👤 Il tuo nome</div>
             <form id="namePromptForm" style="padding: 20px 30px;">
-                <div class="form-group" id="nameInputGroup">
+                <div class="form-group">
                     <input type="text" id="nameInput" maxlength="40" placeholder="Come ti vedono gli altri">
                 </div>
                 <div class="modal-buttons">
@@ -226,10 +226,6 @@
                         <button type="button" id="eventImageUrlSaveBtn" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; white-space: nowrap; flex-shrink: 0;">✅ Salva Img</button>
                     </div>
                 </div>
-                <div class="modal-tabs" style="margin-top: 15px;">
-                    <button class="modal-tab active" data-tab="evento-tab" style="background: rgba(255,255,255,0.9); color: #667eea;">📌 Evento</button>
-                    <button class="modal-tab" data-tab="participants-tab" style="background: rgba(255,255,255,0.7); color: #333;">👥 Partecipanti</button>
-                </div>
             </div>
             <form id="noteForm">
                 <!-- Tab: Evento -->
@@ -271,7 +267,7 @@
                         <div class="form-group">
                             <label>🎨 Categoria</label>
                             <div class="category-select" id="addCategorySelect">
-                                <button type="button" class="category-select-current" id="addCategoryCurrent">⚪ Senza categoria</button>
+                                <button type="button" class="category-select-current">⚪ Senza categoria</button>
                                 <div class="category-select-options">
                             <label class="category-option" style="background: #999; color: white;">
                                 <input type="radio" name="eventColor" class="color-select" data-color="color-neutral" checked>
@@ -317,16 +313,6 @@
                     <div class="form-group">
                         <label for="eventNotes">📝 Note aggiuntive</label>
                         <textarea id="eventNotes" placeholder="Es: con cena cantata! 📞 Prenotazioni..."></textarea>
-                    </div>
-                </div>
-
-                <!-- Tab: Partecipanti -->
-                <div id="participants-tab" class="modal-tab-content">
-                    <div class="form-group" id="eventParticipantsGroup" style="opacity: 0.5; pointer-events: none;">
-                        <label style="margin-bottom: 12px; display: block; font-weight: 600;">👥 Partecipanti (disponibile dopo la creazione)</label>
-                        <div style="padding: 12px; background: rgba(255,255,255,0.5); border-radius: 6px; text-align: center; color: #999; font-size: 0.9rem;">
-                            I partecipanti potranno essere aggiunti dopo la creazione dell'evento
-                        </div>
                     </div>
                 </div>
 
@@ -439,7 +425,7 @@
                 </div>
                 <div style="display: flex; gap: 10px; margin-top: 20px;">
                     <button type="button" id="closeSelectDayBtn" style="flex: 1; padding: 10px; background: #ccc; color: #333; border: none; border-radius: 6px; cursor: pointer;">Annulla</button>
-                    <button type="submit" id="confirmSelectDayBtn" style="flex: 1; padding: 10px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">Conferma</button>
+                    <button type="submit" style="flex: 1; padding: 10px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">Conferma</button>
                 </div>
             </form>
             <div id="selectDayError" style="color: #f44336; text-align: center; margin-top: 10px; display: none;"></div>
@@ -497,7 +483,7 @@
                     <div class="form-group">
                         <label>🎨 Categoria</label>
                         <div class="category-select" id="proposalCategorySelect">
-                            <button type="button" class="category-select-current" id="proposalCategoryCurrent">⚪ Senza categoria</button>
+                            <button type="button" class="category-select-current">⚪ Senza categoria</button>
                             <div class="category-select-options">
                             <label class="category-option" style="background: #999; color: white;">
                                 <input type="radio" name="proposalColor" class="proposal-color-select" data-color="color-neutral" checked>
@@ -746,7 +732,7 @@
                 <!-- Tab: Partecipanti -->
                 <div id="edit-participants-tab" class="modal-tab-content">
                     <!-- Partecipanti in alto; sotto la chat sempre visibile, altezza fissa (scorre dentro) -->
-                    <div class="form-group" id="editParticipantsGroup" style="margin-bottom: 15px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.2);">
+                    <div class="form-group" style="margin-bottom: 15px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.2);">
                         <!-- Elenco chiuso di default (così l'attenzione va alla chat): si apre con un tocco -->
                         <button type="button" id="participantsToggleBtn" aria-expanded="false" style="width: 100%; display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: rgba(255,255,255,0.15); color: inherit; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1rem; text-align: left;">
                             <span>👥 <span id="participantCountDisplay">0</span> Partecipanti</span>

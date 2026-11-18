@@ -6,3 +6,6 @@ node_modules/
 dist/
 build/
 /.claude/launch.json
+
+# Backup del database: contengono dati personali, non vanno pubblicati su GitHub Pages
+/backup/
