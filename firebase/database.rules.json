@@ -54,11 +54,11 @@
       }
     },
     "chatReadStatus": {
-      ".read": "auth != null",
-      "$eventId": {
-        ".write": "auth != null && !newData.exists()",
-        "$userKey": {
-          ".write": "auth != null && (auth.uid === $userKey || !newData.exists())"
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        "$chatId": {
+          ".validate": "newData.hasChildren(['lastReadTimestamp']) && newData.child('lastReadTimestamp').isNumber()"
         }
       }
     },

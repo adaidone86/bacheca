@@ -69,6 +69,8 @@ class BacheaCalendar {
         this.selectedDate = null;
         this.selectedColor = 'color-yellow';
         this.events = {}; // events/{id} da Firebase: id -> evento (con il campo date)
+        this.chatMessages = {}; // eventChats da Firebase: id evento/proposta -> {messages}
+        this.readStatus = {}; // chatReadStatus/{uid}: id evento/proposta -> {lastReadTimestamp}
         this.notes = {}; // Indice derivato da this.events: data -> [eventi ordinati per orario]
         this.editingNote = null; // Evento aperto nel modal di modifica: {id, dateKey}
         this.isListView = false; // Toggle tra calendario e lista
@@ -580,7 +582,7 @@ class BacheaCalendar {
         this.displayWelcomeMessage();
         this.updateEditNameButtonText();
         // Eventi e nomi degli utenti PRIMA di renderizzare
-        Promise.all([this.loadEvents(), this.loadUserNames()]).then(() => {
+        Promise.all([this.loadEvents(), this.loadUserNames(), this.loadReadStatus()]).then(() => {
             this.cleanupPastEvents();
             this.render();
             this.listenProposals();
@@ -1905,7 +1907,7 @@ class BacheaCalendar {
         return database.ref().update({
             [`events/${eventId}`]: null,
             [`eventChats/${eventId}`]: null,
-            [`chatReadStatus/${eventId}`]: null,
+            [`chatReadStatus/${this.userId}/${eventId}`]: null,
             [`eventImages/${eventId}`]: null
         }).catch(error => {
             console.error('Errore eliminazione evento:', error);
@@ -2654,11 +2656,38 @@ class BacheaCalendar {
                 resolve();
             });
 
-            // Listener globale per i messaggi di TUTTI gli eventi (per aggiornare badge in real-time)
-            database.ref('eventChats').on('value', () => {
+            // Listener globale per i messaggi di TUTTI gli eventi: scarica tutto all'avvio, poi solo
+            // i messaggi nuovi. I messaggi restano in memoria e i badge si calcolano da qui
+            database.ref('eventChats').on('value', (snapshot) => {
+                this.chatMessages = snapshot.val() || {};
                 this.updateAllBadges();
             });
         });
+    }
+
+    // Messaggi già letti: chatReadStatus/{uid}/{id evento o proposta} = {lastReadTimestamp}.
+    // Un solo listener sul proprio nodo: niente letture di rete per i badge
+    loadReadStatus() {
+        return new Promise(resolve => {
+            let firstLoad = true;
+            database.ref(`chatReadStatus/${this.userId}`).on('value', (snapshot) => {
+                this.readStatus = snapshot.val() || {};
+                if (firstLoad) {
+                    firstLoad = false;
+                    resolve();
+                    return;
+                }
+                this.updateAllBadges();
+            }, (error) => {
+                console.error('Errore lettura messaggi letti:', error);
+                resolve();
+            });
+        });
+    }
+
+    getLastRead(chatId) {
+        const status = this.readStatus[chatId];
+        return (status && status.lastReadTimestamp) || 0;
     }
 
     rebuildNotesIndex() {
@@ -2725,7 +2754,7 @@ class BacheaCalendar {
         const removeEvent = (updates, id) => {
             updates[`events/${id}`] = null;
             updates[`eventChats/${id}`] = null;
-            updates[`chatReadStatus/${id}`] = null;
+            updates[`chatReadStatus/${this.userId}/${id}`] = null;
             updates[`eventImages/${id}`] = null;
         };
 
@@ -2768,26 +2797,15 @@ class BacheaCalendar {
         }
     }
 
-    async getUnreadMessageCount(eventId) {
-        try {
-            const statusSnapshot = await database.ref(`chatReadStatus/${eventId}/${this.userId}`).once('value');
-            const lastReadTimestamp = statusSnapshot.exists() ? statusSnapshot.val().lastReadTimestamp : 0;
+    // Messaggi non letti: tutto in memoria (messaggi dal listener globale, letture dal proprio nodo)
+    countUnreadMessages(chatId) {
+        const messages = (this.chatMessages[chatId] && this.chatMessages[chatId].messages) || {};
+        const lastRead = this.getLastRead(chatId);
+        return Object.values(messages).filter(message => message && message.timestamp > lastRead).length;
+    }
 
-            const messagesSnapshot = await database.ref(`eventChats/${eventId}/messages`).once('value');
-            if (!messagesSnapshot.exists()) return 0;
-
-            const messages = messagesSnapshot.val();
-            let unreadCount = 0;
-            for (const msgId in messages) {
-                if (messages[msgId].timestamp > lastReadTimestamp) {
-                    unreadCount++;
-                }
-            }
-            return unreadCount;
-        } catch (error) {
-            console.error('Errore conteggio messaggi non letti:', error);
-            return 0;
-        }
+    getUnreadMessageCount(chatId) {
+        return Promise.resolve(this.countUnreadMessages(chatId));
     }
 
     // Messaggi non letti sulla scheda "Partecipanti" (dove c'è la chat), solo per chi partecipa
@@ -3016,14 +3034,11 @@ class BacheaCalendar {
                     return;
                 }
 
-                // Ottieni il lastReadTimestamp
-                database.ref(`chatReadStatus/${eventId}/${this.userId}`).once('value', (statusSnapshot) => {
-                    const lastReadTimestamp = statusSnapshot.exists() ? statusSnapshot.val().lastReadTimestamp : 0;
-
-                    this.currentChat = { eventId, messages: snapshot.val(), lastReadTimestamp };
-                    messagesContainer.innerHTML = '';
-                    this.renderChatInto(messagesContainer, snapshot.val(), lastReadTimestamp, this.editParticipantsList);
-                });
+                // Ultima lettura dalla memoria (separatore "Nuovi messaggi")
+                const lastReadTimestamp = this.getLastRead(eventId);
+                this.currentChat = { eventId, messages: snapshot.val(), lastReadTimestamp };
+                messagesContainer.innerHTML = '';
+                this.renderChatInto(messagesContainer, snapshot.val(), lastReadTimestamp, this.editParticipantsList);
 
                 // Aggiorna i badge quando i messaggi cambiano
                 if (this.editingNote) {
@@ -3148,9 +3163,10 @@ class BacheaCalendar {
 
     markChatAsRead(eventId) {
         // Aggiorna il timestamp quando apri la chat
-        database.ref(`chatReadStatus/${eventId}/${this.userId}`).set({
-            lastReadTimestamp: new Date().getTime()
-        });
+        const status = { lastReadTimestamp: Date.now() };
+        this.readStatus[eventId] = status; // subito in memoria, prima della risposta di Firebase
+        database.ref(`chatReadStatus/${this.userId}/${eventId}`).set(status)
+            .catch(error => console.error('Errore salvataggio messaggi letti:', error));
     }
 
     updateCalendarBadge(eventId) {
@@ -3599,12 +3615,9 @@ class BacheaCalendar {
                 return;
             }
 
-            database.ref(`chatReadStatus/${proposalId}/${this.userId}`).once('value', (statusSnapshot) => {
-                if (this.openProposalId !== proposalId) return;
-                const lastReadTimestamp = statusSnapshot.exists() ? statusSnapshot.val().lastReadTimestamp : 0;
-                messagesContainer.innerHTML = '';
-                this.renderChatInto(messagesContainer, snapshot.val(), lastReadTimestamp);
-            });
+            if (this.openProposalId !== proposalId) return;
+            messagesContainer.innerHTML = '';
+            this.renderChatInto(messagesContainer, snapshot.val(), this.getLastRead(proposalId));
         });
     }
 
@@ -4042,7 +4055,7 @@ class BacheaCalendar {
         this.closeProposalModal();
         // La chat serve solo alla proposta: si elimina con lei
         database.ref(`eventChats/${proposalId}`).remove().catch(() => {});
-        database.ref(`chatReadStatus/${proposalId}`).remove().catch(() => {});
+        database.ref(`chatReadStatus/${this.userId}/${proposalId}`).remove().catch(() => {});
         if (proposal.imageVersion) this.saveEventImage(proposalId, null).catch(() => {});
         database.ref(`proposals/${proposalId}`).remove()
             .then(() => this.showSuccessPopup('Proposta eliminata'))

@@ -12,7 +12,6 @@ const APP_CONFIG = {
 
     databases: {
         TEST: {
-            enabled: true,
             name: '🧪 TEST - bacheca-test',
             apiKey: "AIzaSyBdpFXeROIUahwuGerPtVQGWM0FqVgiU-c",
             authDomain: "bacheca-test.firebaseapp.com",
@@ -23,7 +22,6 @@ const APP_CONFIG = {
             appId: "1:505150719046:web:5c4ad06acab8a41a383647"
         },
         PROD: {
-            enabled: true,
             name: '✅ PRODUZIONE - bacheca-c0441',
             apiKey: "AIzaSyBGy1u-1qF5qv8234rkEvjvEunyJAiogd4",
             authDomain: "bacheca-c0441.firebaseapp.com",
