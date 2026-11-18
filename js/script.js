@@ -20,25 +20,43 @@ fetch('./descrizioni/versione')
     })
     .catch(err => console.warn('⚠️ Non riesco a leggere la versione:', err));
 
-// Firebase Config da config.js
+// Firebase Config da config.js: senza un ambiente valido ('TEST' o 'PROD') l'app non parte
 const currentConfig = APP_CONFIG.getConfig();
 const firebaseConfig = APP_CONFIG.getFirebaseConfig();
 
-// Log configurazione
-console.log(`🔧 Configurazione: ${currentConfig.name}`);
-if (!currentConfig.enabled) {
-    console.warn('⚠️ OFFLINE MODE - Database disabilitato!');
+let database = null;
+let startupError = null;
+if (!firebaseConfig) {
+    startupError = `Configurazione non valida: ENV = '${APP_CONFIG.ENV}'. In config.js usa 'TEST' o 'PROD'.`;
+} else {
+    try {
+        firebase.initializeApp(firebaseConfig);
+        database = firebase.database();
+        // L'accesso resta salvato sul dispositivo finché l'utente non esce
+        firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+        console.log(`🔧 Configurazione: ${currentConfig.name}`);
+    } catch (error) {
+        console.error('Errore avvio Firebase:', error);
+        startupError = `Impossibile collegarsi al database (${currentConfig.name}). Ricarica la pagina.`;
+    }
 }
 
-// Initialize Firebase (solo se abilitato)
-let database = null;
-if (firebaseConfig) {
-    firebase.initializeApp(firebaseConfig);
-    database = firebase.database();
+// Mostra l'errore al posto del caricamento: l'app non parte
+function showStartupError(message) {
+    console.error('❌ ' + message);
+    const loadingScreen = document.getElementById('loadingScreen');
+    if (!loadingScreen) return;
+    loadingScreen.innerHTML = `
+        <div style="text-align: center; color: white; padding: 24px; max-width: 420px;">
+            <div style="font-size: 3rem; margin-bottom: 16px;">⚠️</div>
+            <div id="startupErrorMessage" style="font-size: 1.1rem; font-weight: bold; line-height: 1.4;"></div>
+        </div>`;
+    document.getElementById('startupErrorMessage').textContent = message;
+    loadingScreen.style.display = 'flex';
 }
 
 // Mostra badge per TEST
-if (APP_CONFIG.ENV === 'test') {
+if (APP_CONFIG.ENV === 'TEST') {
     setTimeout(() => {
         const testBadge = document.getElementById('testBadge');
         if (testBadge) testBadge.style.display = 'inline-block';
@@ -50,10 +68,9 @@ class BacheaCalendar {
         this.currentDate = new Date();
         this.selectedDate = null;
         this.selectedColor = 'color-yellow';
-        this.notes = {}; // Inizializza vuoto - i dati vengono caricati SOLO da Firebase
-        this.isSyncing = false;
-        this.isInitialLoad = true; // Flag per prima sincronizzazione
-        this.editingNote = null; // Per tracciare quale nota stiamo editando
+        this.events = {}; // events/{id} da Firebase: id -> evento (con il campo date)
+        this.notes = {}; // Indice derivato da this.events: data -> [eventi ordinati per orario]
+        this.editingNote = null; // Evento aperto nel modal di modifica: {id, dateKey}
         this.isListView = false; // Toggle tra calendario e lista
         this.visibleColors = this.loadColorFilters(); // Colori visibili
         this.eventImageData = null;
@@ -62,16 +79,15 @@ class BacheaCalendar {
         this.currentEventLink = ''; // Link in aggiunta
         this.cropper = null;
         this.currentCropType = null; // 'event' o 'edit'
-        this.deviceId = null; // UUID unico del dispositivo
-        this.deviceName = null; // Nome dell'utente
-        this.syncCode = null; // Codice di sincronizzazione multi-device
-        this.deviceNames = {}; // Mappa di deviceId -> nome
+        this.userId = null; // uid dell'account Firebase (lo stesso su tutti i dispositivi)
+        this.username = null; // Username di login
+        this.userName = null; // Nome visualizzato
+        this.userNames = {}; // Mappa di userId -> nome
         this.eventsListener = null; // Listener per cambiamenti Firebase
-        this.suppressSync = false; // Flag per evitare loop di sync
         this.proposals = {}; // Eventi da fissare (senza data): proposals/{id}
         this.openProposalId = null; // Proposta aperta nel modal
         this.setupCustomPopup();
-        this.initializeDevice().then(() => this.init());
+        this.initializeAuth().then(() => this.init());
     }
 
     setupCustomPopup() {
@@ -164,22 +180,10 @@ class BacheaCalendar {
         });
     }
 
-    generateUUID() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-            const r = Math.random() * 16 | 0;
-            const v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
-    }
-
-    generateSyncCode() {
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-        let code = '';
-        for (let i = 0; i < 5; i++) {
-            code += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        return code;
-    }
+    // ===== Account: login con username e password =====
+    // Firebase Auth (email/password): lo username diventa un'email fittizia "username@bacheca.local",
+    // che serve solo a Firebase. Nessuna email viene mai inviata.
+    // users/{uid}: {username, name, createdAt, lastSeen}
 
     getDeviceInfo() {
         // Rileva browser
@@ -187,10 +191,10 @@ class BacheaCalendar {
         const ua = navigator.userAgent.toLowerCase();
 
         if (ua.indexOf('edg/') > -1) browser = 'Edge';
+        else if (ua.indexOf('opr/') > -1) browser = 'Opera';
         else if (ua.indexOf('chrome') > -1 && ua.indexOf('chromium') === -1) browser = 'Chrome';
         else if (ua.indexOf('firefox') > -1) browser = 'Firefox';
         else if (ua.indexOf('safari') > -1 && ua.indexOf('chrome') === -1) browser = 'Safari';
-        else if (ua.indexOf('opr/') > -1) browser = 'Opera';
         else if (ua.indexOf('trident') > -1) browser = 'IE';
 
         // Rileva tipo di dispositivo
@@ -206,403 +210,346 @@ class BacheaCalendar {
         return { browser, deviceType };
     }
 
-    async getStoredDeviceId() {
-        // Prova localStorage prima
-        const localId = localStorage.getItem('deviceId');
-        if (localId) {
-            return localId;
-        }
-
-        // Fallback: prova IndexedDB
-        try {
-            const idbId = await this.getFromIndexedDB('deviceId');
-            if (idbId) {
-                localStorage.setItem('deviceId', idbId);
-                return idbId;
-            }
-        } catch (e) {
-            console.warn('Errore IndexedDB:', e);
-        }
-
-        return null;
+    normalizeUsername(raw) {
+        return (raw || '').trim().toLowerCase();
     }
 
-    setStoredDeviceId(id) {
-        localStorage.setItem('deviceId', id);
-        this.saveToIndexedDB('deviceId', id);
+    isValidUsername(username) {
+        return /^[a-z0-9._-]{3,20}$/.test(username);
     }
 
-    saveToIndexedDB(key, value) {
-        try {
-            const request = indexedDB.open('BacheaDB', 1);
-            request.onsuccess = function(e) {
-                const db = e.target.result;
-                const tx = db.transaction(['storage'], 'readwrite');
-                tx.objectStore('storage').put({ key: key, value: value });
-            };
-            request.onupgradeneeded = function(e) {
-                e.target.result.createObjectStore('storage', { keyPath: 'key' });
-            };
-        } catch (e) {
-            console.warn('IndexedDB non disponibile:', e);
+    usernameToEmail(username) {
+        return `${username}@bacheca.local`;
+    }
+
+    authErrorMessage(error) {
+        const messages = {
+            'auth/invalid-credential': 'Username o password errati',
+            'auth/invalid-login-credentials': 'Username o password errati',
+            'auth/wrong-password': 'Username o password errati',
+            'auth/user-not-found': 'Username o password errati',
+            'auth/invalid-email': 'Username non valido',
+            'auth/email-already-in-use': 'Questo username è già usato da qualcun altro',
+            'auth/weak-password': 'Password troppo corta: almeno 6 caratteri',
+            'auth/too-many-requests': 'Troppi tentativi. Riprova tra qualche minuto',
+            'auth/network-request-failed': 'Connessione assente. Controlla la rete e riprova',
+            'auth/operation-not-allowed': 'Login non abilitato su Firebase (Authentication → Email/Password)',
+            'auth/configuration-not-found': 'Authentication non attivata su questo progetto Firebase (Authentication → Inizia → Email/Password)',
+            'auth/requires-recent-login': 'Per sicurezza esci, rientra e riprova'
+        };
+        return messages[error && error.code] || `Errore: ${(error && error.message) || error}`;
+    }
+
+    // Aspetta la sessione salvata; se non c'è, mostra login/registrazione
+    async initializeAuth() {
+        const auth = firebase.auth();
+        const user = await new Promise(resolve => {
+            const unsubscribe = auth.onAuthStateChanged(u => {
+                unsubscribe();
+                resolve(u);
+            });
+        });
+
+        if (user) {
+            await this.loadUserProfile(user);
+        } else {
+            await this.promptForLogin();
         }
-    }
 
-    getFromIndexedDB(key) {
-        return new Promise((resolve) => {
-            try {
-                const request = indexedDB.open('BacheaDB', 1);
-                request.onsuccess = function(e) {
-                    const db = e.target.result;
-                    const tx = db.transaction(['storage'], 'readonly');
-                    const getReq = tx.objectStore('storage').get(key);
-                    getReq.onsuccess = function() {
-                        resolve(getReq.result ? getReq.result.value : null);
-                    };
-                };
-                request.onupgradeneeded = function(e) {
-                    e.target.result.createObjectStore('storage', { keyPath: 'key' });
-                    resolve(null);
-                };
-            } catch (e) {
-                console.warn('IndexedDB error:', e);
-                resolve(null);
-            }
+        // Se la sessione finisce (logout da un'altra scheda) ricarico: torna la schermata di login
+        auth.onAuthStateChanged(u => {
+            if (!u && this.userId) location.reload();
         });
     }
 
-    async initializeDevice() {
-        let deviceId = await this.getStoredDeviceId();
+    async loadUserProfile(user) {
+        this.userId = user.uid;
+        const snapshot = await database.ref(`users/${user.uid}`).once('value');
+        const profile = snapshot.val();
 
-        if (!deviceId) {
-            deviceId = this.generateUUID();
-            this.setStoredDeviceId(deviceId);
-        }
-
-        this.deviceId = deviceId;
-
-        // Verifica se il dispositivo esiste su Firebase
-        const deviceRef = database.ref(`devices/${deviceId}`);
-        const snapshot = await deviceRef.once('value');
-
-        if (!snapshot.exists()) {
-            // Primo accesso - chiedi il nome
-            await this.promptForDeviceName();
+        if (profile && profile.username) {
+            this.username = profile.username;
+            this.userName = profile.name || profile.username;
         } else {
-            // Dispositivo già registrato - carica il nome e syncCode
-            const deviceData = snapshot.val();
-            this.deviceName = deviceData.name;
-            this.syncCode = deviceData.syncCode;
-
-            // Se il device non ha un nome, chiedi di impostarlo
-            if (!this.deviceName || this.deviceName.trim() === '') {
-                await this.promptForDeviceName();
-                return;
-            }
-
-            // Migrazione retrocompatibile: se il device non ha un syncCode, generane uno
-            if (!this.syncCode) {
-                this.syncCode = this.generateSyncCode();
-
-                // Aggiorna il device con il nuovo syncCode
-                database.ref(`devices/${this.deviceId}`).update({
-                    syncCode: this.syncCode
-                }).then(() => {
-                    // Crea l'entry di syncCodes DOPO aver aggiornato il device
-                    database.ref(`syncCodes/${this.syncCode}`).set({
-                        name: this.deviceName,
-                        deviceIds: [this.deviceId],
-                        createdAt: new Date().getTime()
-                    });
-                });
-
-            }
+            // Account senza profilo (registrazione interrotta): lo ricreo dallo username
+            this.username = (user.email || '').split('@')[0];
+            this.userName = this.username;
+            await database.ref(`users/${user.uid}`).set({
+                username: this.username,
+                name: this.userName,
+                createdAt: Date.now(),
+                lastSeen: Date.now()
+            });
         }
+        this.userNames[this.userId] = this.userName;
     }
 
-    promptForDeviceName() {
-        return new Promise((resolve) => {
-            const modal = document.getElementById('namePromptModal');
-            const form = document.getElementById('namePromptForm');
-            const input = document.getElementById('nameInput');
-            const cancelBtn = document.getElementById('namePromptCancelBtn');
-            const syncCheckbox = document.getElementById('nameSyncExistingCheckbox');
-            const syncCodeGroup = document.getElementById('nameSyncCodeGroup');
-            const syncCodeInput = document.getElementById('nameSyncCodeInput');
+    promptForLogin() {
+        return new Promise(resolve => {
+            const modal = document.getElementById('authModal');
+            const loginForm = document.getElementById('loginForm');
+            const registerForm = document.getElementById('registerForm');
+            const errorEl = document.getElementById('authError');
+            const tabs = modal.querySelectorAll('.auth-tab');
 
-            // Elementi da nascondere quando il checkbox è flaggato
-            const nameInputGroup = document.getElementById('nameInputGroup');
-            const dividerGroup = document.getElementById('dividerGroup');
+            const showError = (message) => {
+                errorEl.textContent = message;
+                errorEl.style.display = message ? 'block' : 'none';
+            };
 
-            modal.classList.add('active');
+            const setBusy = (form, busy) => {
+                form.querySelectorAll('button, input').forEach(el => el.disabled = busy);
+            };
 
-            // Rimuovi i listener precedenti (se il modal è stato aperto prima)
-            syncCheckbox.removeEventListener('change', null);
-            form.onsubmit = null;
-            cancelBtn.onclick = null;
+            const showTab = (tabName) => {
+                tabs.forEach(tab => tab.classList.toggle('active', tab.dataset.tab === tabName));
+                loginForm.style.display = tabName === 'login' ? 'block' : 'none';
+                registerForm.style.display = tabName === 'register' ? 'block' : 'none';
+                showError('');
+                const firstInput = (tabName === 'login' ? loginForm : registerForm).querySelector('input');
+                if (firstInput) firstInput.focus();
+            };
 
-            // Mostra/nascondi il campo nome quando checkbox cambia (divider sempre visibile)
-            syncCheckbox.addEventListener('change', (e) => {
-                if (e.target.checked) {
-                    // Nascondi nome, mostra syncCode (divider rimane sempre visibile)
-                    nameInputGroup.style.display = 'none';
-                    syncCodeGroup.style.display = 'block';
-                    syncCodeInput.focus();
-                } else {
-                    // Mostra nome, nascondi syncCode (divider rimane sempre visibile)
-                    nameInputGroup.style.display = 'block';
-                    syncCodeGroup.style.display = 'none';
-                    input.focus();
-                }
-            });
+            tabs.forEach(tab => tab.onclick = () => showTab(tab.dataset.tab));
 
-            form.onsubmit = async (e) => {
+            const finish = async (user) => {
+                await this.loadUserProfile(user);
+                modal.classList.remove('active');
+                loginForm.reset();
+                registerForm.reset();
+                resolve();
+            };
+
+            loginForm.onsubmit = async (e) => {
                 e.preventDefault();
-                const inputName = input.value.trim();
-                const useSyncCode = syncCheckbox.checked;
-
-                // Se il checkbox è marcato, usa il syncCode
-                if (useSyncCode) {
-                    const syncCode = syncCodeInput.value.trim().toUpperCase();
-                    if (!syncCode || syncCode.length !== 5) {
-                        alert('Inserisci un codice valido di 5 caratteri');
-                        return;
-                    }
-
-                    // Prova a sincronizzarsi con il codice
-                    const success = await this.syncWithCode(syncCode);
-                    if (success) {
-                        modal.classList.remove('active');
-                        resolve();
-                        return;
-                    } else {
-                        // Chiudi il modal prima di mostrare l'errore
-                        modal.classList.remove('active');
-                        modal.style.display = 'none';
-                        // Dai un po' di tempo per far scomparire il modal
-                        setTimeout(() => {
-                            this.showErrorPopup('Codice di sincronizzazione non valido. Verifica e riprova.');
-                        }, 100);
-                        return;
-                    }
-                }
-
-                // Altrimenti, crea un nuovo dispositivo con un nome
-                if (inputName.toLowerCase() === 'anonimo') {
-                    alert('Non puoi usare "Anonimo" come nominativo. Scegli un altro nome o clicca Annulla.');
+                const username = this.normalizeUsername(document.getElementById('loginUsername').value);
+                const password = document.getElementById('loginPassword').value;
+                if (!username || !password) {
+                    showError('Inserisci username e password');
                     return;
                 }
 
-                this.deviceName = inputName || `Utente ${Math.random().toString(36).substr(2, 5)}`;
-
-                // Genera un nuovo syncCode per questo dispositivo
-                const newSyncCode = this.generateSyncCode();
-                this.syncCode = newSyncCode;
-
-                // Crea un nuovo syncCode entry su Firebase
-                await database.ref(`syncCodes/${newSyncCode}`).set({
-                    name: this.deviceName,
-                    deviceIds: [this.deviceId],
-                    createdAt: new Date().getTime()
-                });
-
-                // Salva il dispositivo su Firebase
-                const deviceInfo = this.getDeviceInfo();
-                await database.ref(`devices/${this.deviceId}`).set({
-                    id: this.deviceId,
-                    name: this.deviceName,
-                    syncCode: newSyncCode,
-                    browser: deviceInfo.browser,
-                    deviceType: deviceInfo.deviceType,
-                    createdAt: new Date().getTime(),
-                    lastSeen: new Date().getTime()
-                });
-
-                modal.classList.remove('active');
-                resolve();
+                showError('');
+                setBusy(loginForm, true);
+                try {
+                    const cred = await firebase.auth().signInWithEmailAndPassword(this.usernameToEmail(username), password);
+                    await finish(cred.user);
+                } catch (error) {
+                    showError(this.authErrorMessage(error));
+                } finally {
+                    setBusy(loginForm, false);
+                }
             };
 
-            cancelBtn.onclick = async (e) => {
+            registerForm.onsubmit = async (e) => {
                 e.preventDefault();
-                this.deviceName = 'Anonimo';
+                const username = this.normalizeUsername(document.getElementById('registerUsername').value);
+                const name = document.getElementById('registerName').value.trim();
+                const password = document.getElementById('registerPassword').value;
+                const confirm = document.getElementById('registerPasswordConfirm').value;
 
-                // Genera un nuovo syncCode anche per l'Anonimo
-                const newSyncCode = this.generateSyncCode();
-                this.syncCode = newSyncCode;
+                if (!this.isValidUsername(username)) {
+                    showError('Username: da 3 a 20 caratteri tra lettere, numeri, punto, trattino e _');
+                    return;
+                }
+                if (password.length < 6) {
+                    showError('Password troppo corta: almeno 6 caratteri');
+                    return;
+                }
+                if (password !== confirm) {
+                    showError('Le due password non coincidono');
+                    return;
+                }
 
-                // Salva il dispositivo su Firebase come Anonimo con syncCode
-                const deviceInfo = this.getDeviceInfo();
-                await database.ref(`devices/${this.deviceId}`).set({
-                    id: this.deviceId,
-                    name: this.deviceName,
-                    syncCode: newSyncCode,
-                    browser: deviceInfo.browser,
-                    deviceType: deviceInfo.deviceType,
-                    createdAt: new Date().getTime(),
-                    lastSeen: new Date().getTime()
-                });
-
-                // Crea l'entry di syncCodes
-                await database.ref(`syncCodes/${newSyncCode}`).set({
-                    name: this.deviceName,
-                    deviceIds: [this.deviceId],
-                    createdAt: new Date().getTime()
-                });
-
-                modal.classList.remove('active');
-                resolve();
+                showError('');
+                setBusy(registerForm, true);
+                let createdUser = null;
+                try {
+                    const cred = await firebase.auth().createUserWithEmailAndPassword(this.usernameToEmail(username), password);
+                    createdUser = cred.user;
+                    await database.ref(`users/${cred.user.uid}`).set({
+                        username: username,
+                        name: name || username,
+                        createdAt: Date.now(),
+                        lastSeen: Date.now()
+                    });
+                    createdUser = null; // profilo salvato: l'account è completo
+                    await finish(cred.user);
+                } catch (error) {
+                    // Account creato ma profilo non salvato (es. regole Firebase): lo annullo,
+                    // altrimenti lo username resta occupato e non si può riprovare
+                    if (createdUser) {
+                        await createdUser.delete().catch(e => console.error('Errore annullamento account:', e));
+                    }
+                    console.error('Errore registrazione:', error);
+                    showError(this.authErrorMessage(error));
+                } finally {
+                    setBusy(registerForm, false);
+                }
             };
+
+            showTab('login');
+            modal.classList.add('active');
         });
     }
 
-    async syncWithCode(syncCode) {
-        try {
-            const syncCodeRef = database.ref(`syncCodes/${syncCode}`);
-            const snapshot = await syncCodeRef.once('value');
-
-
-            if (!snapshot.exists()) {
-                console.error('SyncCode non valido:', syncCode);
-                return false;
-            }
-
-            const syncCodeData = snapshot.val();
-            this.deviceName = syncCodeData.name;
-            this.syncCode = syncCode;
-
-            // Aggiungi il dispositivo alla lista dei deviceIds
-            const updatedDeviceIds = [...(syncCodeData.deviceIds || [])];
-            if (!updatedDeviceIds.includes(this.deviceId)) {
-                updatedDeviceIds.push(this.deviceId);
-                await database.ref(`syncCodes/${syncCode}/deviceIds`).set(updatedDeviceIds);
-            }
-
-            // Salva il dispositivo su Firebase con il syncCode
-            const deviceInfo = this.getDeviceInfo();
-            await database.ref(`devices/${this.deviceId}`).set({
-                id: this.deviceId,
-                name: this.deviceName,
-                syncCode: syncCode,
-                browser: deviceInfo.browser,
-                deviceType: deviceInfo.deviceType,
-                createdAt: new Date().getTime(),
-                lastSeen: new Date().getTime()
-            });
-
-            return true;
-        } catch (error) {
-            console.error('Errore durante la sincronizzazione:', error);
-            return false;
-        }
-    }
-
     updateLastSeen() {
-        if (this.deviceId && this.deviceName) {
-            database.ref(`devices/${this.deviceId}`).update({
-                lastSeen: new Date().getTime()
-            });
+        if (this.userId) {
+            database.ref(`users/${this.userId}/lastSeen`).set(Date.now()).catch(() => {});
         }
     }
 
     displayWelcomeMessage() {
         const welcomeEl = document.getElementById('welcomeMessage');
-        if (welcomeEl && this.deviceName) {
-            if (this.deviceName === 'Anonimo') {
-                welcomeEl.textContent = '👋 Benvenuto';
-            } else {
-                welcomeEl.textContent = `👋 Benvenuto, ${this.deviceName}!`;
-            }
+        if (welcomeEl && this.userName) {
+            welcomeEl.textContent = `👋 Benvenuto, ${this.userName}!`;
         }
     }
 
-    async loadDeviceNames() {
+    // Nomi di tutti gli utenti, per partecipanti e creatori
+    async loadUserNames() {
         try {
-            const snapshot = await database.ref('devices').once('value');
-            if (snapshot.exists()) {
-                const devices = snapshot.val();
-                this.deviceNames = {};
-                for (const [id, device] of Object.entries(devices)) {
-                    this.deviceNames[id] = device.name || 'Sconosciuto';
-                }
-            }
+            const usersSnap = await database.ref('users').once('value');
+            const names = {};
+            Object.entries(usersSnap.val() || {}).forEach(([id, user]) => {
+                if (user) names[id] = user.name || user.username || 'Sconosciuto';
+            });
+            this.userNames = names;
+            if (this.userId) this.userNames[this.userId] = this.userName;
         } catch (error) {
-            console.error('Errore caricamento nomi device:', error);
+            console.error('Errore caricamento nomi utenti:', error);
         }
+    }
+
+    // Nome di un utente: dalla cache, altrimenti da users/
+    async resolveUserName(id) {
+        if (!id) return 'Sconosciuto';
+        if (this.userNames[id]) return this.userNames[id];
+        try {
+            const user = (await database.ref(`users/${id}`).once('value')).val();
+            const name = user ? (user.name || user.username) : null;
+            if (name) this.userNames[id] = name;
+            return name || 'Sconosciuto';
+        } catch (error) {
+            console.error('Errore caricamento nome utente:', id, error);
+            return 'Sconosciuto';
+        }
+    }
+
+    // Nomi non ancora in cache (utente registrato dopo l'apertura dell'app): li carico e ridisegno
+    ensureUserNames(ids) {
+        if (!this.requestedNames) this.requestedNames = new Set();
+        const missing = ids.filter(id => id && !this.userNames[id] && !this.requestedNames.has(id));
+        if (missing.length === 0) return;
+        missing.forEach(id => this.requestedNames.add(id));
+        Promise.all(missing.map(id => this.resolveUserName(id))).then(() => this.render());
     }
 
     getParticipantName(participantId) {
-        // Se è una stringa corta, è il vecchio formato (nome)
-        if (participantId.length < 20) {
-            return participantId;
-        }
-        // Se è un ID lungo, cerca il nome nella cache
-        return this.deviceNames[participantId] || 'Sconosciuto';
+        return (participantId && this.userNames[participantId]) || 'Sconosciuto';
     }
 
     updateEditNameButtonText() {
         const editNameBtn = document.getElementById('editNameBtn');
         if (editNameBtn) {
-            if (this.deviceName === 'Anonimo') {
-                editNameBtn.textContent = '👤 Inserisci il tuo nome';
-            } else {
-                editNameBtn.textContent = '👤 Cambia il tuo nome';
-            }
+            editNameBtn.textContent = '👤 Cambia il tuo nome';
         }
     }
 
     showEditNameModal() {
+        const menuDropdown = document.getElementById('menuDropdown');
+        if (menuDropdown) menuDropdown.style.display = 'none';
+
         const modal = document.getElementById('namePromptModal');
         const form = document.getElementById('namePromptForm');
         const input = document.getElementById('nameInput');
         const cancelBtn = document.getElementById('namePromptCancelBtn');
 
-        input.value = this.deviceName === 'Anonimo' ? '' : this.deviceName;
-        input.placeholder = this.deviceName === 'Anonimo' ? 'Inserisci il tuo nome' : `Cambia da "${this.deviceName}"`;
-
+        input.value = this.userName || '';
         modal.classList.add('active');
+        input.focus();
 
-        const handleSubmit = (e) => {
+        // onsubmit/onclick sostituiscono i gestori precedenti: niente listener accumulati
+        form.onsubmit = async (e) => {
             e.preventDefault();
-            const inputName = input.value.trim();
+            const newName = input.value.trim();
+            if (!newName) {
+                this.showErrorPopup('Il nome non può essere vuoto');
+                return;
+            }
+            try {
+                await database.ref(`users/${this.userId}/name`).set(newName);
+                this.userName = newName;
+                this.userNames[this.userId] = newName;
+                this.displayWelcomeMessage();
+                modal.classList.remove('active');
+                this.showSuccessPopup('Nome aggiornato');
+            } catch (error) {
+                console.error('Errore cambio nome:', error);
+                this.showErrorPopup('Errore nel salvataggio del nome');
+            }
+        };
 
-            if (inputName.toLowerCase() === 'anonimo') {
-                alert('Non puoi usare "Anonimo" come nominativo. Scegli un altro nome o clicca Annulla.');
+        cancelBtn.onclick = (e) => {
+            e.preventDefault();
+            modal.classList.remove('active');
+        };
+    }
+
+    openChangePassword() {
+        this.closeUserProfile();
+        const modal = document.getElementById('passwordModal');
+        const form = document.getElementById('passwordForm');
+        const errorEl = document.getElementById('passwordError');
+        form.reset();
+        errorEl.style.display = 'none';
+        modal.classList.add('active');
+        document.getElementById('currentPassword').focus();
+
+        const showError = (message) => {
+            errorEl.textContent = message;
+            errorEl.style.display = 'block';
+        };
+
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            const current = document.getElementById('currentPassword').value;
+            const next = document.getElementById('newPassword').value;
+            const confirm = document.getElementById('newPasswordConfirm').value;
+            if (next.length < 6) {
+                showError('La nuova password deve avere almeno 6 caratteri');
+                return;
+            }
+            if (next !== confirm) {
+                showError('Le due password nuove non coincidono');
                 return;
             }
 
-            this.deviceName = inputName || this.deviceName;
-
-            database.ref(`devices/${this.deviceId}`).update({
-                name: this.deviceName
-            });
-
-            // Se il device ha un syncCode, aggiorna il nome nel syncCode
-            if (this.syncCode) {
-                database.ref(`syncCodes/${this.syncCode}`).update({
-                    name: this.deviceName
-                });
+            const user = firebase.auth().currentUser;
+            try {
+                const credential = firebase.auth.EmailAuthProvider.credential(user.email, current);
+                await user.reauthenticateWithCredential(credential);
+                await user.updatePassword(next);
+                modal.classList.remove('active');
+                this.showSuccessPopup('Password cambiata');
+            } catch (error) {
+                showError(this.authErrorMessage(error));
             }
-
-            this.displayWelcomeMessage();
-            this.updateEditNameButtonText();
-            modal.classList.remove('active');
-
-            // Rimuovi i listener temporanei
-            form.removeEventListener('submit', handleSubmit);
-            cancelBtn.removeEventListener('click', handleCancel);
         };
 
-        const handleCancel = (e) => {
+        document.getElementById('passwordCancelBtn').onclick = (e) => {
             e.preventDefault();
             modal.classList.remove('active');
-
-            // Rimuovi i listener temporanei
-            form.removeEventListener('submit', handleSubmit);
-            cancelBtn.removeEventListener('click', handleCancel);
         };
+    }
 
-        form.addEventListener('submit', handleSubmit);
-        cancelBtn.addEventListener('click', handleCancel);
+    async logout() {
+        this.closeUserProfile();
+        const confirmed = await this.showConfirmDialog('Vuoi uscire dal tuo account su questo dispositivo?', 'Esci', '#667eea');
+        if (!confirmed) return;
+        this.userId = null; // evita il doppio reload dal listener di onAuthStateChanged
+        await firebase.auth().signOut();
+        location.reload();
     }
 
     init() {
@@ -616,11 +563,11 @@ class BacheaCalendar {
         this.loadTitle();
         this.displayWelcomeMessage();
         this.updateEditNameButtonText();
-        this.loadDeviceNames(); // Carica i nomi dei devices
         // Aggiorna lastSeen ogni minuto
         setInterval(() => this.updateLastSeen(), 60000);
-        // Sincronizza con Firebase PRIMA di renderizzare
-        this.autoSync().then(() => {
+        // Eventi e nomi degli utenti PRIMA di renderizzare
+        Promise.all([this.loadEvents(), this.loadUserNames()]).then(() => {
+            this.cleanupPastEvents();
             this.render();
             this.listenProposals();
             // Nascondi il loading quando tutto è pronto
@@ -778,6 +725,8 @@ class BacheaCalendar {
         document.querySelectorAll('.color-select').forEach(option => {
             option.addEventListener('change', (e) => {
                 this.selectedColor = e.target.dataset.color;
+                this.updateCategoryDisplay('addCategorySelect');
+                this.closeCategorySelects();
             });
         });
 
@@ -786,12 +735,40 @@ class BacheaCalendar {
             option.addEventListener('change', (e) => {
                 this.selectedColor = e.target.dataset.color;
                 // Auto-save della categoria
+                this.updateCategoryDisplay('editCategorySelect');
+                this.closeCategorySelects();
                 if (this.editingNote) {
-                    const { dateKey, noteIndex } = this.editingNote;
-                    this.notes[dateKey][noteIndex].color = this.selectedColor;
-                    this.syncToFirebase();
-                    this.render(); // Aggiorna l'interfaccia subito
+                    this.updateEvent(this.editingNote.id, { color: this.selectedColor });
                 }
+            });
+        });
+
+        // Categoria (crea e modifica): apre/chiude la lista; si chiude cliccando fuori
+        document.querySelectorAll('.category-select-current').forEach(button => {
+            button.addEventListener('click', (e) => {
+                e.preventDefault();
+                const select = button.closest('.category-select');
+                const wasOpen = select.classList.contains('open');
+                this.closeCategorySelects();
+                if (wasOpen) return;
+                select.classList.add('open');
+                // La categoria scelta al centro: si vedono anche quella sopra e quella sotto
+                const list = select.querySelector('.category-select-options');
+                const checked = select.querySelector('input:checked');
+                const row = checked ? checked.closest('.category-option') : null;
+                list.scrollTop = row ? row.offsetTop - (list.clientHeight - row.offsetHeight) / 2 : 0;
+            });
+        });
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.category-select')) this.closeCategorySelects();
+        });
+
+        // Matita sulla copertina (crea e modifica): mostra/nasconde i pulsanti dell'immagine
+        [['editImageToggleBtn', 'editImagePanel'], ['addImageToggleBtn', 'addImagePanel']].forEach(([buttonId, panelId]) => {
+            document.getElementById(buttonId).addEventListener('click', (e) => {
+                e.preventDefault();
+                const panel = document.getElementById(panelId);
+                panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
             });
         });
 
@@ -812,7 +789,7 @@ class BacheaCalendar {
                 // Mostra/nascondi il button Salva solo nella tab Evento
                 const saveEditBtn = document.getElementById('saveEditBtn');
                 if (saveEditBtn) {
-                    if (tabName === 'edit-evento-tab') {
+                    if (tabName === 'edit-evento-tab' && this.canEditCurrentEvent) {
                         saveEditBtn.style.display = 'inline-block';
                     } else {
                         saveEditBtn.style.display = 'none';
@@ -853,28 +830,14 @@ class BacheaCalendar {
             userProfileCloseBtn.addEventListener('click', () => this.closeUserProfile());
         }
 
-        const userProfileResetBtn = document.getElementById('userProfileResetBtn');
-        if (userProfileResetBtn) {
-            userProfileResetBtn.addEventListener('click', () => {
-                this.closeUserProfile();
-                this.resetSyncCode();
-            });
+        const userProfileLogoutBtn = document.getElementById('userProfileLogoutBtn');
+        if (userProfileLogoutBtn) {
+            userProfileLogoutBtn.addEventListener('click', () => this.logout());
         }
 
-        const userProfileCopySyncCodeBtn = document.getElementById('userProfileCopySyncCodeBtn');
-        if (userProfileCopySyncCodeBtn) {
-            userProfileCopySyncCodeBtn.addEventListener('click', () => {
-                const syncCode = document.getElementById('userProfileSyncCode')?.textContent;
-                if (syncCode && syncCode.trim()) {
-                    navigator.clipboard.writeText(syncCode).then(() => {
-                        const originalText = userProfileCopySyncCodeBtn.textContent;
-                        userProfileCopySyncCodeBtn.textContent = '✅ Copiato!';
-                        setTimeout(() => {
-                            userProfileCopySyncCodeBtn.textContent = originalText;
-                        }, 2000);
-                    });
-                }
-            });
+        const userProfilePasswordBtn = document.getElementById('userProfilePasswordBtn');
+        if (userProfilePasswordBtn) {
+            userProfilePasswordBtn.addEventListener('click', () => this.openChangePassword());
         }
 
         // Color filters
@@ -965,6 +928,7 @@ class BacheaCalendar {
         document.getElementById('eventImage').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) {
+                this.closeAddImagePanel();
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     this.currentCropType = 'event';
@@ -979,10 +943,16 @@ class BacheaCalendar {
             this.eventImageData = null;
             document.getElementById('eventImage').value = '';
             document.getElementById('eventCoverContainerAdd').style.backgroundImage = 'none';
+            this.closeAddImagePanel();
             this.showSuccessPopup('Immagine rimossa');
         });
 
         document.getElementById('eventImageUrlBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('eventImageUrlInputContainer').style.display = 'flex';
+        });
+
+        document.getElementById('eventImageUrlSaveBtn').addEventListener('click', (e) => {
             e.preventDefault();
             const url = document.getElementById('eventImageUrl').value.trim();
             if (!url) {
@@ -990,6 +960,8 @@ class BacheaCalendar {
                 return;
             }
             this.loadImageFromUrl(url, 'event');
+            document.getElementById('eventImageUrl').value = '';
+            this.closeAddImagePanel();
         });
 
         // Edit Image buttons
@@ -1001,6 +973,7 @@ class BacheaCalendar {
         document.getElementById('editImage').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) {
+                this.closeEditImagePanel();
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     this.currentCropType = 'edit';
@@ -1016,14 +989,11 @@ class BacheaCalendar {
             document.getElementById('editImage').value = '';
             document.getElementById('eventCoverContainer').style.backgroundImage = 'none';
             if (this.editingNote) {
-                const { dateKey, noteIndex } = this.editingNote;
-                const note = this.notes[dateKey][noteIndex];
-                this.saveEventImage(note.id, null);
-                delete note.image;
-                delete note.imageVersion;
+                const eventId = this.editingNote.id;
+                this.saveEventImage(eventId, null);
+                this.updateEvent(eventId, { imageVersion: null });
             }
-            this.syncToFirebase();
-            this.render();
+            this.closeEditImagePanel();
             this.showSuccessPopup('Immagine rimossa');
         });
 
@@ -1041,9 +1011,8 @@ class BacheaCalendar {
                 return;
             }
             this.loadImageFromUrl(url, 'edit');
-            // Nascondi il container dopo il salvataggio
-            document.getElementById('editImageUrlInputContainer').style.display = 'none';
             document.getElementById('editImageUrl').value = '';
+            this.closeEditImagePanel();
         });
 
         // Cropper buttons
@@ -1083,9 +1052,7 @@ class BacheaCalendar {
             const newLink = document.getElementById('editLink').value.trim();
             if (newLink) {
                 if (this.editingNote) {
-                    const { dateKey, noteIndex } = this.editingNote;
-                    this.notes[dateKey][noteIndex].link = newLink;
-                    this.syncToFirebase();
+                    this.updateEvent(this.editingNote.id, { link: newLink });
                     this.renderEditLink(newLink);
                     this.showSuccessPopup('Link salvato');
                 }
@@ -1097,9 +1064,7 @@ class BacheaCalendar {
         document.getElementById('editLinkDeleteBtn').addEventListener('click', (e) => {
             e.preventDefault();
             if (this.editingNote) {
-                const { dateKey, noteIndex } = this.editingNote;
-                this.notes[dateKey][noteIndex].link = '';
-                this.autoSync();
+                this.updateEvent(this.editingNote.id, { link: '' });
                 this.renderEditLink('');
                 this.showSuccessPopup('Link eliminato');
             }
@@ -1107,7 +1072,8 @@ class BacheaCalendar {
 
         document.getElementById('editLinkCancelBtn').addEventListener('click', (e) => {
             e.preventDefault();
-            const currentLink = this.editingNote ? this.notes[this.editingNote.dateKey][this.editingNote.noteIndex].link : '';
+            const editingEvent = this.getEditingEvent();
+            const currentLink = editingEvent ? editingEvent.link : '';
             this.renderEditLink(currentLink);
         });
 
@@ -1115,7 +1081,12 @@ class BacheaCalendar {
         document.getElementById('eventLinkOpenBtn').addEventListener('click', (e) => {
             e.preventDefault();
             if (this.currentEventLink) {
-                window.open(this.currentEventLink, '_blank');
+                // Se il link non ha protocollo, aggiungi https://
+                let url = this.currentEventLink;
+                if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                    url = 'https://' + url;
+                }
+                window.open(url, '_blank');
             }
         });
 
@@ -1336,7 +1307,7 @@ class BacheaCalendar {
                 today.setHours(0, 0, 0, 0);
                 const isPastDay = dayObj.date < today;
 
-                sortedNotes.forEach((note, index) => {
+                sortedNotes.forEach((note) => {
                     // Mostra solo se il colore è visibile
                     if (!this.isColorVisible(note.color)) return;
 
@@ -1364,10 +1335,10 @@ class BacheaCalendar {
                         noteEl.querySelector('.note-text').addEventListener('click', (e) => {
                             e.stopPropagation();
                             if (this.suppressNextClick) return; // Click generato dalla fine di un trascinamento touch
-                            this.openEditModal(dateKey, index);
+                            this.openEditModal(note.id);
                         });
                         // Abilita drag and drop solo se il giorno non è passato
-                        this.setupDragAndDrop(noteEl, dateKey, index, dayObj);
+                        if (this.canEditEvent(note)) this.setupDragAndDrop(noteEl, dateKey, note.id, dayObj);
                     }
 
                     notesContainer.appendChild(noteEl);
@@ -1420,11 +1391,19 @@ class BacheaCalendar {
         const coverContainerAdd = document.getElementById('eventCoverContainerAdd');
         coverContainerAdd.style.backgroundImage = 'none';
         coverContainerAdd.style.backgroundAttachment = 'scroll';
-        coverContainerAdd.style.minHeight = '180px';
+        coverContainerAdd.style.minHeight = '120px';
+        this.closeAddImagePanel();
+
+        // Data: quella del giorno scelto, modificabile (da domani in poi)
+        const dateInput = document.getElementById('eventDate');
+        dateInput.value = this.getDateKey(date);
+        dateInput.min = this.getTomorrowKey();
 
         // Seleziona il colore neutro di default
         document.querySelector('input[name="eventColor"][data-color="color-neutral"]').checked = true;
         this.selectedColor = 'color-neutral';
+        this.updateCategoryDisplay('addCategorySelect');
+        this.closeCategorySelects();
 
         // Reset del link
         this.currentEventLink = '';
@@ -1433,9 +1412,6 @@ class BacheaCalendar {
         document.getElementById('modal').classList.add('active');
         document.getElementById('modal').style.display = 'flex';
         document.getElementById('eventTitle').focus();
-
-        const dateStr = date.toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-        document.getElementById('modalTitle').textContent = `Proposta per ${dateStr}`;
     }
 
     closeModal() {
@@ -1463,7 +1439,6 @@ class BacheaCalendar {
     async renderEditParticipants() {
         const listEl = document.getElementById('editParticipantsList');
         if (!listEl) return;
-        listEl.innerHTML = '';
 
         // Aggiorna il numero di partecipanti
         const countEl = document.getElementById('participantCountDisplay');
@@ -1471,80 +1446,25 @@ class BacheaCalendar {
             countEl.textContent = this.editParticipantsList.length;
         }
 
-        // Carica i nomi di tutti i partecipanti
-        const participantNames = await Promise.all(this.editParticipantsList.map(async (participant) => {
-            // Retrocompatibilità: se è una stringa corta, è il vecchio formato (nome diretto)
-            if (participant.length < 20) {
-                return { id: participant, name: participant, syncCode: null };
-            }
+        // Carica i nomi di tutti i partecipanti (dalla cache o da users/)
+        const participants = [...this.editParticipantsList];
+        const names = await Promise.all(participants.map(id => this.resolveUserName(id)));
+        listEl.innerHTML = '';
 
-            // Nuovo formato: è un ID, leggi il nome da Firebase
-            try {
-                const snapshot = await database.ref(`devices/${participant}`).once('value');
-                if (snapshot.exists()) {
-                    const deviceData = snapshot.val();
-                    let name = deviceData.name;
-                    let syncCode = deviceData.syncCode || null;
-
-                    // Se il nome non è disponibile, leggi dal syncCode
-                    if (!name && syncCode) {
-                        const syncSnapshot = await database.ref(`syncCodes/${syncCode}`).once('value');
-                        if (syncSnapshot.exists()) {
-                            const syncData = syncSnapshot.val();
-                            name = syncData.name;
-
-                            // Salva il nome nel dispositivo per la prossima volta
-                            await database.ref(`devices/${participant}`).update({
-                                name: name
-                            }).catch(err => console.error('Errore aggiornamento nome:', err));
-                        }
-                    }
-
-                    return { id: participant, name: name || 'Senza nome', syncCode };
-                }
-                return { id: participant, name: 'Sconosciuto', syncCode: null };
-            } catch (error) {
-                console.error('Errore caricamento dispositivo:', participant, error);
-                return { id: participant, name: 'Errore', syncCode: null };
-            }
-        }));
-
-        // Deduplicare per syncCode: se più device hanno lo stesso syncCode, mostrar solo una volta
-        const seenSyncCodes = new Set();
-        const displayedParticipants = [];
-
-        participantNames.forEach((participantData, originalIndex) => {
-            // Se ha syncCode e l'abbiamo già visto, salta
-            if (participantData.syncCode && seenSyncCodes.has(participantData.syncCode)) {
-                return;
-            }
-
-            // Marca il syncCode come visto
-            if (participantData.syncCode) {
-                seenSyncCodes.add(participantData.syncCode);
-            }
-
-            displayedParticipants.push({ ...participantData, originalIndex });
-        });
-
-        displayedParticipants.forEach((participantData) => {
-            // Controlla se è l'utente corrente (per syncCode o deviceId)
-            let isCurrentUser = participantData.id === this.deviceId;
-            if (!isCurrentUser && this.syncCode && participantData.syncCode) {
-                isCurrentUser = participantData.syncCode === this.syncCode;
-            }
+        participants.forEach((participantId, index) => {
+            const isCurrentUser = participantId === this.userId;
 
             const itemEl = document.createElement('div');
             itemEl.className = 'participant-item';
 
             if (isCurrentUser) {
                 itemEl.innerHTML = `
-                    <span>${this.escapeHtml(participantData.name)} (tu)</span>
-                    <button type="button" class="btn-remove-participant" data-index="${participantData.originalIndex}" style="background: #f44336;">Non posso più</button>
+                    <span>${this.escapeHtml(names[index])} (tu)</span>
+                    <button type="button" class="btn-remove-participant" style="background: #f44336;">Non posso più</button>
                 `;
             } else {
                 itemEl.innerHTML = `
-                    <span>${this.escapeHtml(participantData.name)}</span>
+                    <span>${this.escapeHtml(names[index])}</span>
                 `;
             }
 
@@ -1552,15 +1472,14 @@ class BacheaCalendar {
             if (removeBtn) {
                 removeBtn.addEventListener('click', (e) => {
                     e.preventDefault();
-                    const indexToRemove = parseInt(e.target.dataset.index);
-                    this.editParticipantsList.splice(indexToRemove, 1);
+                    this.editParticipantsList = this.editParticipantsList.filter(p => p !== this.userId);
                     this.renderEditParticipants();
+                    this.updateChatInputVisibility(this.editParticipantsList);
 
-                    // Salva immediatamente su Firebase
+                    // Scrive solo la propria iscrizione: non tocca quelle degli altri
                     if (this.editingNote) {
-                        const { dateKey, noteIndex } = this.editingNote;
-                        this.notes[dateKey][noteIndex].participants = this.editParticipantsList;
-                        this.autoSync();
+                        database.ref(`events/${this.editingNote.id}/participants/${this.userId}`).remove()
+                            .catch(error => console.error('Errore rimozione partecipazione:', error));
                     }
                 });
             }
@@ -1568,59 +1487,27 @@ class BacheaCalendar {
             listEl.appendChild(itemEl);
         });
 
-
         // Aggiorna il button "Voglio partecipare"
-        await this.updateParticipateButton();
+        this.updateParticipateButton();
     }
 
-    async updateParticipateButton() {
+    updateParticipateButton() {
         const btn = document.getElementById('editWantToParticipateBtn');
         if (!btn) {
             console.warn('Button editWantToParticipateBtn non trovato in updateParticipateButton');
             return;
         }
-
-        // Controlla se il syncCode corrente è già tra i partecipanti
-        let isParticipant = false;
-
-        if (this.syncCode) {
-            // Nuovo sistema: controlla per syncCode
-            for (const participantId of this.editParticipantsList) {
-                try {
-                    const snapshot = await database.ref(`devices/${participantId}`).once('value');
-                    if (snapshot.exists()) {
-                        const participantSyncCode = snapshot.val().syncCode;
-                        if (participantSyncCode === this.syncCode) {
-                            isParticipant = true;
-                            break;
-                        }
-                    }
-                } catch (error) {
-                    console.warn('Errore caricamento syncCode partecipante:', error);
-                }
-            }
-        } else {
-            // Fallback: controlla per deviceId o nome
-            isParticipant = this.editParticipantsList.some(p => {
-                return p === this.deviceId || p === this.deviceName;
-            });
-        }
-
-
-        if (isParticipant) {
-            btn.style.display = 'none';
-        } else {
-            btn.style.display = 'block';
-        }
+        const isParticipant = this.editParticipantsList.includes(this.userId);
+        btn.style.display = isParticipant ? 'none' : 'block';
     }
 
     addCurrentUserToParticipants() {
-        if (!this.editParticipantsList.includes(this.deviceId)) {
-            this.editParticipantsList.push(this.deviceId);
+        if (!this.editParticipantsList.includes(this.userId)) {
+            this.editParticipantsList.push(this.userId);
 
             // Assicura che il dispositivo corrente sia nella cache dei nomi
-            if (!this.deviceNames[this.deviceId]) {
-                this.deviceNames[this.deviceId] = this.deviceName;
+            if (!this.userNames[this.userId]) {
+                this.userNames[this.userId] = this.userName;
             }
 
             this.renderEditParticipants();
@@ -1628,12 +1515,14 @@ class BacheaCalendar {
             // Aggiorna la visibilità dell'input chat
             this.updateChatInputVisibility(this.editParticipantsList);
 
-            // Salva immediatamente su Firebase
+            // Scrive solo la propria iscrizione: non tocca quelle degli altri
             if (this.editingNote) {
-                const { dateKey, noteIndex } = this.editingNote;
-                this.notes[dateKey][noteIndex].participants = this.editParticipantsList;
-                this.autoSync();
-                this.showSuccessPopup('Adesso sei un partecipante!');
+                database.ref(`events/${this.editingNote.id}/participants/${this.userId}`).set(true)
+                    .then(() => this.showSuccessPopup('Adesso sei un partecipante!'))
+                    .catch(error => {
+                        console.error('Errore iscrizione:', error);
+                        this.showErrorPopup('Errore nell\'iscrizione. Riprova.');
+                    });
             }
         }
     }
@@ -1684,25 +1573,21 @@ class BacheaCalendar {
             const coverDiv = document.getElementById('eventCoverContainerAdd');
             coverDiv.style.backgroundImage = `url(${croppedImage})`;
             coverDiv.style.backgroundAttachment = 'scroll';
-            coverDiv.style.minHeight = '180px';
+            coverDiv.style.minHeight = '120px';
         } else if (this.currentCropType === 'edit') {
             this.editImageData = croppedImage;
             // Visualizza l'immagine come copertina
             const coverDiv = document.getElementById('eventCoverContainer');
             coverDiv.style.backgroundImage = `url(${croppedImage})`;
             coverDiv.style.backgroundAttachment = 'scroll';
-            coverDiv.style.minHeight = '180px';
+            coverDiv.style.minHeight = '120px';
 
             // Auto-save dell'immagine: prima l'immagine, poi l'evento che la referenzia
             if (this.editingNote) {
-                const { dateKey, noteIndex } = this.editingNote;
-                const note = this.notes[dateKey][noteIndex];
+                const eventId = this.editingNote.id;
                 const imageVersion = Date.now();
-                this.saveEventImage(note.id, croppedImage, imageVersion).then(() => {
-                    delete note.image;
-                    note.imageVersion = imageVersion;
-                    this.syncToFirebase();
-                });
+                this.saveEventImage(eventId, croppedImage, imageVersion)
+                    .then(() => this.updateEvent(eventId, { imageVersion }));
             }
         }
 
@@ -1751,17 +1636,17 @@ class BacheaCalendar {
         linkInputContainer.style.display = 'none';
         linkInput.value = link || '';
 
-        if (link && link.trim()) {
-            openBtn.disabled = false;
-            openBtn.style.background = '#2196F3';
-            openBtn.style.cursor = 'pointer';
-            openBtn.style.opacity = '1';
-        } else {
-            openBtn.disabled = true;
-            openBtn.style.background = '#ccc';
-            openBtn.style.cursor = 'not-allowed';
-            openBtn.style.opacity = '0.6';
-        }
+        // "Vai sul sito" attivo solo se c'è un link; accanto si aggiunge o si modifica il link
+        const modifyBtn = document.getElementById('eventLinkModifyBtn');
+        const hasLink = !!(link && link.trim());
+        openBtn.disabled = !hasLink;
+        openBtn.style.opacity = hasLink ? '1' : '0.45';
+        openBtn.style.cursor = hasLink ? 'pointer' : 'not-allowed';
+        // Con il link: "Vai sul sito" prende quasi tutta la riga, accanto solo la matita
+        modifyBtn.textContent = hasLink ? '✏️' : '🔗 Aggiungi link';
+        modifyBtn.title = hasLink ? 'Modifica link' : '';
+        modifyBtn.style.flex = hasLink ? '0 0 44px' : '1';
+        modifyBtn.style.padding = hasLink ? '0' : '';
     }
 
     renderEditLink(link) {
@@ -1776,17 +1661,46 @@ class BacheaCalendar {
         linkInputContainer.style.display = 'none';
         linkInput.value = link || '';
 
-        if (link && link.trim()) {
-            openBtn.disabled = false;
-            openBtn.style.background = '#2196F3';
-            openBtn.style.cursor = 'pointer';
-            openBtn.style.opacity = '1';
-        } else {
-            openBtn.disabled = true;
-            openBtn.style.background = '#ccc';
-            openBtn.style.cursor = 'not-allowed';
-            openBtn.style.opacity = '0.6';
-        }
+        // "Vai sul sito" attivo solo se c'è un link; accanto si aggiunge o si modifica il link
+        const modifyBtn = document.getElementById('editLinkModifyBtn');
+        const hasLink = !!(link && link.trim());
+        openBtn.disabled = !hasLink;
+        openBtn.style.opacity = hasLink ? '1' : '0.45';
+        openBtn.style.cursor = hasLink ? 'pointer' : 'not-allowed';
+        // Con il link: "Vai sul sito" prende quasi tutta la riga, accanto solo la matita
+        modifyBtn.textContent = hasLink ? '✏️' : '🔗 Aggiungi link';
+        modifyBtn.title = hasLink ? 'Modifica link' : '';
+        modifyBtn.style.flex = hasLink ? '0 0 44px' : '1';
+        modifyBtn.style.padding = hasLink ? '0' : '';
+        modifyBtn.style.display = this.canEditCurrentEvent === false ? 'none' : 'block';
+    }
+
+    // Categoria (crea e modifica): il pulsante mostra la categoria scelta col suo colore
+    updateCategoryDisplay(selectId) {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+        const checked = select.querySelector('input:checked');
+        const current = select.querySelector('.category-select-current');
+        if (!checked || !current) return;
+        const option = checked.closest('.category-option');
+        current.textContent = option.textContent.trim();
+        current.style.background = option.style.background;
+        current.style.color = option.style.color;
+    }
+
+    closeCategorySelects() {
+        document.querySelectorAll('.category-select.open').forEach(select => select.classList.remove('open'));
+    }
+
+    // Pannello immagine della copertina (si apre con la matita): si chiude dopo ogni azione
+    closeEditImagePanel() {
+        document.getElementById('editImagePanel').style.display = 'none';
+        document.getElementById('editImageUrlInputContainer').style.display = 'none';
+    }
+
+    closeAddImagePanel() {
+        document.getElementById('addImagePanel').style.display = 'none';
+        document.getElementById('eventImageUrlInputContainer').style.display = 'none';
     }
 
     addNote(e) {
@@ -1794,9 +1708,10 @@ class BacheaCalendar {
         const title = document.getElementById('eventTitle').value.trim();
         if (!title || !this.selectedDate) return;
 
-        const dateKey = this.getDateKey(this.selectedDate);
-        if (!this.notes[dateKey]) {
-            this.notes[dateKey] = [];
+        const dateKey = document.getElementById('eventDate').value || this.getDateKey(this.selectedDate);
+        if (!this.isFutureDateKey(dateKey)) {
+            this.showErrorPopup('Puoi aggiungere eventi solo da domani in poi');
+            return;
         }
 
         // Genera un ID unico
@@ -1808,8 +1723,9 @@ class BacheaCalendar {
             ? this.saveEventImage(id, this.eventImageData, imageVersion)
             : Promise.resolve();
 
-        this.notes[dateKey].push({
+        const event = {
             id: id,
+            date: dateKey,
             title: title,
             time: document.getElementById('eventTime').value.trim(),
             location: document.getElementById('eventLocation').value.trim(),
@@ -1817,42 +1733,32 @@ class BacheaCalendar {
             color: this.selectedColor,
             link: this.currentEventLink,
             imageVersion: imageVersion,
-            participants: [],
-            creatorId: this.deviceId
-        });
+            creatorId: this.userId,
+            createdAt: Date.now()
+        };
 
-        imageSaved.then(() => this.syncToFirebase()); // Sincronizza con Firebase in real-time
+        imageSaved
+            .then(() => database.ref(`events/${id}`).set(event))
+            .then(() => this.showSuccessPopup('Evento aggiunto con successo!'))
+            .catch(error => {
+                console.error('Errore creazione evento:', error);
+                this.showErrorPopup('Errore nel salvataggio dell\'evento. Riprova.');
+            });
         this.closeModal();
-        this.render(); // Usa render() per renderizzare la vista corretta
-        setTimeout(() => this.showSuccessPopup('Evento aggiunto con successo!'), 100);
     }
 
-    deleteNote(dateKey, index) {
-        if (this.notes[dateKey]) {
-            // Prendi l'ID dell'evento prima di eliminarlo
-            const eventId = this.notes[dateKey][index].id;
-
-            this.notes[dateKey].splice(index, 1);
-            if (this.notes[dateKey].length === 0) {
-                delete this.notes[dateKey];
-            }
-
-            // Elimina la chat associata su Firebase
-            if (eventId) {
-                database.ref(`eventChats/${eventId}`).remove().catch(error => {
-                    console.error('Errore eliminazione chat:', error);
-                });
-                // Elimina anche i dati di lettura della chat
-                database.ref(`chatReadStatus/${eventId}`).remove().catch(error => {
-                    console.error('Errore eliminazione chatReadStatus:', error);
-                });
-                // Elimina l'immagine dell'evento
-                this.saveEventImage(eventId, null).catch(error => {
-                    console.error('Errore eliminazione immagine:', error);
-                });
-            }
-            this.syncToFirebase(); // Sincronizza con Firebase in real-time
-        }
+    // Elimina l'evento con chat, letture chat e immagine, in un'unica scrittura
+    deleteNote(eventId) {
+        if (!eventId) return Promise.resolve();
+        return database.ref().update({
+            [`events/${eventId}`]: null,
+            [`eventChats/${eventId}`]: null,
+            [`chatReadStatus/${eventId}`]: null,
+            [`eventImages/${eventId}`]: null
+        }).catch(error => {
+            console.error('Errore eliminazione evento:', error);
+            this.showErrorPopup('Errore nell\'eliminazione dell\'evento. Riprova.');
+        });
     }
 
     getDateKey(date) {
@@ -1901,7 +1807,6 @@ class BacheaCalendar {
     // Nell'evento resta solo imageVersion (timestamp), che cambia a ogni nuova immagine.
     getEventImage(event) {
         if (!event || !event.id) return Promise.resolve(null);
-        if (event.image) return Promise.resolve(event.image); // Formato vecchio, non ancora migrato
         if (!event.imageVersion) return Promise.resolve(null);
 
         const cacheKey = `${event.id}:${event.imageVersion}`;
@@ -1928,7 +1833,7 @@ class BacheaCalendar {
         return ref.remove();
     }
 
-    // Ridimensiona e ricomprime un'immagine (usata per migrare le immagini vecchie)
+    // Ridimensiona e ricomprime un'immagine (usata dall'import delle immagini vecchie)
     compressImage(dataUrl, maxWidth = 1200, quality = 0.65) {
         return new Promise(resolve => {
             const img = new Image();
@@ -1953,36 +1858,10 @@ class BacheaCalendar {
         });
     }
 
-    // Migrazione una tantum: sposta le immagini base64 dagli eventi a eventImages/{id}.
-    // L'immagine viene tolta dall'evento solo dopo che è stata scritta nel nuovo nodo.
-    async migrateLegacyImages() {
-        const writes = [];
-        for (const dayNotes of Object.values(this.notes)) {
-            if (!dayNotes) continue;
-            for (const note of Object.values(dayNotes)) {
-                if (!note || !note.image || !note.id) continue;
-                writes.push(
-                    this.compressImage(note.image)
-                        .then(image => {
-                            const imageVersion = Date.now();
-                            return this.saveEventImage(note.id, image, imageVersion).then(() => {
-                                note.imageVersion = imageVersion;
-                                delete note.image;
-                            });
-                        })
-                        .catch(error => console.error('Errore migrazione immagine:', note.id, error))
-                );
-            }
-        }
-        await Promise.all(writes);
-    }
-
     // Mostra la copertina nel modal di modifica, se l'evento aperto è ancora lo stesso
     showEditCover(note) {
         this.getEventImage(note).then(image => {
-            const current = this.editingNote
-                && this.notes[this.editingNote.dateKey]
-                && this.notes[this.editingNote.dateKey][this.editingNote.noteIndex];
+            const current = this.getEditingEvent();
             if (!current || current.id !== note.id) return;
 
             this.editImageData = image;
@@ -1993,7 +1872,7 @@ class BacheaCalendar {
     }
 
     // Drag and Drop
-    setupDragAndDrop(noteEl, dateKey, noteIndex, dayObj) {
+    setupDragAndDrop(noteEl, dateKey, eventId, dayObj) {
         let isDragging = false;
         let dragStartX = 0;
         let dragStartY = 0;
@@ -2013,7 +1892,7 @@ class BacheaCalendar {
 
             if ((moveX > dragThreshold || moveY > dragThreshold) && !isDragging) {
                 isDragging = true;
-                this.startDrag(noteEl, dateKey, noteIndex, dayObj);
+                this.startDrag(noteEl, dateKey, eventId, dayObj);
             }
         });
 
@@ -2052,7 +1931,7 @@ class BacheaCalendar {
             longPressTimer = setTimeout(() => {
                 longPressTimer = null;
                 if (navigator.vibrate) navigator.vibrate(30);
-                this.startTouchDrag(noteEl, dateKey, noteIndex, touchStartX, touchStartY);
+                this.startTouchDrag(noteEl, dateKey, eventId, touchStartX, touchStartY);
             }, longPressDelay);
         }, { passive: true });
 
@@ -2071,7 +1950,7 @@ class BacheaCalendar {
         });
     }
 
-    startTouchDrag(noteEl, sourceDateKey, noteIndex, startX, startY) {
+    startTouchDrag(noteEl, sourceDateKey, eventId, startX, startY) {
         this.isTouchDragging = true;
 
         const dragGhost = noteEl.cloneNode(true);
@@ -2126,7 +2005,7 @@ class BacheaCalendar {
 
             if (drop) {
                 const targetDay = findDayAt(lastX, lastY);
-                if (targetDay) this.dropEvent(targetDay, sourceDateKey, noteIndex);
+                if (targetDay) this.dropEvent(targetDay, eventId);
             }
         };
         const handleTouchEnd = () => finish(true);
@@ -2137,7 +2016,7 @@ class BacheaCalendar {
         document.addEventListener('touchcancel', handleTouchCancel);
     }
 
-    startDrag(noteEl, sourceDateKey, noteIndex, sourceDayObj) {
+    startDrag(noteEl, sourceDateKey, eventId, sourceDayObj) {
         // Crea un elemento fantasma per il trascinamento
         const dragGhost = noteEl.cloneNode(true);
         dragGhost.style.position = 'fixed';
@@ -2187,7 +2066,7 @@ class BacheaCalendar {
             });
 
             if (mouseOverDay) {
-                this.dropEvent(mouseOverDay, sourceDateKey, noteIndex, sourceDayObj);
+                this.dropEvent(mouseOverDay, eventId);
             }
         };
 
@@ -2195,24 +2074,28 @@ class BacheaCalendar {
         document.addEventListener('mouseup', handleMouseUp);
     }
 
-    dropEvent(targetDayEl, sourceDateKey, noteIndex, sourceDayObj) {
-        // Estrai la data dal giorno target (dalla classe o dall'ID)
+    dropEvent(targetDayEl, eventId) {
+        // Estrai la data dal giorno target (dall'ID del contenitore)
         const notesContainer = targetDayEl.querySelector('[id^="notes-"]');
         if (!notesContainer) return;
 
         const targetDateKey = notesContainer.id.replace('notes-', '');
 
-        if (this.moveEvent(sourceDateKey, noteIndex, targetDateKey)) {
-            this.render();
+        if (this.moveEvent(eventId, targetDateKey)) {
             this.showSuccessPopup('Evento spostato con successo!');
         }
     }
 
     // Sposta un evento in un altro giorno (drag & drop o campo Data del modal).
-    // Stesso id: chat, immagine e partecipanti restano collegati.
-    moveEvent(sourceDateKey, noteIndex, targetDateKey) {
-        if (sourceDateKey === targetDateKey) {
-            return false; // Stesso giorno
+    // Cambia solo il campo date: chat, immagine e partecipanti restano collegati.
+    moveEvent(eventId, targetDateKey) {
+        const event = this.events[eventId];
+        if (!event || event.date === targetDateKey) {
+            return false; // Evento sparito o stesso giorno
+        }
+        if (!this.canEditEvent(event)) {
+            this.showErrorPopup('Solo chi ha proposto l\'evento può spostarlo');
+            return false;
         }
 
         // Non puoi spostare su giorni passati o oggi
@@ -2221,20 +2104,7 @@ class BacheaCalendar {
             return false;
         }
 
-        const note = this.notes[sourceDateKey] && this.notes[sourceDateKey][noteIndex];
-        if (!note) return false;
-
-        this.notes[sourceDateKey].splice(noteIndex, 1);
-        if (this.notes[sourceDateKey].length === 0) {
-            delete this.notes[sourceDateKey];
-        }
-
-        if (!this.notes[targetDateKey]) {
-            this.notes[targetDateKey] = [];
-        }
-        this.notes[targetDateKey].push(note);
-
-        this.syncToFirebase();
+        this.updateEvent(eventId, { date: targetDateKey });
         return true;
     }
 
@@ -2297,6 +2167,14 @@ class BacheaCalendar {
         yearSelect.value = today.getFullYear();
 
         // Aggiorna i mesi disponibili quando cambia l'anno
+        // Ultimo giorno del mese: da domani si parte dal mese successivo
+        const isLastDayOfMonth = today.getDate() === new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+        const firstMonth = isLastDayOfMonth ? today.getMonth() + 1 : today.getMonth(); // 12 = gennaio dell'anno dopo
+        if (firstMonth > 11) {
+            yearSelect.querySelector(`option[value="${today.getFullYear()}"]`).remove();
+            yearSelect.value = today.getFullYear() + 1;
+        }
+
         const updateAvailableMonths = () => {
             const selectedYear = parseInt(yearSelect.value);
             const currentYear = today.getFullYear();
@@ -2312,7 +2190,7 @@ class BacheaCalendar {
 
             allMonths.forEach((monthName, monthIndex) => {
                 // Se è l'anno corrente, mostra solo i mesi da quello corrente in poi
-                if (isCurrentYear && monthIndex < today.getMonth()) {
+                if (isCurrentYear && monthIndex < firstMonth) {
                     return; // Salta i mesi passati
                 }
 
@@ -2324,14 +2202,14 @@ class BacheaCalendar {
 
             // Preseleziona il mese corrente se disponibile, altrimenti il primo disponibile
             if (isCurrentYear) {
-                monthSelect.value = today.getMonth();
+                monthSelect.value = firstMonth;
             } else {
                 monthSelect.value = 0; // Gennaio per anni futuri
             }
         };
 
-        // Preseleziona il giorno dopo il corrente
-        dayInput.value = today.getDate() + 1;
+        // Preseleziona domani (il 1° del mese dopo, se oggi è l'ultimo giorno)
+        dayInput.value = isLastDayOfMonth ? 1 : today.getDate() + 1;
 
         // Aggiorna i vincoli del giorno quando cambia mese o anno
         const updateDayConstraints = () => {
@@ -2353,11 +2231,13 @@ class BacheaCalendar {
             }
         };
 
-        yearSelect.addEventListener('change', () => {
+        // on... invece di addEventListener: a ogni apertura il gestore si sostituisce,
+        // non si aggiunge (prima dopo N aperture +/- spostavano il giorno di N)
+        yearSelect.onchange = () => {
             updateAvailableMonths();
             updateDayConstraints();
-        });
-        monthSelect.addEventListener('change', updateDayConstraints);
+        };
+        monthSelect.onchange = updateDayConstraints;
 
         // Inizializza i mesi disponibili
         updateAvailableMonths();
@@ -2404,16 +2284,16 @@ class BacheaCalendar {
             }
         };
 
-        dayInput.addEventListener('input', validateDay);
-        dayInput.addEventListener('change', validateDay);
+        dayInput.oninput = validateDay;
+        dayInput.onchange = validateDay;
         // Ascolta i click dei button su/giù
-        dayInput.addEventListener('mouseup', validateDay);
+        dayInput.onmouseup = validateDay;
 
         // Button per incrementare/decrementare il giorno
         const dayPlusBtn = document.getElementById('selectDayDayPlus');
         const dayMinusBtn = document.getElementById('selectDayDayMinus');
 
-        dayPlusBtn.addEventListener('click', (e) => {
+        dayPlusBtn.onclick = (e) => {
             e.preventDefault();
             const current = parseInt(dayInput.value) || parseInt(dayInput.min);
             const max = parseInt(dayInput.max);
@@ -2421,9 +2301,9 @@ class BacheaCalendar {
                 dayInput.value = current + 1;
                 validateDay();
             }
-        });
+        };
 
-        dayMinusBtn.addEventListener('click', (e) => {
+        dayMinusBtn.onclick = (e) => {
             e.preventDefault();
             const current = parseInt(dayInput.value) || parseInt(dayInput.min);
             const min = parseInt(dayInput.min);
@@ -2431,8 +2311,9 @@ class BacheaCalendar {
                 dayInput.value = current - 1;
                 validateDay();
             }
-        });
+        };
 
+        document.getElementById('selectDayError').style.display = 'none';
         modal.style.display = 'flex';
     }
 
@@ -2445,16 +2326,14 @@ class BacheaCalendar {
         const eventsList = document.getElementById('eventsList');
         const allEvents = [];
 
-        for (const [dateKey, eventsArray] of Object.entries(this.notes)) {
-            eventsArray.forEach((event, index) => {
-                allEvents.push({
-                    dateKey,
-                    index,
-                    date: new Date(dateKey),
-                    ...event
-                });
+        Object.values(this.events).forEach(event => {
+            if (!event || !event.date) return;
+            allEvents.push({
+                ...event,
+                dateKey: event.date,
+                date: new Date(event.date)
             });
-        }
+        });
 
         // Ordina per data, poi per orario
         allEvents.sort((a, b) => {
@@ -2506,8 +2385,10 @@ class BacheaCalendar {
             const eventEl = document.createElement('div');
             eventEl.className = `event-item ${event.color}`;
 
-            const participantsHtml = event.participants && event.participants.length > 0
-                ? `<div class="event-participants">👥 ${event.participants.map(p => this.escapeHtml(this.getParticipantName(p))).join(', ')}</div>`
+            const participantIds = this.getParticipantIds(event);
+            this.ensureUserNames(participantIds);
+            const participantsHtml = participantIds.length > 0
+                ? `<div class="event-participants">👥 ${participantIds.map(p => this.escapeHtml(this.getParticipantName(p))).join(', ')}</div>`
                 : '';
 
             eventEl.setAttribute('data-event-id', event.id);
@@ -2527,7 +2408,7 @@ class BacheaCalendar {
             `;
 
             // Copertina caricata a parte (da eventImages)
-            if (event.image || event.imageVersion) {
+            if (event.imageVersion) {
                 this.getEventImage(event).then(image => {
                     if (!image) return;
                     const cover = eventEl.querySelector('.event-cover');
@@ -2540,7 +2421,7 @@ class BacheaCalendar {
             }
 
             eventEl.addEventListener('click', () => {
-                this.openEditModal(event.dateKey, event.index);
+                this.openEditModal(event.id);
             });
 
             eventsList.appendChild(eventEl);
@@ -2587,9 +2468,8 @@ class BacheaCalendar {
         if (menuDropdown) menuDropdown.style.display = 'none';
 
         // Popola le informazioni nel modal
-        document.getElementById('userProfileName').textContent = this.deviceName || 'Non impostato';
-        document.getElementById('userProfileSyncCode').textContent = this.syncCode || 'Non disponibile';
-        document.getElementById('userProfileDeviceId').textContent = this.deviceId || 'Non disponibile';
+        document.getElementById('userProfileName').textContent = this.userName || 'Non impostato';
+        document.getElementById('userProfileUsername').textContent = this.username || '';
 
         const deviceInfo = this.getDeviceInfo();
         document.getElementById('userProfileDevice').textContent = `${deviceInfo.browser} (${deviceInfo.deviceType})`;
@@ -2608,179 +2488,263 @@ class BacheaCalendar {
         }
     }
 
-    async resetSyncCode() {
-        if (!this.syncCode) {
-            this.showErrorPopup('Nessun codice di sincronizzazione trovato');
-            return;
-        }
+    // ===== Eventi: events/{id} = {id, date, title, time, location, notes, color, link, imageVersion,
+    //                            participants/{uid}: true, creatorId, createdAt}
+    // Ogni modifica scrive solo i campi del suo evento (update), mai tutto il nodo events:
+    // due persone che modificano eventi diversi, o si iscrivono insieme, non si sovrascrivono.
+    // this.events arriva dal listener; this.notes è l'indice per giorno usato per disegnare.
 
-        // Chiudi il menu dropdown
-        const menuDropdown = document.getElementById('menuDropdown');
-        if (menuDropdown) menuDropdown.style.display = 'none';
+    loadEvents() {
+        return new Promise(resolve => {
+            let firstLoad = true;
+            this.eventsListener = (snapshot) => {
+                this.events = snapshot.val() || {};
+                this.rebuildNotesIndex();
 
-        const confirmed = await this.showConfirmDialog(
-            `Sei sicuro? Questo eliminerà:\n\n` +
-            `• Il codice di sincronizzazione (${this.syncCode})\n` +
-            `• Tutti i tuoi dispositivi\n` +
-            `• I dati di lettura chat\n\n` +
-            `Gli eventi rimarranno visibili agli altri utenti.\n\n` +
-            `Questa azione NON può essere annullata.`
-        );
+                if (firstLoad) {
+                    firstLoad = false;
+                    resolve(); // Il primo disegno lo fa init()
+                    return;
+                }
 
-        if (!confirmed) return;
-
-        try {
-            // Carica il syncCode per ottenere la lista dei deviceIds
-            const syncCodeRef = await database.ref(`syncCodes/${this.syncCode}`).once('value');
-            if (!syncCodeRef.exists()) {
-                this.showErrorPopup('Codice non trovato. Reset non riuscito.');
-                return;
-            }
-
-            const syncCodeData = syncCodeRef.val();
-            const deviceIds = syncCodeData.deviceIds || [];
-
-            // Cancella il syncCode
-            await database.ref(`syncCodes/${this.syncCode}`).remove();
-
-            // Cancella tutti i devices associati al syncCode
-            for (const deviceId of deviceIds) {
-                await database.ref(`devices/${deviceId}`).remove();
-            }
-
-            // Cancella i chatReadStatus per questo syncCode
-            const chatReadStatusRef = await database.ref('chatReadStatus').once('value');
-            if (chatReadStatusRef.exists()) {
-                const chatReadStatus = chatReadStatusRef.val();
-                for (const eventId in chatReadStatus) {
-                    if (chatReadStatus[eventId][this.syncCode]) {
-                        await database.ref(`chatReadStatus/${eventId}/${this.syncCode}`).remove();
+                // Se il modal è aperto, verifica se l'evento è stato eliminato o modificato
+                if (this.editingNote) {
+                    const event = this.getEditingEvent();
+                    if (!event) {
+                        this.showEventDeletedDialog();
+                    } else {
+                        this.editingNote.dateKey = event.date;
+                        this.updateEditModalContent();
                     }
                 }
-            }
 
-            // Mostra successo e reimposta la pagina
-            this.showSuccessPopup('Reset completato. La pagina si ricaricherà...');
+                this.render();
+            };
 
-            // Pulisci localStorage
-            localStorage.removeItem('deviceId');
-            localStorage.clear();
-
-            // Ricarica dopo 1.5 secondi
-            setTimeout(() => {
-                window.location.reload();
-            }, 1500);
-
-        } catch (error) {
-            console.error('Errore durante il reset:', error);
-            this.showErrorPopup('Errore durante il reset: ' + error.message);
-        }
-    }
-
-    autoSync() {
-        return new Promise((resolve) => {
-            if (this.isSyncing) {
+            database.ref('events').on('value', this.eventsListener, (error) => {
+                console.error('Errore lettura eventi:', error);
+                this.showErrorPopup('Non riesco a leggere gli eventi. Ricarica la pagina.');
                 resolve();
-                return;
-            }
-            this.isSyncing = true;
+            });
 
-            // Carica i dati da Firebase per il caricamento iniziale
-            database.ref('events').once('value', async (snapshot) => {
-                // Se this.notes è vuoto (caricamento iniziale), usa i dati da Firebase
-                if (Object.keys(this.notes).length === 0 && snapshot.exists()) {
-                    this.notes = snapshot.val();
-                }
-
-                // Solo al caricamento iniziale: se è il 1° del mese, cancella gli eventi dei mesi precedenti
-                if (this.isInitialLoad) {
-                    this.isInitialLoad = false;
-                    const today = new Date();
-                    if (today.getDate() === 1) {
-                        const currentYear = today.getFullYear();
-                        const currentMonth = today.getMonth() + 1;
-
-                        Object.keys(this.notes).forEach(dateKey => {
-                            const [year, month, day] = dateKey.split('-');
-                            const eventYear = parseInt(year);
-                            const eventMonth = parseInt(month);
-
-                            // Se l'evento è di un mese precedente, cancellalo (con la sua immagine)
-                            if (eventYear < currentYear || (eventYear === currentYear && eventMonth < currentMonth)) {
-                                Object.values(this.notes[dateKey] || {}).forEach(note => {
-                                    if (note && note.id && note.imageVersion) this.saveEventImage(note.id, null);
-                                });
-                                delete this.notes[dateKey];
-                            }
-                        });
-                    }
-
-                    // Sposta le immagini vecchie (base64 dentro l'evento) in eventImages
-                    await this.migrateLegacyImages();
-                }
-
-                // Salva i dati locali su Firebase (sovrascrivi completamente)
-                if (Object.keys(this.notes).length > 0) {
-                    this.suppressSync = true;
-                    database.ref('events').set(this.notes, (error) => {
-                        this.suppressSync = false;
-                        this.isSyncing = false;
-                        resolve();
-                        this.setupRealtimeSync(); // Inizia il real-time sync
-                    });
-                } else {
-                    this.isSyncing = false;
-                    resolve();
-                    this.setupRealtimeSync();
-                }
+            // Listener globale per i messaggi di TUTTI gli eventi (per aggiornare badge in real-time)
+            database.ref('eventChats').on('value', () => {
+                this.updateAllBadges();
             });
         });
     }
 
-    setupRealtimeSync() {
-        // Rimuovi il vecchio listener se esiste
-        if (this.eventsListener) {
-            database.ref('events').off('value', this.eventsListener);
+    rebuildNotesIndex() {
+        const index = {};
+        Object.values(this.events).forEach(event => {
+            if (!event || !event.id || !event.date) return;
+            if (!index[event.date]) index[event.date] = [];
+            index[event.date].push(event);
+        });
+        Object.values(index).forEach(dayEvents => this.sortByTime(dayEvents));
+        this.notes = index;
+    }
+
+    getParticipantIds(event) {
+        return Object.keys((event && event.participants) || {});
+    }
+
+    // Modifica, spostamento ed eliminazione: solo chi ha creato l'evento.
+    // Gli eventi senza creatore (convertiti o importati dal vecchio DB) restano modificabili da tutti.
+    // Iscriversi e scrivere in chat resta permesso a tutti.
+    canEditEvent(event) {
+        return !!event && (!event.creatorId || event.creatorId === this.userId);
+    }
+
+    // Modal di modifica in sola lettura per chi non è il creatore
+    applyEditPermissions(event) {
+        const canEdit = this.canEditEvent(event);
+        this.canEditCurrentEvent = canEdit;
+        ['editTitle', 'editDate', 'editTime', 'editLocation', 'editNotes', 'editCategoryCurrent'].forEach(id => {
+            document.getElementById(id).disabled = !canEdit;
+        });
+        const show = (id, visible, display = 'inline-block') => {
+            document.getElementById(id).style.display = visible ? display : 'none';
+        };
+        show('editImageToggleBtn', canEdit);
+        show('editLinkModifyBtn', canEdit, 'block');
+        show('deleteNoteBtn', canEdit);
+        const onEventTab = document.getElementById('edit-evento-tab').classList.contains('active');
+        show('saveEditBtn', canEdit && onEventTab);
+        if (!canEdit) {
+            this.closeEditImagePanel();
+            this.closeCategorySelects();
+            document.getElementById('editLinkContainer').style.display = 'flex';
+            document.getElementById('editLinkInputContainer').style.display = 'none';
         }
+    }
 
-        // Configura listener real-time
-        this.eventsListener = (snapshot) => {
-            // Se il cambiamento viene da questo client (suppressSync), ignora
-            if (this.suppressSync) {
-                return;
-            }
+    getEditingEvent() {
+        return this.editingNote ? (this.events[this.editingNote.id] || null) : null;
+    }
 
-            if (snapshot.exists()) {
-                const remoteNotes = snapshot.val();
+    updateEvent(eventId, fields) {
+        return database.ref(`events/${eventId}`).update(fields).catch(error => {
+            console.error('Errore salvataggio evento:', error);
+            this.showErrorPopup('Errore nel salvataggio. Riprova.');
+        });
+    }
 
-                // Aggiorna solo se c'è una vera differenza
-                if (JSON.stringify(this.notes) !== JSON.stringify(remoteNotes)) {
-                    this.notes = remoteNotes;
-
-                    // Se il modal è aperto, verifica se l'evento è stato eliminato
-                    if (this.editingNote) {
-                        const { dateKey, noteIndex } = this.editingNote;
-                        if (!this.notes[dateKey] || !this.notes[dateKey][noteIndex]) {
-                            // L'evento è stato eliminato
-                            this.showEventDeletedDialog();
-                        } else {
-                            // L'evento esiste ancora, aggiorna il contenuto
-                            this.updateEditModalContent();
-                        }
-                    }
-
-                    this.render();
-                }
-            }
+    // All'apertura dell'app:
+    // - gli eventi dei mesi precedenti si cancellano, con chat, letture e immagine;
+    // - gli eventi ancora nel formato vecchio (events/{YYYY-MM-DD}: [...]) si convertono in
+    //   events/{id} se sono del mese corrente o successivi, altrimenti si cancellano.
+    // Conversione e cancellazione del giorno vecchio vanno nella stessa scrittura, così non si
+    // perde né si duplica niente; se due client lo fanno insieme scrivono gli stessi dati.
+    async cleanupPastEvents() {
+        const today = new Date();
+        const firstOfMonth = this.getDateKey(new Date(today.getFullYear(), today.getMonth(), 1));
+        const removeEvent = (updates, id) => {
+            updates[`events/${id}`] = null;
+            updates[`eventChats/${id}`] = null;
+            updates[`chatReadStatus/${id}`] = null;
+            updates[`eventImages/${id}`] = null;
         };
 
-        database.ref('events').on('value', this.eventsListener);
+        try {
+            const updates = {};
+            let converted = 0;
+            for (const [key, value] of Object.entries(this.events)) {
+                if (!value) continue;
 
-        // Listener globale per i messaggi di TUTTI gli eventi (per aggiornare badge in real-time)
-        database.ref('eventChats').on('value', () => {
-            // Quando arrivano messaggi nuovi, aggiorna tutti i badge nel calendario e nella lista
-            this.updateAllBadges();
+                if (this.isLegacyDayKey(key)) {
+                    const oldEvents = Object.values(value).filter(old => old && old.title);
+                    updates[`events/${key}`] = null;
+                    if (key < firstOfMonth) {
+                        oldEvents.forEach(old => { if (old.id) removeEvent(updates, old.id); });
+                    } else {
+                        for (const old of oldEvents) {
+                            await this.addLegacyEventToUpdates(old, key, updates, null);
+                            converted++;
+                        }
+                    }
+                } else if (value.id && value.date && value.date < firstOfMonth && this.canEditEvent(value)) {
+                    removeEvent(updates, value.id);
+                }
+            }
+
+            if (Object.keys(updates).length > 0) {
+                await database.ref().update(updates);
+                if (converted > 0) console.log(`🔄 Convertiti ${converted} eventi dal formato vecchio`);
+            }
+        } catch (error) {
+            console.error('Errore pulizia/conversione eventi:', error);
+        }
+    }
+
+    // Formato vecchio: la chiave sotto events era la data e conteneva l'array degli eventi del giorno
+    isLegacyDayKey(key) {
+        return /^\d{4}-\d{2}-\d{2}$/.test(key);
+    }
+
+    // Converte un evento del formato vecchio nel nuovo e lo aggiunge a updates.
+    // Partecipanti e creatore erano legati ai vecchi dispositivi e non si portano.
+    // oldImages: le immagini del backup (import); null se l'immagine è già in eventImages/{id}.
+    async addLegacyEventToUpdates(old, dateKey, updates, oldImages) {
+        const id = old.id || ('evt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
+
+        let imageVersion = null;
+        let image = oldImages ? (oldImages[id] || null) : null;
+        if (!image && old.image) image = await this.compressImage(old.image); // Immagine dentro l'evento (formato antico)
+        if (typeof image === 'string' && image.startsWith('data:image/')) {
+            imageVersion = old.imageVersion || Date.now();
+            updates[`eventImages/${id}`] = image;
+        } else if (!oldImages && old.imageVersion) {
+            imageVersion = old.imageVersion; // Già in eventImages/{id}, con lo stesso id
+        }
+
+        updates[`events/${id}`] = {
+            id: id,
+            date: dateKey,
+            title: old.title,
+            time: old.time || '',
+            location: old.location || '',
+            notes: old.notes || '',
+            color: old.color || 'color-neutral',
+            link: old.link || '',
+            imageVersion: imageVersion,
+            createdAt: Date.now()
+        };
+        return id;
+    }
+
+    // Import una tantum dal vecchio database (JSON esportato dalla console Firebase).
+    // Porta gli eventi da oggi in poi (senza partecipanti, creatore e chat), le loro immagini
+    // e le proposte (con le date future, senza voti). Uso, da loggati, nella console del browser:
+    //   await bacheaInstance.importBackupFromFile()   (si apre la scelta del file JSON)
+    // oppure: await bacheaInstance.importBackup(<oggetto JSON incollato>)
+    importBackupFromFile() {
+        return new Promise((resolve, reject) => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'application/json,.json';
+            input.onchange = async () => {
+                try {
+                    const backup = JSON.parse(await input.files[0].text());
+                    resolve(await this.importBackup(backup));
+                } catch (error) {
+                    console.error('Errore import:', error);
+                    reject(error);
+                }
+            };
+            input.click();
         });
+    }
+
+    async importBackup(backup) {
+        if (!this.userId) throw new Error('Fai prima il login');
+        const today = this.getDateKey(new Date());
+        const oldImages = backup.eventImages || {};
+        const updates = {};
+        const counts = { events: 0, images: 0, proposals: 0 };
+
+        for (const [dateKey, dayEvents] of Object.entries(backup.events || {})) {
+            if (!this.isLegacyDayKey(dateKey) || dateKey < today) continue;
+            for (const old of Object.values(dayEvents || {})) {
+                if (!old || !old.title) continue;
+                if (old.id && this.events[old.id]) continue; // Già importato
+
+                const id = await this.addLegacyEventToUpdates(old, dateKey, updates, oldImages);
+                if (updates[`eventImages/${id}`]) counts.images++;
+                counts.events++;
+            }
+        }
+
+        for (const old of Object.values(backup.proposals || {})) {
+            if (!old || !old.id || !old.title || old.fixedDate || this.proposals[old.id]) continue;
+            const dateOptions = {};
+            Object.keys(old.dateOptions || {}).filter(d => d > today).forEach(d => {
+                dateOptions[d] = { addedBy: (old.dateOptions[d] && old.dateOptions[d].addedBy) || '', createdAt: Date.now() };
+            });
+            updates[`proposals/${old.id}`] = {
+                id: old.id,
+                title: old.title,
+                time: old.time || '',
+                location: old.location || '',
+                notes: old.notes || '',
+                color: old.color || 'color-neutral',
+                creatorId: this.userId, // Chi importa può eliminarle
+                creatorName: old.creatorName || '',
+                createdAt: old.createdAt || Date.now(),
+                ...(Object.keys(dateOptions).length > 0 ? { dateOptions } : {})
+            };
+            counts.proposals++;
+        }
+
+        // A blocchi, così una scrittura non diventa troppo grande (le immagini pesano)
+        const keys = Object.keys(updates);
+        for (let i = 0; i < keys.length; i += 20) {
+            const chunk = {};
+            keys.slice(i, i + 20).forEach(key => { chunk[key] = updates[key]; });
+            await database.ref().update(chunk);
+        }
+        console.log(`📥 Import completato: ${counts.events} eventi, ${counts.images} immagini, ${counts.proposals} proposte`);
+        return counts;
     }
 
     updateAllBadges() {
@@ -2803,27 +2767,13 @@ class BacheaCalendar {
 
         // Aggiorna il badge del pulsante Chat se il modal è aperto
         if (this.editingNote) {
-            const { dateKey, noteIndex } = this.editingNote;
-            const note = this.notes[dateKey] && this.notes[dateKey][noteIndex];
-            if (note) {
-                this.updateChatButtonBadge(note.id);
-            }
+            this.updateChatButtonBadge(this.editingNote.id);
         }
-    }
-
-    syncToFirebase() {
-        this.suppressSync = true;
-        database.ref('events').set(this.notes, (error) => {
-            this.suppressSync = false;
-            if (error) {
-                console.error('Errore sincronizzazione Firebase:', error);
-            }
-        });
     }
 
     async getUnreadMessageCount(eventId) {
         try {
-            const statusSnapshot = await database.ref(`chatReadStatus/${eventId}/${this.syncCode}`).once('value');
+            const statusSnapshot = await database.ref(`chatReadStatus/${eventId}/${this.userId}`).once('value');
             const lastReadTimestamp = statusSnapshot.exists() ? statusSnapshot.val().lastReadTimestamp : 0;
 
             const messagesSnapshot = await database.ref(`eventChats/${eventId}/messages`).once('value');
@@ -2848,7 +2798,7 @@ class BacheaCalendar {
         if (!chatBtn) return;
 
         // Controlla se sei partecipante
-        const isParticipant = this.editParticipantsList && this.editParticipantsList.includes(this.deviceId);
+        const isParticipant = this.editParticipantsList && this.editParticipantsList.includes(this.userId);
 
         // Se non sei partecipante, non mostrare il badge
         if (!isParticipant) {
@@ -2872,21 +2822,8 @@ class BacheaCalendar {
     }
 
     updateNoteBadge(noteEl, eventId) {
-        // Trova l'evento e controlla se sei partecipante
-        let isParticipant = false;
-        let found = false;
-        for (const dateKey in this.notes) {
-            if (found) break;
-            const dayNotes = this.notes[dateKey];
-            for (let i = 0; i < dayNotes.length; i++) {
-                if (dayNotes[i].id === eventId) {
-                    const participants = dayNotes[i].participants || [];
-                    isParticipant = participants.includes(this.deviceId);
-                    found = true;
-                    break;
-                }
-            }
-        }
+        // Mostra il badge solo a chi partecipa all'evento
+        const isParticipant = this.getParticipantIds(this.events[eventId]).includes(this.userId);
 
         // Se non sei partecipante, nascondi il badge
         if (!isParticipant) {
@@ -2907,21 +2844,8 @@ class BacheaCalendar {
     }
 
     updateListEventBadge(eventEl, eventId) {
-        // Trova l'evento e controlla se sei partecipante
-        let isParticipant = false;
-        let found = false;
-        for (const dateKey in this.notes) {
-            if (found) break;
-            const dayNotes = this.notes[dateKey];
-            for (let i = 0; i < dayNotes.length; i++) {
-                if (dayNotes[i].id === eventId) {
-                    const participants = dayNotes[i].participants || [];
-                    isParticipant = participants.includes(this.deviceId);
-                    found = true;
-                    break;
-                }
-            }
-        }
+        // Mostra il badge solo a chi partecipa all'evento
+        const isParticipant = this.getParticipantIds(this.events[eventId]).includes(this.userId);
 
         // Se non sei partecipante, nascondi il badge
         if (!isParticipant) {
@@ -2986,25 +2910,15 @@ class BacheaCalendar {
 
     // Edit Modal
     updateEditModalContent() {
-        // Aggiorna il contenuto del modal con i dati più recenti da Firebase
-        if (!this.editingNote) return;
-
-        const { dateKey, noteIndex } = this.editingNote;
-        if (!this.notes[dateKey] || !this.notes[dateKey][noteIndex]) return;
-
-        const note = this.notes[dateKey][noteIndex];
-
-        // Aggiorna i campi del modal
-        document.getElementById('editTitle').value = note.title || '';
-        this.setEditDateField(dateKey);
-        document.getElementById('editTime').value = note.time || '';
-        document.getElementById('editLocation').value = note.location || '';
-        document.getElementById('editNotes').value = note.notes || '';
-        document.getElementById('editLink').value = note.link || '';
+        // Aggiorna il modal con i dati arrivati da Firebase. Titolo, ora, luogo, note e data
+        // non si toccano: l'utente potrebbe star scrivendo, e si salvano solo con "Salva".
+        const note = this.getEditingEvent();
+        if (!note) return;
 
         // Aggiorna i partecipanti
-        this.editParticipantsList = note.participants ? [...note.participants] : [];
+        this.editParticipantsList = this.getParticipantIds(note);
         this.renderEditParticipants();
+        this.updateChatInputVisibility(this.editParticipantsList);
 
         // Aggiorna il colore
         this.selectedColor = note.color || 'color-yellow';
@@ -3013,23 +2927,27 @@ class BacheaCalendar {
             colorRadio.checked = true;
         }
 
-        // Aggiorna l'immagine
-        this.showEditCover(note);
+        this.updateCategoryDisplay('editCategorySelect');
 
-        // Ricarica la lista dei partecipanti
-        this.updateParticipateButton();
+        // Aggiorna link e immagine
+        document.getElementById('editLink').value = note.link || '';
+        this.renderEditLink(note.link);
+        this.showEditCover(note);
+        this.applyEditPermissions(note);
     }
 
-    openEditModal(dateKey, noteIndex) {
+    openEditModal(eventId) {
+        const note = this.events[eventId];
+        if (!note) return;
+
         // Chiudi il modal di aggiunta se aperto
         document.getElementById('modal').classList.remove('active');
         document.getElementById('modal').style.display = 'none';
 
-        this.editingNote = { dateKey, noteIndex };
-        const note = this.notes[dateKey][noteIndex];
+        this.editingNote = { id: eventId, dateKey: note.date };
 
         document.getElementById('editTitle').value = note.title || '';
-        this.setEditDateField(dateKey);
+        this.setEditDateField(note.date);
         document.getElementById('editTime').value = note.time || '';
         document.getElementById('editLocation').value = note.location || '';
         document.getElementById('editNotes').value = note.notes || '';
@@ -3042,7 +2960,7 @@ class BacheaCalendar {
         this.loadAndDisplayCreatorName(note.creatorId);
 
         // Set partecipanti
-        this.editParticipantsList = note.participants ? [...note.participants] : [];
+        this.editParticipantsList = this.getParticipantIds(note);
         this.renderEditParticipants();
 
         // Set colore - mantieni il colore originale come default
@@ -3052,13 +2970,19 @@ class BacheaCalendar {
             colorRadio.checked = true;
         }
 
+        this.updateCategoryDisplay('editCategorySelect');
+        this.closeCategorySelects();
+
+        // Pannello immagine chiuso: si apre con la matita
+        this.closeEditImagePanel();
+
         // Parti dal gradiente viola, poi carica l'immagine se esiste
         this.editImageData = null;
         const coverContainer = document.getElementById('eventCoverContainer');
         coverContainer.style.backgroundImage = 'none';
         coverContainer.style.backgroundAttachment = 'fixed';
         // Mantieni sempre una min-height per mostrare il gradiente viola
-        coverContainer.style.minHeight = '180px';
+        coverContainer.style.minHeight = '120px';
         this.showEditCover(note);
 
         // Carica e visualizza i messaggi della chat
@@ -3068,7 +2992,9 @@ class BacheaCalendar {
         this.updateChatButtonBadge(note.id);
 
         // Nascondi il form di invio se non sei partecipante
-        this.updateChatInputVisibility(note.participants);
+        this.updateChatInputVisibility(this.editParticipantsList);
+
+        this.applyEditPermissions(note);
 
         document.getElementById('editModal').classList.add('active');
         document.getElementById('editModal').style.display = 'flex';
@@ -3095,18 +3021,14 @@ class BacheaCalendar {
 
                     // Se non ci sono messaggi, aggiorna i badge
                     if (this.editingNote) {
-                        const { dateKey, noteIndex } = this.editingNote;
-                        const note = this.notes[dateKey] && this.notes[dateKey][noteIndex];
-                        if (note) {
-                            this.updateChatButtonBadge(note.id);
-                            this.updateCalendarBadge(note.id);
-                        }
+                        this.updateChatButtonBadge(this.editingNote.id);
+                        this.updateCalendarBadge(this.editingNote.id);
                     }
                     return;
                 }
 
                 // Ottieni il lastReadTimestamp
-                database.ref(`chatReadStatus/${eventId}/${this.syncCode}`).once('value', (statusSnapshot) => {
+                database.ref(`chatReadStatus/${eventId}/${this.userId}`).once('value', (statusSnapshot) => {
                     const lastReadTimestamp = statusSnapshot.exists() ? statusSnapshot.val().lastReadTimestamp : 0;
 
                     this.renderChatInto(messagesContainer, snapshot.val(), lastReadTimestamp);
@@ -3114,13 +3036,9 @@ class BacheaCalendar {
 
                 // Aggiorna i badge quando i messaggi cambiano
                 if (this.editingNote) {
-                    const { dateKey, noteIndex } = this.editingNote;
-                    const note = this.notes[dateKey] && this.notes[dateKey][noteIndex];
-                    if (note) {
-                        this.updateChatButtonBadge(note.id);
-                        // Aggiorna il badge nel calendario
-                        this.updateCalendarBadge(note.id);
-                    }
+                    this.updateChatButtonBadge(this.editingNote.id);
+                    // Aggiorna il badge nel calendario
+                    this.updateCalendarBadge(this.editingNote.id);
                 }
             });
         } catch (error) {
@@ -3189,7 +3107,7 @@ class BacheaCalendar {
                 separatorAdded = true;
             }
 
-            const isYou = group.deviceId === this.deviceId;
+            const isYou = group.deviceId === this.userId;
             const messageEl = document.createElement('div');
             messageEl.style.cssText = `
                 display: flex;
@@ -3233,7 +3151,7 @@ class BacheaCalendar {
 
     markChatAsRead(eventId) {
         // Aggiorna il timestamp quando apri la chat
-        database.ref(`chatReadStatus/${eventId}/${this.syncCode}`).set({
+        database.ref(`chatReadStatus/${eventId}/${this.userId}`).set({
             lastReadTimestamp: new Date().getTime()
         });
     }
@@ -3247,7 +3165,7 @@ class BacheaCalendar {
     }
 
     updateChatInputVisibility(participants) {
-        const isParticipant = participants && participants.includes(this.deviceId);
+        const isParticipant = participants && participants.includes(this.userId);
         const inputContainer = document.getElementById('chatInputContainer');
         if (inputContainer) {
             inputContainer.style.display = isParticipant ? 'flex' : 'none';
@@ -3274,51 +3192,24 @@ class BacheaCalendar {
     }
 
     async loadAndDisplayCreatorName(creatorId) {
-        if (!creatorId) {
-            document.getElementById('creatorNameDisplay').textContent = 'Anonimo';
-            return;
-        }
-
-        try {
-            const snapshot = await database.ref(`devices/${creatorId}`).once('value');
-            if (snapshot.exists()) {
-                const creatorName = snapshot.val().name;
-                if (creatorName === 'Anonimo') {
-                    document.getElementById('creatorNameDisplay').textContent = 'Anonimo';
-                } else {
-                    document.getElementById('creatorNameDisplay').textContent = creatorName;
-                }
-            } else {
-                document.getElementById('creatorNameDisplay').textContent = 'Sconosciuto';
-            }
-        } catch (error) {
-            console.error('Errore caricamento creatore:', error);
-            document.getElementById('creatorNameDisplay').textContent = 'Errore';
-        }
+        const el = document.getElementById('creatorNameDisplay');
+        el.textContent = creatorId ? await this.resolveUserName(creatorId) : 'Sconosciuto';
     }
 
     closeEditModal() {
         // Marca la chat come letta quando chiudi il modal (dopo aver letto i messaggi)
-        if (this.editingNote) {
-            const { dateKey, noteIndex } = this.editingNote;
-            if (this.notes[dateKey] && this.notes[dateKey][noteIndex]) {
-                const eventId = this.notes[dateKey][noteIndex].id;
-                this.markChatAsRead(eventId);
+        if (this.editingNote && this.getEditingEvent()) {
+            this.markChatAsRead(this.editingNote.id);
 
-                // Aggiorna i badge dopo aver marcato come letto
-                setTimeout(() => {
-                    this.updateAllBadges();
-                }, 100);
-            }
+            // Aggiorna i badge dopo aver marcato come letto
+            setTimeout(() => {
+                this.updateAllBadges();
+            }, 100);
         }
 
-        // Rimuovi il listener della chat
+        // Rimuovi il listener della chat (anche se l'evento è stato eliminato)
         if (this.chatListener && this.editingNote) {
-            const { dateKey, noteIndex } = this.editingNote;
-            if (this.notes[dateKey] && this.notes[dateKey][noteIndex]) {
-                const eventId = this.notes[dateKey][noteIndex].id;
-                database.ref(`eventChats/${eventId}/messages`).off('value', this.chatListener);
-            }
+            database.ref(`eventChats/${this.editingNote.id}/messages`).off('value', this.chatListener);
             this.chatListener = null;
         }
 
@@ -3352,16 +3243,15 @@ class BacheaCalendar {
         const messageText = document.getElementById('chatMessageInput').value.trim();
         if (!messageText) return;
 
-        const { dateKey, noteIndex } = this.editingNote;
-        const eventId = this.notes[dateKey][noteIndex].id;
+        const eventId = this.editingNote.id;
 
         try {
             const messageRef = database.ref(`eventChats/${eventId}/messages`).push();
             const messageId = messageRef.key;
 
             await messageRef.set({
-                deviceId: this.deviceId,
-                name: this.deviceName,
+                deviceId: this.userId,
+                name: this.userName,
                 text: messageText,
                 timestamp: new Date().getTime()
             });
@@ -3382,43 +3272,37 @@ class BacheaCalendar {
     }
 
     saveEditedNote() {
-        if (!this.editingNote) return;
+        const current = this.getEditingEvent();
+        if (!current || !this.canEditEvent(current)) return;
 
-        const { dateKey, noteIndex } = this.editingNote;
-        const current = this.notes[dateKey][noteIndex];
+        const title = document.getElementById('editTitle').value.trim();
+        if (!title) {
+            this.showErrorPopup('Il titolo non può essere vuoto');
+            return;
+        }
 
         // Cambio data: validato prima di toccare l'evento
+        const dateKey = current.date;
         const newDateKey = document.getElementById('editDate').value || dateKey;
         const isMoving = newDateKey !== dateKey;
         if (isMoving && !this.isFutureDateKey(newDateKey)) {
             this.showErrorPopup('Puoi spostare un evento solo da domani in poi');
             return;
         }
-        const eventId = current.id;
-        const creatorId = current.creatorId || null; // Mantieni il creatore originale (null se manca: Firebase rifiuta undefined)
 
-        this.notes[dateKey][noteIndex] = {
-            id: eventId, // Mantieni l'ID originale
-            title: document.getElementById('editTitle').value.trim(),
+        // Solo i campi del modal: partecipanti, immagine e creatore restano come sono su Firebase
+        const fields = {
+            title: title,
             time: document.getElementById('editTime').value.trim(),
             location: document.getElementById('editLocation').value.trim(),
             notes: document.getElementById('editNotes').value.trim(),
             color: this.selectedColor,
-            link: document.getElementById('editLink').value.trim(),
-            // L'immagine si salva da sola (ritaglio/elimina): qui si conserva il riferimento
-            imageVersion: current.imageVersion || null,
-            image: current.image || null, // Formato vecchio, finché non viene migrato
-            participants: this.editParticipantsList,
-            creatorId: creatorId // Mantieni il creatore originale
+            link: document.getElementById('editLink').value.trim()
         };
+        if (isMoving) fields.date = newDateKey;
 
-        if (isMoving) {
-            this.moveEvent(dateKey, noteIndex, newDateKey); // Sposta e sincronizza
-        } else {
-            this.syncToFirebase(); // Sincronizza con Firebase in real-time
-        }
+        this.updateEvent(current.id, fields);
         this.closeEditModal();
-        this.render(); // Usa render() per renderizzare la vista corretta (calendario o lista)
         const message = isMoving
             ? `Evento spostato a ${this.formatDateKey(newDateKey)}`
             : 'Evento modificato con successo!';
@@ -3426,26 +3310,19 @@ class BacheaCalendar {
     }
 
     async deleteCurrentNote() {
-        if (!this.editingNote) return;
+        if (!this.editingNote || !this.canEditEvent(this.getEditingEvent())) return;
 
         const confirmed = await this.showConfirmDialog('Sei sicuro di voler eliminare questo evento?');
         if (!confirmed) return;
 
-        const { dateKey, noteIndex } = this.editingNote;
-        this.deleteNote(dateKey, noteIndex); // Elimina e sincronizza Firebase
-
-        // Aspetta che il listener real-time chiuda il modal
-        // Se non succede entro 500ms, chiudi manualmente
-        setTimeout(() => {
-            if (this.editingNote) {
-                // Il listener non ha chiuso il modal, lo faccio manualmente
-                this.showEventDeletedDialog();
-            }
-        }, 500);
+        // Chiudo prima il modal: chi elimina non deve vedere "l'evento è stato eliminato"
+        const eventId = this.editingNote.id;
+        this.closeEditModal();
+        this.deleteNote(eventId).then(() => this.showSuccessPopup('Evento eliminato'));
     }
 
     // Eventi da fissare: proposte senza data, salvate in proposals/{id} (separate da events).
-    //   proposals/{id}: {id, title, time, location, notes, color, creatorId, creatorSyncCode, creatorName, createdAt,
+    //   proposals/{id}: {id, title, time, location, notes, color, creatorId, creatorName, createdAt,
     //                    dateOptions/{YYYY-MM-DD}: {addedBy, createdAt},
     //                    votes/{YYYY-MM-DD}/{voterKey}: {name, deviceId}}
     // Ogni scrittura tocca un solo percorso, così voti contemporanei non si sovrascrivono.
@@ -3495,9 +3372,9 @@ class BacheaCalendar {
         });
     }
 
-    // Identifica l'utente, non il dispositivo: lo stesso utente su più device vota una volta sola
+    // Identifica l'account: lo stesso utente su più dispositivi vota una volta sola
     getVoterKey() {
-        return this.syncCode || this.deviceId;
+        return this.userId;
     }
 
     isFutureDateKey(dateKey) {
@@ -3545,8 +3422,7 @@ class BacheaCalendar {
     }
 
     isProposalCreator(proposal) {
-        return proposal.creatorId === this.deviceId
-            || (this.syncCode && proposal.creatorSyncCode === this.syncCode);
+        return proposal.creatorId === this.userId;
     }
 
     renderProposals() {
@@ -3683,7 +3559,7 @@ class BacheaCalendar {
                 return;
             }
 
-            database.ref(`chatReadStatus/${proposalId}/${this.syncCode}`).once('value', (statusSnapshot) => {
+            database.ref(`chatReadStatus/${proposalId}/${this.userId}`).once('value', (statusSnapshot) => {
                 if (this.openProposalId !== proposalId) return;
                 const lastReadTimestamp = statusSnapshot.exists() ? statusSnapshot.val().lastReadTimestamp : 0;
                 messagesContainer.innerHTML = '';
@@ -3702,8 +3578,8 @@ class BacheaCalendar {
 
         try {
             await database.ref(`eventChats/${proposalId}/messages`).push().set({
-                deviceId: this.deviceId,
-                name: this.deviceName,
+                deviceId: this.userId,
+                name: this.userName,
                 text: text,
                 timestamp: new Date().getTime()
             });
@@ -3761,14 +3637,13 @@ class BacheaCalendar {
             location: document.getElementById('proposalLocation').value.trim(),
             notes: document.getElementById('proposalNotes').value.trim(),
             color: document.getElementById('proposalColor').value,
-            creatorId: this.deviceId,
-            creatorSyncCode: this.syncCode || null,
-            creatorName: this.deviceName || '',
+            creatorId: this.userId,
+            creatorName: this.userName || '',
             createdAt: Date.now()
         };
         // Chi crea non vota in automatico: magari non può esserci
         if (firstDate) {
-            proposal.dateOptions = { [firstDate]: { addedBy: this.deviceName || '', createdAt: Date.now() } };
+            proposal.dateOptions = { [firstDate]: { addedBy: this.userName || '', createdAt: Date.now() } };
         }
 
         database.ref(`proposals/${id}`).set(proposal)
@@ -3875,7 +3750,7 @@ class BacheaCalendar {
         const ref = database.ref(`proposals/${proposalId}/votes/${dateKey}/${this.getVoterKey()}`);
         const write = alreadyVoted
             ? ref.remove()
-            : ref.set({ name: this.deviceName || 'Anonimo', deviceId: this.deviceId });
+            : ref.set({ name: this.userName, deviceId: this.userId });
         write.catch(error => {
             console.error('Errore voto proposta:', error);
             this.showErrorPopup('Errore nel salvataggio del voto');
@@ -3904,8 +3779,8 @@ class BacheaCalendar {
 
         // Chi propone una data la vota anche (può sempre togliere il voto)
         database.ref(`proposals/${proposalId}`).update({
-            [`dateOptions/${dateKey}`]: { addedBy: this.deviceName || '', createdAt: Date.now() },
-            [`votes/${dateKey}/${this.getVoterKey()}`]: { name: this.deviceName || 'Anonimo', deviceId: this.deviceId }
+            [`dateOptions/${dateKey}`]: { addedBy: this.userName || '', createdAt: Date.now() },
+            [`votes/${dateKey}/${this.getVoterKey()}`]: { name: this.userName, deviceId: this.userId }
         }).then(() => {
             input.value = '';
         }).catch(error => {
@@ -3941,10 +3816,12 @@ class BacheaCalendar {
 
             const fresh = (await proposalRef.once('value')).val() || proposal;
             const voters = Object.values((fresh.votes || {})[dateKey] || {});
-            const participants = [...new Set(voters.map(v => v.deviceId).filter(Boolean))];
+            const participants = {};
+            voters.forEach(v => { if (v.deviceId) participants[v.deviceId] = true; });
 
             const event = {
                 id: proposalId, // Stesso id: chat e immagine restano collegate
+                date: dateKey,
                 title: fresh.title || proposal.title,
                 time: fresh.time || '',
                 location: fresh.location || '',
@@ -3953,16 +3830,13 @@ class BacheaCalendar {
                 link: '',
                 imageVersion: null,
                 participants: participants,
-                creatorId: fresh.creatorId || this.deviceId
+                creatorId: fresh.creatorId || this.userId,
+                createdAt: Date.now()
             };
 
-            // 2. Aggiunge l'evento solo a quel giorno, senza riscrivere gli altri
+            // 2. Crea l'evento (solo se non esiste già)
             this.closeProposalModal();
-            await database.ref(`events/${dateKey}`).transaction(dayNotes => {
-                const list = Array.isArray(dayNotes) ? dayNotes : Object.values(dayNotes || {});
-                if (list.some(note => note && note.id === proposalId)) return list;
-                return [...list, event];
-            });
+            await database.ref(`events/${proposalId}`).transaction(current => current ? undefined : event);
 
             // 3. La proposta non serve più
             await proposalRef.remove();
@@ -3998,5 +3872,9 @@ class BacheaCalendar {
 // Inizializza il calendario
 let bacheaInstance = null;
 document.addEventListener('DOMContentLoaded', () => {
+    if (startupError) {
+        showStartupError(startupError);
+        return;
+    }
     bacheaInstance = new BacheaCalendar();
 });

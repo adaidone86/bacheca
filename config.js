@@ -1,28 +1,16 @@
 /**
  * BACHECA - Configurazione Database
  *
- * Opzioni:
- * - 'NONE': Nessun database (offline mode)
- * - 'test': Database di test (bacheca-test)
- * - 'prod': Database di produzione (bacheca-c0441) - COMMIT PER ANDARE LIVE
+ * Opzioni (obbligatorie: con un valore diverso l'app mostra un errore e non parte):
+ * - 'TEST': Database di test (bacheca-test) - sviluppo in locale
+ * - 'PROD': Database di produzione (bacheca-c0441) - COMMIT PER ANDARE LIVE
  */
 
 const APP_CONFIG = {
-    // SCEGLI QUI: 'NONE' | 'TEST' | 'PROD'
+    // SCEGLI QUI: 'TEST' | 'PROD'
     ENV: 'TEST',
 
     databases: {
-        NONE: {
-            enabled: false,
-            name: 'Offline Mode',
-            databaseURL: null,
-            projectId: null,
-            apiKey: null,
-            authDomain: null,
-            storageBucket: null,
-            messagingSenderId: null,
-            appId: null
-        },
         TEST: {
             enabled: true,
             name: '🧪 TEST - bacheca-test',
@@ -48,12 +36,12 @@ const APP_CONFIG = {
     },
 
     /**
-     * Getter per la configurazione attuale
+     * Getter per la configurazione attuale (null se ENV non è 'TEST' o 'PROD')
      */
     getConfig() {
         if (!this.databases[this.ENV]) {
-            console.error(`❌ Ambiente non riconosciuto: ${this.ENV}`);
-            return this.databases.NONE;
+            console.error(`❌ Ambiente non riconosciuto: ${this.ENV}. Usa 'TEST' o 'PROD'.`);
+            return null;
         }
         return this.databases[this.ENV];
     },
@@ -63,7 +51,7 @@ const APP_CONFIG = {
      */
     getFirebaseConfig() {
         const config = this.getConfig();
-        if (!config.enabled) {
+        if (!config) {
             return null;
         }
         return {

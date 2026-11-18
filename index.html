@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="css/style-mobile.css" media="(max-width: 768px)">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
     <script src="config.js"></script>
@@ -58,7 +59,7 @@
                     <span id="testBadge" style="display: none; background: #ff9800; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold;">🧪 TEST</span>
                     <button id="installBtn" style="display: inline-block; background: #4CAF50; padding: 8px 16px; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.9rem;">⬇️ Installa app</button>
                     <div id="menuDropdown" style="display: none; position: absolute; top: 100%; right: 0; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); min-width: 200px; z-index: 1000; margin-top: 5px;">
-                        <button id="editNameBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">👤 Inserisci il tuo nome</button>
+                        <button id="editNameBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">👤 Cambia il tuo nome</button>
                         <button id="changeModalBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">📋 Cambia Modalità</button>
                         <button id="settingsBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">🎨 Visualizzazione</button>
                         <button id="infoBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">ℹ️ Info</button>
@@ -102,30 +103,76 @@
         </footer>
     </div>
 
-    <!-- Modal per chiedere il nome utente -->
+    <!-- Login / registrazione -->
+    <style>
+        #authModal .auth-tabs { display: flex; border-bottom: 2px solid #eee; margin: 0 30px; }
+        #authModal .auth-tab { flex: 1; padding: 12px; border: none; background: rgba(255, 255, 255, 0.55); cursor: pointer; font-size: 1rem; font-weight: 600; color: #444; border-radius: 8px 8px 0 0; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+        #authModal .auth-tab.active { background: #fff; color: #667eea; border-bottom-color: #667eea; }
+        .auth-form .form-group { margin-bottom: 14px; }
+        .auth-form label { display: block; margin-bottom: 6px; font-weight: 500; }
+        .auth-form input { width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 1rem; box-sizing: border-box; }
+        .auth-form input:focus { outline: none; border-color: #667eea; }
+        .auth-form .hint { font-size: 0.8rem; color: #888; margin: 4px 0 0 0; }
+        .auth-error { display: none; background: #ffebee; color: #c62828; padding: 10px 12px; border-radius: 8px; margin: 0 0 14px 0; font-size: 0.9rem; }
+    </style>
+    <div class="modal" id="authModal" style="z-index: 10000 !important;">
+        <div class="modal-content" style="max-width: 420px;">
+            <div class="modal-header" style="text-align: center;">📅 Bacheca</div>
+            <div class="auth-tabs">
+                <button type="button" class="auth-tab active" data-tab="login">Accedi</button>
+                <button type="button" class="auth-tab" data-tab="register">Registrati</button>
+            </div>
+            <div style="padding: 20px 30px 0 30px;">
+                <p id="authError" class="auth-error"></p>
+            </div>
+            <form id="loginForm" class="auth-form" style="padding: 0 30px 20px 30px;">
+                <div class="form-group">
+                    <label for="loginUsername">Username</label>
+                    <input type="text" id="loginUsername" autocomplete="username" autocapitalize="none" spellcheck="false">
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" autocomplete="current-password">
+                </div>
+                <div class="modal-buttons">
+                    <button type="submit" class="btn-save" style="background: #667eea !important;">Accedi</button>
+                </div>
+                <p class="hint" style="text-align: center; margin-top: 14px;">Password dimenticata? Chiedi all'amministratore di reimpostarla.</p>
+            </form>
+            <form id="registerForm" class="auth-form" style="display: none; padding: 0 30px 20px 30px;">
+                <div class="form-group">
+                    <label for="registerUsername">Username</label>
+                    <input type="text" id="registerUsername" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="20">
+                    <p class="hint">Da 3 a 20 caratteri: lettere, numeri, punto, trattino, _</p>
+                </div>
+                <div class="form-group">
+                    <label for="registerName">Nome visualizzato</label>
+                    <input type="text" id="registerName" maxlength="40" placeholder="Come ti vedono gli altri (facoltativo)">
+                </div>
+                <div class="form-group">
+                    <label for="registerPassword">Password</label>
+                    <input type="password" id="registerPassword" autocomplete="new-password">
+                    <p class="hint">Almeno 6 caratteri</p>
+                </div>
+                <div class="form-group">
+                    <label for="registerPasswordConfirm">Ripeti la password</label>
+                    <input type="password" id="registerPasswordConfirm" autocomplete="new-password">
+                </div>
+                <div class="modal-buttons">
+                    <button type="submit" class="btn-save" style="background: #4CAF50 !important;">Crea account</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal per cambiare il nome visualizzato -->
     <div class="modal" id="namePromptModal" style="z-index: 10000 !important;">
         <div class="modal-content" style="max-width: 400px;">
-            <div class="modal-header" style="text-align: center;">👤 Come ti chiami?</div>
+            <div class="modal-header" style="text-align: center;">👤 Il tuo nome</div>
             <form id="namePromptForm" style="padding: 20px 30px;">
                 <div class="form-group" id="nameInputGroup">
-                    <input type="text" id="nameInput" placeholder="Inserisci il tuo nome">
+                    <input type="text" id="nameInput" maxlength="40" placeholder="Come ti vedono gli altri">
                 </div>
-
-                <div class="form-group" id="nameSyncCodeGroup" style="display: none;">
-                    <label for="nameSyncCodeInput" style="display: block; margin-bottom: 8px; font-weight: 500;">🔗 Codice di sincronizzazione</label>
-                    <input type="text" id="nameSyncCodeInput" placeholder="Es: ABC12" style="text-transform: uppercase;" maxlength="5">
-                    <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">Inserisci il codice di 5 caratteri mostrato su un altro tuo dispositivo.</p>
-                </div>
-
-                <div id="dividerGroup" style="border-top: 1px solid #eee; margin-top: 20px;"></div>
-
-                <div style="padding-top: 20px;">
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500; margin-bottom: 20px;">
-                        <input type="checkbox" id="nameSyncExistingCheckbox" style="width: 18px; height: 18px; cursor: pointer;">
-                        <span>Ho già inserito il nome su altro dispositivo</span>
-                    </label>
-                </div>
-
                 <div class="modal-buttons">
                     <button type="submit" class="btn-save" style="background: #4CAF50 !important;">Salva</button>
                     <button type="button" class="btn-cancel" id="namePromptCancelBtn" style="background: #f0f0f0 !important; color: #333 !important;">Annulla</button>
@@ -134,40 +181,134 @@
         </div>
     </div>
 
+    <!-- Modal per cambiare la password -->
+    <div class="modal" id="passwordModal" style="z-index: 10002 !important;">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header" style="text-align: center;">🔑 Cambia password</div>
+            <form id="passwordForm" class="auth-form" style="padding: 20px 30px;">
+                <p id="passwordError" class="auth-error"></p>
+                <div class="form-group">
+                    <label for="currentPassword">Password attuale</label>
+                    <input type="password" id="currentPassword" autocomplete="current-password">
+                </div>
+                <div class="form-group">
+                    <label for="newPassword">Nuova password</label>
+                    <input type="password" id="newPassword" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label for="newPasswordConfirm">Ripeti la nuova password</label>
+                    <input type="password" id="newPasswordConfirm" autocomplete="new-password">
+                </div>
+                <div class="modal-buttons">
+                    <button type="submit" class="btn-save" style="background: #4CAF50 !important;">Salva</button>
+                    <button type="button" class="btn-cancel" id="passwordCancelBtn" style="background: #f0f0f0 !important; color: #333 !important;">Annulla</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Modal per aggiungere nota -->
-    <div class="modal" id="modal">
+    <div class="modal event-form-modal" id="modal">
         <div class="modal-content">
-            <div id="eventCoverContainerAdd" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); background-size: cover; background-position: center; margin: 0; padding: 20px; min-height: 180px; width: 100%; display: flex; flex-direction: column; justify-content: flex-end; border-radius: 16px 16px 0 0; overflow: hidden; box-sizing: border-box;">
-                <div class="modal-header" id="modalTitle" style="color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">Aggiungi un evento</div>
+            <div id="eventCoverContainerAdd" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); background-size: cover; background-position: center; margin: 0; padding: 16px 20px; min-height: 120px; width: 100%; display: flex; flex-direction: column; justify-content: flex-end; border-radius: 16px 16px 0 0; overflow: hidden; box-sizing: border-box;">
+                <div class="modal-header" style="color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                    <button type="button" id="addImageToggleBtn" class="cover-toggle-btn" title="Aggiungi un'immagine">✏️ Nuovo evento</button>
+                </div>
+                <div id="addImagePanel" style="display: none; margin-top: 12px;">
+                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                        <button type="button" id="eventImageUploadBtn" style="flex: 1; padding: 8px; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; color: white; background: rgba(255,255,255,0.25); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 50px; justify-content: center;">📤<br>Carica Img</button>
+                        <button type="button" id="eventImageUrlBtn" style="flex: 1; padding: 8px; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; color: white; background: rgba(255,255,255,0.25); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 50px; justify-content: center;">🔗<br>URL Img</button>
+                        <button type="button" id="eventImageDeleteBtn" style="flex: 1; padding: 8px; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; color: white; background: rgba(255,255,255,0.25); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 50px; justify-content: center;">❌<br>Elimina Img</button>
+                    </div>
+                    <input type="file" id="eventImage" accept="image/*" style="display: none;">
+                    <div id="eventImageUrlInputContainer" style="display: none; gap: 8px;">
+                        <input type="url" id="eventImageUrl" placeholder="Es: https://example.com/image.jpg" style="flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 0.9rem;">
+                        <button type="button" id="eventImageUrlSaveBtn" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; white-space: nowrap; flex-shrink: 0;">✅ Salva Img</button>
+                    </div>
+                </div>
                 <div class="modal-tabs" style="margin-top: 15px;">
                     <button class="modal-tab active" data-tab="evento-tab" style="background: rgba(255,255,255,0.9); color: #667eea;">📌 Evento</button>
                     <button class="modal-tab" data-tab="participants-tab" style="background: rgba(255,255,255,0.7); color: #333;">👥 Partecipanti</button>
-                    <button class="modal-tab" data-tab="details-tab" style="background: rgba(255,255,255,0.7); color: #333;">📍 Dettagli</button>
                 </div>
             </div>
             <form id="noteForm">
                 <!-- Tab: Evento -->
-                <div id="evento-tab" class="modal-tab-content active">
+                <div id="evento-tab" class="modal-tab-content active edit-compact">
                     <div class="form-group">
-                        <label for="eventTitle">📌 Nome evento</label>
-                        <input type="text" id="eventTitle" placeholder="Es: SAGRA DEL TORTELLO" required style="height: 44px;">
+                        <div id="eventLinkContainer" class="edit-row">
+                            <button type="button" id="eventLinkOpenBtn" style="flex: 1; min-width: 0; height: 40px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: white; background: #2196F3;">🌐 Vai sul sito</button>
+                            <button type="button" id="eventLinkModifyBtn" style="flex: 1; min-width: 0; height: 40px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: white; background: #FF9800;">🔗 Aggiungi link</button>
+                        </div>
+                        <div id="eventLinkInputContainer" style="display: none; gap: 6px; align-items: center;">
+                            <input type="url" id="eventLink" placeholder="https://..." style="flex: 1; min-width: 0; height: 40px; padding: 0 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 0.95rem; box-sizing: border-box;">
+                            <button type="button" id="eventLinkSaveBtn" title="Salva link" style="flex: 0 0 auto; height: 40px; padding: 0 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #4CAF50; color: white;">✅</button>
+                            <button type="button" id="eventLinkDeleteBtn" title="Elimina link" style="flex: 0 0 auto; height: 40px; padding: 0 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #f44336; color: white;">🗑️</button>
+                            <button type="button" id="eventLinkCancelBtn" title="Annulla" style="flex: 0 0 auto; height: 40px; padding: 0 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #ccc; color: #333;">✖</button>
+                        </div>
                     </div>
 
-                    <div style="display: flex; gap: 12px;">
-                        <div class="form-group" style="flex: 0 0 35%;">
-                            <label for="eventTime">🕐 Ora</label>
-                            <input type="time" id="eventTime" required style="height: 44px; border-radius: 6px;">
-                        </div>
+                    <div class="form-group">
+                        <label for="eventTitle">📌 Nome evento</label>
+                        <input type="text" id="eventTitle" placeholder="Es: SAGRA DEL TORTELLO" required>
+                    </div>
 
-                        <div class="form-group" style="flex: 1;">
+                    <div class="edit-row">
+                        <div class="form-group">
+                            <label for="eventDate">📅 Data</label>
+                            <input type="date" id="eventDate" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="eventTime">🕐 Ora</label>
+                            <input type="time" id="eventTime">
+                        </div>
+                    </div>
+
+                    <div class="edit-row">
+                        <div class="form-group">
                             <label for="eventLocation">📍 Luogo</label>
-                            <input type="text" id="eventLocation" placeholder="Es: O.Live – Parco dell'Oliveta (Sesto)" required style="height: 44px;">
+                            <input type="text" id="eventLocation" placeholder="Es: Parco dell'Oliveta">
+                        </div>
+                        <div class="form-group">
+                            <label>🎨 Categoria</label>
+                            <div class="category-select" id="addCategorySelect">
+                                <button type="button" class="category-select-current" id="addCategoryCurrent">⚪ Senza categoria</button>
+                                <div class="category-select-options">
+                            <label class="category-option" style="background: #999; color: white;">
+                                <input type="radio" name="eventColor" class="color-select" data-color="color-neutral" checked>
+                                <span>⚪ Senza categoria</span>
+                            </label>
+                            <label class="category-option" style="background: #ffd54f; color: #333;">
+                                <input type="radio" name="eventColor" class="color-select" data-color="color-yellow">
+                                <span>🍽️ Gastronomia/Cibo</span>
+                            </label>
+                            <label class="category-option" style="background: #ff6b9d; color: white;">
+                                <input type="radio" name="eventColor" class="color-select" data-color="color-pink">
+                                <span>👥 Serate/Sociali</span>
+                            </label>
+                            <label class="category-option" style="background: #81c784; color: white;">
+                                <input type="radio" name="eventColor" class="color-select" data-color="color-green">
+                                <span>⛹️ Sport/Attività</span>
+                            </label>
+                            <label class="category-option" style="background: #64b5f6; color: white;">
+                                <input type="radio" name="eventColor" class="color-select" data-color="color-blue">
+                                <span>🎮 Intrattenimento</span>
+                            </label>
+                            <label class="category-option" style="background: #ba68c8; color: white;">
+                                <input type="radio" name="eventColor" class="color-select" data-color="color-purple">
+                                <span>🎵 Cultura/Musica</span>
+                            </label>
+                            <label class="category-option" style="background: #ffb74d; color: white;">
+                                <input type="radio" name="eventColor" class="color-select" data-color="color-orange">
+                                <span>🏞️ Escursioni/Turismo</span>
+                            </label>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
                     <div class="form-group">
                         <label for="eventNotes">📝 Note aggiuntive</label>
-                        <textarea id="eventNotes" placeholder="Es: con cena cantata! 📞 Prenotazione: 393 336 4633" style="height: 100px; resize: vertical;"></textarea>
+                        <textarea id="eventNotes" placeholder="Es: con cena cantata! 📞 Prenotazioni..."></textarea>
                     </div>
                 </div>
 
@@ -177,73 +318,6 @@
                         <label style="margin-bottom: 12px; display: block; font-weight: 600;">👥 Partecipanti (disponibile dopo la creazione)</label>
                         <div style="padding: 12px; background: rgba(255,255,255,0.5); border-radius: 6px; text-align: center; color: #999; font-size: 0.9rem;">
                             I partecipanti potranno essere aggiunti dopo la creazione dell'evento
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Tab: Dettagli -->
-                <div id="details-tab" class="modal-tab-content">
-                    <div class="form-group">
-                        <label>🎨 Categoria evento</label>
-                        <div class="color-filter-group">
-                            <label class="color-radio">
-                                <input type="radio" name="eventColor" class="color-select" data-color="color-neutral" checked>
-                                <span class="color-filter-label" style="background: #999; color: white;">⚪ Senza categoria</span>
-                            </label>
-                            <label class="color-radio">
-                                <input type="radio" name="eventColor" class="color-select" data-color="color-yellow">
-                                <span class="color-filter-label" style="background: #ffd54f; color: #333;">🍽️ Gastronomia/Cibo</span>
-                            </label>
-                            <label class="color-radio">
-                                <input type="radio" name="eventColor" class="color-select" data-color="color-pink">
-                                <span class="color-filter-label" style="background: #ff6b9d; color: white;">👥 Serate/Sociali</span>
-                            </label>
-                            <label class="color-radio">
-                                <input type="radio" name="eventColor" class="color-select" data-color="color-green">
-                                <span class="color-filter-label" style="background: #81c784; color: white;">⛹️ Sport/Attività</span>
-                            </label>
-                            <label class="color-radio">
-                                <input type="radio" name="eventColor" class="color-select" data-color="color-blue">
-                                <span class="color-filter-label" style="background: #64b5f6; color: white;">🎮 Intrattenimento</span>
-                            </label>
-                            <label class="color-radio">
-                                <input type="radio" name="eventColor" class="color-select" data-color="color-purple">
-                                <span class="color-filter-label" style="background: #ba68c8; color: white;">🎵 Cultura/Musica</span>
-                            </label>
-                            <label class="color-radio">
-                                <input type="radio" name="eventColor" class="color-select" data-color="color-orange">
-                                <span class="color-filter-label" style="background: #ffb74d; color: white;">🏞️ Escursioni/Turismo</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="eventLink" style="margin-bottom: 8px; display: block;">🔗 Link</label>
-                        <div id="eventLinkContainer" style="display: flex; gap: 10px; align-items: center;">
-                            <button type="button" id="eventLinkOpenBtn" style="padding: 8px 15px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer;">🌐 Vai sul sito</button>
-                            <button type="button" id="eventLinkModifyBtn" style="padding: 8px 15px; background: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer;">✏️ Modifica</button>
-                        </div>
-                        <div id="eventLinkInputContainer" style="display: none; flex-direction: column; gap: 8px;">
-                            <input type="url" id="eventLink" placeholder="Es: https://example.com" style="width: 100%; padding: 12px; border: 2px solid #eee; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
-                            <div style="display: flex; gap: 8px;">
-                                <button type="button" id="eventLinkSaveBtn" style="flex: 1; padding: 8px 15px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">Salva Link</button>
-                                <button type="button" id="eventLinkDeleteBtn" style="flex: 1; padding: 8px 15px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">Elimina Link</button>
-                                <button type="button" id="eventLinkCancelBtn" style="flex: 1; padding: 8px 15px; background: #ccc; color: #333; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">Annulla</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="eventImage" style="margin-bottom: 8px; display: block;">🖼️ Immagine</label>
-                        <div id="eventImageContainer" style="display: flex; gap: 10px; align-items: center;">
-                            <button type="button" id="eventImageUploadBtn" style="padding: 8px 15px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer;">📤 Carica</button>
-                            <button type="button" id="eventImageDeleteBtn" style="padding: 8px 15px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;">Elimina</button>
-                        </div>
-                        <input type="file" id="eventImage" accept="image/*" style="display: none;">
-
-                        <div style="margin-top: 12px; display: flex; gap: 8px;">
-                            <input type="url" id="eventImageUrl" placeholder="Es: https://example.com/image.jpg" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
-                            <button type="button" id="eventImageUrlBtn" style="padding: 8px 15px; background: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer;">🔗 URL</button>
                         </div>
                     </div>
                 </div>
@@ -452,51 +526,134 @@
     </div>
 
     <!-- Edit Modal -->
-    <div class="modal" id="editModal">
+    <style>
+        .event-form-modal .edit-compact .form-group { margin-bottom: 10px; }
+        .event-form-modal .edit-compact label { font-size: 0.85rem; margin-bottom: 4px; }
+        .event-form-modal .edit-compact input[type="text"], .event-form-modal .edit-compact input[type="date"], .event-form-modal .edit-compact input[type="time"] { width: 100%; height: 40px; padding: 0 10px; border: 2px solid #eee; border-radius: 8px; font-size: 0.95rem; box-sizing: border-box; }
+        .event-form-modal .edit-compact textarea { width: 100%; height: 64px; resize: vertical; box-sizing: border-box; }
+        .event-form-modal .edit-row { display: flex; gap: 10px; }
+        .event-form-modal .edit-row > * { flex: 1; min-width: 0; }
+        .event-form-modal .edit-compact input:disabled, .event-form-modal .edit-compact textarea:disabled, .event-form-modal .category-select-current:disabled { opacity: 0.75; cursor: default; background-color: #f5f5f5; color: #333; }
+        .event-form-modal .category-select { position: relative; }
+        .event-form-modal .category-select-current { width: 100%; height: 40px; padding: 0 28px 0 10px; border: 2px solid rgba(0,0,0,0.08); border-radius: 8px; font-size: 0.9rem; font-weight: 600; text-align: left; cursor: pointer; position: relative; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .event-form-modal .category-select-current::after { content: '▾'; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); }
+        .event-form-modal .category-select.open .category-select-current::after { content: '▴'; }
+        /* Lista categorie: 3 righe visibili (la scelta al centro, sopra il pulsante), le altre si scorrono */
+        .event-form-modal .category-select-options { display: none; position: absolute; right: 0; top: 50%; transform: translateY(-50%); z-index: 20; width: max(100%, 230px); height: 132px; overflow-y: auto; overscroll-behavior: contain; scroll-snap-type: y mandatory; flex-direction: column; gap: 4px; padding: 6px; background: #fff; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.25); box-sizing: border-box; }
+        .event-form-modal .category-select.open .category-select-options { display: flex; }
+        .event-form-modal .edit-compact .category-option { display: flex; flex: 0 0 36px; height: 36px; box-sizing: border-box; align-items: center; padding: 0 12px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.9rem; margin: 0; scroll-snap-align: center; white-space: nowrap; }
+        .event-form-modal .category-option input { display: none; }
+        .event-form-modal .category-option:has(input:checked) { outline: 3px solid #333; outline-offset: -3px; }
+        .cover-toggle-btn { background: none; border: none; color: white; font-size: inherit; font-weight: inherit; cursor: pointer; padding: 0; text-shadow: inherit; }
+    </style>
+    <div class="modal event-form-modal" id="editModal">
         <div class="modal-content">
-            <div id="eventCoverContainer" style="background-color: #667eea; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); background-size: cover; background-position: center; margin: 0; padding: 20px; min-height: 180px; width: 100%; display: flex; flex-direction: column; justify-content: flex-end; border-radius: 16px 16px 0 0; overflow: hidden; box-sizing: border-box;">
-                <div class="modal-header" style="color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">✏️ Modifica evento</div>
+            <div id="eventCoverContainer" style="background-color: #667eea; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); background-size: cover; background-position: center; margin: 0; padding: 16px 20px; min-height: 120px; width: 100%; display: flex; flex-direction: column; justify-content: flex-end; border-radius: 16px 16px 0 0; overflow: hidden; box-sizing: border-box;">
+                <div class="modal-header" style="color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">👤 Proposta da: <span id="creatorNameDisplay">-</span></div>
+                <div>
+                    <button type="button" id="editImageToggleBtn" class="cover-toggle-btn" title="Cambia immagine" style="font-size: 1.3rem; margin-top: 6px;">✏️</button>
+                </div>
+                <div id="editImagePanel" style="display: none; margin-top: 12px;">
+                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                        <button type="button" id="editImageUploadBtn" style="flex: 1; padding: 8px; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; color: white; background: rgba(255,255,255,0.25); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 50px; justify-content: center;">📤<br>Carica Img</button>
+                        <button type="button" id="editImageUrlBtn" style="flex: 1; padding: 8px; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; color: white; background: rgba(255,255,255,0.25); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 50px; justify-content: center;">🔗<br>URL Img</button>
+                        <button type="button" id="editImageDeleteBtn" style="flex: 1; padding: 8px; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; color: white; background: rgba(255,255,255,0.25); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 50px; justify-content: center;">❌<br>Elimina Img</button>
+                    </div>
+                    <input type="file" id="editImage" accept="image/*" style="display: none;">
+                    <div id="editImageUrlInputContainer" style="display: none; gap: 8px;">
+                        <input type="url" id="editImageUrl" placeholder="Es: https://example.com/image.jpg" style="flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 0.9rem;">
+                        <button type="button" id="editImageUrlSaveBtn" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; white-space: nowrap; flex-shrink: 0;">✅ Salva Img</button>
+                    </div>
+                </div>
                 <div class="modal-tabs" style="margin-top: 15px;">
                     <button class="modal-tab active" data-tab="edit-evento-tab" style="background: rgba(255,255,255,0.9); color: #667eea;">📌 Evento</button>
                     <button class="modal-tab" data-tab="edit-participants-tab" style="background: rgba(255,255,255,0.7); color: #333;">👥 Partecipanti</button>
-                    <button class="modal-tab" data-tab="edit-details-tab" style="background: rgba(255,255,255,0.7); color: #333;">📍 Dettagli</button>
                 </div>
             </div>
             <form id="editForm">
                 <!-- Tab: Evento -->
-                <div id="edit-evento-tab" class="modal-tab-content active">
+                <div id="edit-evento-tab" class="modal-tab-content active edit-compact">
+                    <div class="form-group">
+                        <div id="editLinkContainer" class="edit-row">
+                            <button type="button" id="editLinkOpenBtn" style="flex: 1; min-width: 0; height: 40px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: white; background: #2196F3;">🌐 Vai sul sito</button>
+                            <button type="button" id="editLinkModifyBtn" style="flex: 1; min-width: 0; height: 40px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: white; background: #FF9800;">🔗 Aggiungi link</button>
+                        </div>
+                        <div id="editLinkInputContainer" style="display: none; gap: 6px; align-items: center;">
+                            <input type="url" id="editLink" placeholder="https://..." style="flex: 1; min-width: 0; height: 40px; padding: 0 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 0.95rem; box-sizing: border-box;">
+                            <button type="button" id="editLinkSaveBtn" title="Salva link" style="flex: 0 0 auto; height: 40px; padding: 0 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #4CAF50; color: white;">✅</button>
+                            <button type="button" id="editLinkDeleteBtn" title="Elimina link" style="flex: 0 0 auto; height: 40px; padding: 0 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #f44336; color: white;">🗑️</button>
+                            <button type="button" id="editLinkCancelBtn" title="Annulla" style="flex: 0 0 auto; height: 40px; padding: 0 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #ccc; color: #333;">✖</button>
+                        </div>
+                    </div>
+
                     <div class="form-group">
                         <label for="editTitle">📌 Nome evento</label>
-                        <input type="text" id="editTitle" required style="height: 44px;">
+                        <input type="text" id="editTitle" required>
                     </div>
 
-                    <div class="form-group">
-                        <label for="editDate">📅 Data</label>
-                        <input type="date" id="editDate" style="width: 100%; height: 44px; padding: 8px; border: 2px solid #eee; border-radius: 8px; font-size: 1rem; box-sizing: border-box;">
-                    </div>
-
-                    <div style="display: flex; gap: 12px;">
-                        <div class="form-group" style="flex: 0 0 35%;">
-                            <label for="editTime">🕐 Ora</label>
-                            <input type="time" id="editTime" style="height: 44px; border-radius: 6px;">
+                    <div class="edit-row">
+                        <div class="form-group">
+                            <label for="editDate">📅 Data</label>
+                            <input type="date" id="editDate">
                         </div>
+                        <div class="form-group">
+                            <label for="editTime">🕐 Ora</label>
+                            <input type="time" id="editTime">
+                        </div>
+                    </div>
 
-                        <div class="form-group" style="flex: 1;">
+                    <div class="edit-row">
+                        <div class="form-group">
                             <label for="editLocation">📍 Luogo</label>
-                            <input type="text" id="editLocation" style="height: 44px;">
+                            <input type="text" id="editLocation">
+                        </div>
+                        <div class="form-group">
+                            <label>🎨 Categoria</label>
+                            <div class="category-select" id="editCategorySelect">
+                                <button type="button" class="category-select-current" id="editCategoryCurrent">⚪ Senza categoria</button>
+                                <div class="category-select-options">
+                            <label class="category-option" style="background: #999; color: white;">
+                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-neutral">
+                                <span>⚪ Senza categoria</span>
+                            </label>
+                            <label class="category-option" style="background: #ffd54f; color: #333;">
+                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-yellow">
+                                <span>🍽️ Gastronomia/Cibo</span>
+                            </label>
+                            <label class="category-option" style="background: #ff6b9d; color: white;">
+                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-pink">
+                                <span>👥 Serate/Sociali</span>
+                            </label>
+                            <label class="category-option" style="background: #81c784; color: white;">
+                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-green">
+                                <span>⛹️ Sport/Attività</span>
+                            </label>
+                            <label class="category-option" style="background: #64b5f6; color: white;">
+                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-blue">
+                                <span>🎮 Intrattenimento</span>
+                            </label>
+                            <label class="category-option" style="background: #ba68c8; color: white;">
+                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-purple">
+                                <span>🎵 Cultura/Musica</span>
+                            </label>
+                            <label class="category-option" style="background: #ffb74d; color: white;">
+                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-orange">
+                                <span>🏞️ Escursioni/Turismo</span>
+                            </label>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
                     <div class="form-group">
                         <label for="editNotes">📝 Note aggiuntive</label>
-                        <textarea id="editNotes" style="height: 100px; resize: vertical;"></textarea>
+                        <textarea id="editNotes"></textarea>
                     </div>
                 </div>
 
                 <!-- Tab: Partecipanti -->
                 <div id="edit-participants-tab" class="modal-tab-content">
-                    <div class="form-group" style="margin-bottom: 15px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.2); display: flex; justify-content: space-between; align-items: center;">
-                        <p style="color: white; font-weight: 600; margin: 0;">👤 Proposta da: <span id="creatorNameDisplay">-</span></p>
+                    <div class="form-group" style="margin-bottom: 15px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.2); display: flex; justify-content: flex-end; align-items: center;">
                         <button type="button" id="openChatFromParticipantsBtn" style="padding: 6px 12px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; white-space: nowrap;">💬 Chat</button>
                     </div>
 
@@ -506,75 +663,6 @@
 
                         <button type="button" class="btn-add-participant" id="editWantToParticipateBtn" style="width: 100%; padding: 10px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; margin-top: 12px;">Voglio partecipare</button>
                     </div>
-                </div>
-
-                <!-- Tab: Dettagli -->
-                <div id="edit-details-tab" class="modal-tab-content">
-                    <div class="form-group">
-                        <label>🎨 Categoria evento</label>
-                        <div class="color-filter-group">
-                            <label class="color-radio">
-                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-neutral">
-                                <span class="color-filter-label" style="background: #999; color: white;">⚪ Senza categoria</span>
-                            </label>
-                            <label class="color-radio">
-                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-yellow">
-                                <span class="color-filter-label" style="background: #ffd54f; color: #333;">🍽️ Gastronomia/Cibo</span>
-                            </label>
-                            <label class="color-radio">
-                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-pink">
-                                <span class="color-filter-label" style="background: #ff6b9d; color: white;">👥 Serate/Sociali</span>
-                            </label>
-                            <label class="color-radio">
-                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-green">
-                                <span class="color-filter-label" style="background: #81c784; color: white;">⛹️ Sport/Attività</span>
-                            </label>
-                            <label class="color-radio">
-                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-blue">
-                                <span class="color-filter-label" style="background: #64b5f6; color: white;">🎮 Intrattenimento</span>
-                            </label>
-                            <label class="color-radio">
-                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-purple">
-                                <span class="color-filter-label" style="background: #ba68c8; color: white;">🎵 Cultura/Musica</span>
-                            </label>
-                            <label class="color-radio">
-                                <input type="radio" name="editEventColor" class="edit-color-select" data-color="color-orange">
-                                <span class="color-filter-label" style="background: #ffb74d; color: white;">🏞️ Escursioni/Turismo</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="form-group" style="padding: 12px; border-left: 4px solid #667eea; background: rgba(102, 126, 234, 0.05); border-radius: 6px; margin-bottom: 12px;">
-                        <label style="margin-bottom: 8px; display: block; font-weight: 600;">🔗 Link</label>
-                        <div id="editLinkContainer" style="display: flex; gap: 8px; margin-bottom: 12px;">
-                            <button type="button" id="editLinkOpenBtn" style="flex: 1; padding: 8px; background: #2196F3; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 50px; justify-content: center;">🌐<br>Vai sul sito</button>
-                            <button type="button" id="editLinkModifyBtn" style="flex: 1; padding: 8px; background: #FF9800; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 50px; justify-content: center;">✏️<br>Modifica</button>
-                        </div>
-                        <div id="editLinkInputContainer" style="display: none; flex-direction: column; gap: 8px; margin-bottom: 12px;">
-                            <input type="url" id="editLink" placeholder="Es: https://example.com" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 1rem; box-sizing: border-box;">
-                            <div style="display: flex; gap: 8px;">
-                                <button type="button" id="editLinkSaveBtn" style="flex: 1; padding: 8px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 50px; justify-content: center;">✅<br>Salva Link</button>
-                                <button type="button" id="editLinkDeleteBtn" style="flex: 1; padding: 8px; background: #f44336; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 50px; justify-content: center;">❌<br>Elimina Link</button>
-                                <button type="button" id="editLinkCancelBtn" style="flex: 1; padding: 8px; background: #ccc; color: #333; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 50px; justify-content: center;">Annulla</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-group" style="padding: 12px; border-left: 4px solid #667eea; background: rgba(102, 126, 234, 0.05); border-radius: 6px; margin-bottom: 12px;">
-                        <label style="margin-bottom: 8px; display: block; font-weight: 600;">🖼️ Immagine</label>
-                        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-                            <button type="button" id="editImageUploadBtn" style="flex: 1; padding: 8px; background: #2196F3; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 50px; justify-content: center;">📤<br>Carica Img</button>
-                            <button type="button" id="editImageUrlBtn" style="flex: 1; padding: 8px; background: #FF9800; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 50px; justify-content: center;">🔗<br>URL Img</button>
-                            <button type="button" id="editImageDeleteBtn" style="flex: 1; padding: 8px; background: #f44336; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 50px; justify-content: center;">❌<br>Elimina Img</button>
-                        </div>
-                        <input type="file" id="editImage" accept="image/*" style="display: none;">
-
-                        <div id="editImageUrlInputContainer" style="display: none; gap: 8px; margin-bottom: 12px;">
-                            <input type="url" id="editImageUrl" placeholder="Es: https://example.com/image.jpg" style="flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 0.9rem;">
-                            <button type="button" id="editImageUrlSaveBtn" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; white-space: nowrap; flex-shrink: 0;">✅ Salva Img</button>
-                        </div>
-                    </div>
-
                 </div>
 
                 <!-- Tab: Chat -->
@@ -629,15 +717,8 @@
                     <p id="userProfileName" style="margin: 5px 0 0 0; color: #333;"></p>
                 </div>
                 <div style="margin-bottom: 12px;">
-                    <strong style="color: #666;">Codice Sincronizzazione:</strong>
-                    <div style="display: flex; gap: 8px; align-items: center; margin-top: 5px;">
-                        <p id="userProfileSyncCode" style="margin: 0; color: #333; font-family: monospace; flex: 1;"></p>
-                        <button type="button" id="userProfileCopySyncCodeBtn" style="padding: 6px 10px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; white-space: nowrap;">📋 Copia</button>
-                    </div>
-                </div>
-                <div style="margin-bottom: 12px;">
-                    <strong style="color: #666;">Device ID:</strong>
-                    <p id="userProfileDeviceId" style="margin: 5px 0 0 0; color: #333; font-family: monospace; font-size: 0.85rem; word-break: break-all;"></p>
+                    <strong style="color: #666;">Username:</strong>
+                    <p id="userProfileUsername" style="margin: 5px 0 0 0; color: #333; font-family: monospace;"></p>
                 </div>
                 <div style="margin-bottom: 0;">
                     <strong style="color: #666;">Dispositivo:</strong>
@@ -645,7 +726,8 @@
                 </div>
             </div>
             <div style="display: flex; gap: 10px;">
-                <button id="userProfileResetBtn" style="flex: 1; padding: 12px; background: #f44336; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">🗑️ Reset</button>
+                <button id="userProfilePasswordBtn" style="flex: 1; padding: 12px; background: #ff9800; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">🔑 Password</button>
+                <button id="userProfileLogoutBtn" style="flex: 1; padding: 12px; background: #f44336; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">🚪 Esci</button>
                 <button id="userProfileCloseBtn" style="flex: 1; padding: 12px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">Chiudi</button>
             </div>
         </div>

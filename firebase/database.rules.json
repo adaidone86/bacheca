@@ -1,49 +1,68 @@
 {
   "rules": {
+    "users": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['username', 'name'])",
+        "username": {
+          ".validate": "newData.isString() && newData.val().matches(/^[a-z0-9._-]{3,20}$/)"
+        },
+        "name": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 40"
+        }
+      }
+    },
     "events": {
-      ".read": true,
-      ".write": true
+      ".read": "auth != null",
+      "$eventId": {
+        ".write": "auth != null && (!data.exists() || !data.child('creatorId').exists() || data.child('creatorId').val() === auth.uid)",
+        ".validate": "newData.hasChildren(['id', 'date', 'title']) && newData.child('id').val() === $eventId && (!data.exists() || newData.child('creatorId').val() === data.child('creatorId').val())",
+        "date": {
+          ".validate": "newData.isString() && newData.val().matches(/^\\d{4}-\\d{2}-\\d{2}$/)"
+        },
+        "title": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 200"
+        },
+        "participants": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid",
+            ".validate": "newData.val() === true"
+          }
+        }
+      }
     },
     "eventImages": {
-      ".read": true,
+      ".read": "auth != null",
       "$eventId": {
-        ".write": true,
+        ".write": "auth != null && (!root.child('events/' + $eventId).exists() || !root.child('events/' + $eventId + '/creatorId').exists() || root.child('events/' + $eventId + '/creatorId').val() === auth.uid)",
         ".validate": "newData.isString() && newData.val().beginsWith('data:image/') && newData.val().length < 3000000"
       }
     },
-    "devices": {
-      ".read": true,
-      "$deviceId": {
-        ".write": true
-      }
-    },
-    "syncCodes": {
-      "$code": {
-        ".read": true,
-        ".write": true
-      }
-    },
     "eventChats": {
-      ".read": true,
+      ".read": "auth != null",
       "$eventId": {
-        ".write": true,
+        ".write": "auth != null",
         "messages": {
           "$messageId": {
-            ".validate": "newData.hasChildren(['deviceId', 'name', 'text', 'timestamp']) && newData.child('text').isString() && newData.child('text').val().length <= 2000"
+            ".validate": "newData.hasChildren(['deviceId', 'name', 'text', 'timestamp']) && newData.child('deviceId').val() === auth.uid && newData.child('text').isString() && newData.child('text').val().length <= 2000"
           }
         }
       }
     },
     "chatReadStatus": {
-      ".read": true,
+      ".read": "auth != null",
       "$eventId": {
-        ".write": true
+        ".write": "auth != null && !newData.exists()",
+        "$userKey": {
+          ".write": "auth != null && (auth.uid === $userKey || !newData.exists())"
+        }
       }
     },
     "proposals": {
-      ".read": true,
+      ".read": "auth != null",
       "$proposalId": {
-        ".write": true
+        ".write": "auth != null"
       }
     }
   }
