@@ -59,7 +59,7 @@ function showStartupError(message) {
 if (APP_CONFIG.ENV === 'TEST') {
     setTimeout(() => {
         const testBadge = document.getElementById('testBadge');
-        if (testBadge) testBadge.style.display = 'inline-block';
+        if (testBadge) testBadge.style.display = 'block';
     }, 100);
 }
 
