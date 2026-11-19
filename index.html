@@ -52,12 +52,12 @@
 
     <div id="mainContainer" class="container">
         <header style="color: white; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-start; gap: 20px;">
-            <div style="text-align: center; flex: 1;">
+            <div id="presenceArea" style="text-align: center; flex: 1; position: relative; min-height: 120px;">
                 <h1 id="titleLine1" style="cursor: pointer;"></h1>
                 <h1 id="titleLine2" style="cursor: pointer;"></h1>
                 <p class="subtitle" id="titleLine3"></p>
             </div>
-            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 300px;">
+            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 300px; z-index: 10;">
                 <p id="welcomeMessage" style="font-size: 1.1rem; font-weight: 600; color: rgba(255, 255, 255, 0.95); margin: 0;"></p>
                 <div style="position: relative; display: flex; gap: 8px; align-items: center;">
                     <button id="notificationsBtn" title="Notifiche" aria-label="Notifiche" style="position: relative; background: transparent; border: 2px solid rgba(255, 255, 255, 0.8); color: white; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 1.2rem; transition: all 0.3s;">🔔<span id="notificationBadge" style="display: none; position: absolute; top: -8px; right: -8px; min-width: 20px; height: 20px; padding: 0 5px; box-sizing: border-box; border-radius: 10px; background: #f44336; color: white; font-size: 0.75rem; font-weight: bold; align-items: center; justify-content: center;"></span></button>
@@ -213,6 +213,25 @@
     </div>
 
     <!-- Modal per aggiungere nota -->
+    <!-- Presenza: omini degli utenti collegati nella zona del titolo (#presenceArea) -->
+    <style>
+        /* Gli omini stanno SOTTO i pulsanti dell'intestazione (che hanno z-index 10): i pulsanti restano sempre cliccabili */
+        #presenceLayer { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+        #presenceArea h1, #presenceArea p { position: relative; z-index: 2; }
+        .presence-figure { position: absolute; pointer-events: auto; cursor: pointer; transition: left 4s linear, top 4s linear; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.35)); }
+        .presence-wave { transform-box: fill-box; transform-origin: 50% 100%; animation: presence-wave 2.4s infinite ease-in-out; }
+        @keyframes presence-wave { 0%, 60%, 100% { transform: rotate(0deg); } 70% { transform: rotate(-25deg); } 80% { transform: rotate(20deg); } 90% { transform: rotate(-25deg); } }
+        .presence-moving svg { animation: presence-hop 0.45s infinite ease-in-out; }
+        @keyframes presence-hop { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+        .presence-asleep .presence-wave, .presence-asleep svg { animation: none; }
+        .presence-asleep svg { opacity: 0.5; }
+        .presence-name { position: absolute; left: 50%; bottom: calc(100% + 4px); transform: translateX(-50%); background: #fff; color: #333; font-size: 0.8rem; font-weight: 600; padding: 3px 8px; border-radius: 6px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.2); opacity: 0; pointer-events: none; transition: opacity 0.15s; }
+        .presence-figure[data-side="top"] .presence-name { bottom: auto; top: calc(100% + 4px); }
+        .presence-figure:hover .presence-name, .presence-figure.presence-show .presence-name { opacity: 1; }
+        .presence-figure.presence-moving { pointer-events: none; }
+        .presence-figure.presence-passive { pointer-events: none; opacity: 0.45; }
+    </style>
+
     <div class="modal event-form-modal" id="modal">
         <div class="modal-content">
             <div id="eventCoverContainerAdd" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); background-size: cover; background-position: center; margin: 0; padding: 16px 20px; min-height: 120px; width: 100%; display: flex; flex-direction: column; justify-content: flex-end; border-radius: 16px 16px 0 0; overflow: hidden; box-sizing: border-box;">

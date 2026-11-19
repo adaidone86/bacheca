@@ -16,7 +16,7 @@
     "events": {
       ".read": "auth != null",
       "$eventId": {
-        ".write": "auth != null && (!data.exists() || !data.child('creatorId').exists() || data.child('creatorId').val() === auth.uid)",
+        ".write": "auth != null && (data.exists() ? data.child('creatorId').val() === auth.uid : newData.child('creatorId').val() === auth.uid)",
         ".validate": "newData.hasChildren(['id', 'date', 'title']) && newData.child('id').val() === $eventId && (!data.exists() || newData.child('creatorId').val() === data.child('creatorId').val())",
         "date": {
           ".validate": "newData.isString() && newData.val().matches(/^\\d{4}-\\d{2}-\\d{2}$/)"
@@ -38,16 +38,17 @@
     "eventImages": {
       ".read": "auth != null",
       "$eventId": {
-        ".write": "auth != null && (!root.child('events/' + $eventId).exists() || !root.child('events/' + $eventId + '/creatorId').exists() || root.child('events/' + $eventId + '/creatorId').val() === auth.uid)",
+        ".write": "auth != null && (root.child('events/' + $eventId).exists() ? root.child('events/' + $eventId + '/creatorId').val() === auth.uid : (root.child('proposals/' + $eventId).exists() ? root.child('proposals/' + $eventId + '/creatorId').val() === auth.uid : true))",
         ".validate": "newData.isString() && newData.val().beginsWith('data:image/') && newData.val().length < 3000000"
       }
     },
     "eventChats": {
       ".read": "auth != null",
-      "$eventId": {
-        ".write": "auth != null",
+      "$chatId": {
+        ".write": "auth != null && !newData.exists() && (root.child('events/' + $chatId).exists() ? root.child('events/' + $chatId + '/creatorId').val() === auth.uid : (root.child('proposals/' + $chatId).exists() ? root.child('proposals/' + $chatId + '/creatorId').val() === auth.uid : true))",
         "messages": {
           "$messageId": {
+            ".write": "auth != null && !data.exists() && newData.exists() && (root.child('events/' + $chatId).exists() ? root.child('events/' + $chatId + '/participants/' + auth.uid).val() === true : root.child('proposals/' + $chatId).exists())",
             ".validate": "newData.hasChildren(['deviceId', 'name', 'text', 'timestamp']) && newData.child('deviceId').val() === auth.uid && newData.child('text').isString() && newData.child('text').val().length <= 2000"
           }
         }
@@ -65,7 +66,7 @@
     "proposals": {
       ".read": "auth != null",
       "$proposalId": {
-        ".write": "auth != null && (!data.exists() || !data.child('creatorId').exists() || data.child('creatorId').val() === auth.uid)",
+        ".write": "auth != null && (data.exists() ? data.child('creatorId').val() === auth.uid : newData.child('creatorId').val() === auth.uid)",
         "dateOptions": {
           "$optionKey": {
             ".write": "auth != null"
@@ -77,6 +78,15 @@
               ".write": "auth != null && auth.uid === $voter"
             }
           }
+        }
+      }
+    },
+    "presence": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid",
+        "$connectionId": {
+          ".validate": "!newData.exists() || newData.hasChildren(['active']) && newData.child('active').isBoolean()"
         }
       }
     }

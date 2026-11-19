@@ -565,6 +565,7 @@ class BacheaCalendar {
         this.closeUserProfile();
         const confirmed = await this.showConfirmDialog('Vuoi uscire dal tuo account su questo dispositivo?', 'Esci', '#667eea');
         if (!confirmed) return;
+        await this.stopPresence(); // l'omino sparisce subito per gli altri
         this.userId = null; // evita il doppio reload dal listener di onAuthStateChanged
         await firebase.auth().signOut();
         location.reload();
@@ -586,6 +587,7 @@ class BacheaCalendar {
         Promise.all([this.loadEvents(), this.loadUserNames(), this.loadReadStatus()]).then(() => {
             this.cleanupPastEvents();
             this.render();
+            this.startPresence(); // dopo i nomi degli utenti: servono per gli omini
             this.listenProposals();
             // Nascondi il loading quando tutto è pronto
             const loadingScreen = document.getElementById('loadingScreen');
@@ -3080,6 +3082,198 @@ class BacheaCalendar {
         }
     }
 
+    // ===== Presenza: chi è collegato in questo momento =====
+    // presence/{uid}/{connectionId}: {active, at}. Una voce per dispositivo o scheda aperta;
+    // Firebase la toglie da solo (onDisconnect) quando la scheda si chiude o la rete cade.
+    // active = la Bacheca è in primo piano; false = aperta ma in background.
+    // Gli altri utenti collegati compaiono come omini del loro colore che camminano nella zona del titolo:
+    // salutano se attivi, sono fermi e sbiaditi se in background. Se non sono collegati, non c'è niente.
+
+    startPresence() {
+        if (!this.userId) return;
+        const isActive = () => document.visibilityState === 'visible';
+        database.ref('.info/connected').on('value', (snapshot) => {
+            if (snapshot.val() !== true) return;
+            // A ogni (ri)connessione una voce nuova, tolta da Firebase alla disconnessione
+            this.presenceRef = database.ref(`presence/${this.userId}`).push();
+            this.presenceRef.onDisconnect().remove()
+                .then(() => this.presenceRef.set({ active: isActive(), at: firebase.database.ServerValue.TIMESTAMP }))
+                .catch(error => console.error('Errore presenza:', error));
+        });
+        document.addEventListener('visibilitychange', () => {
+            if (this.presenceRef) this.presenceRef.update({ active: isActive() }).catch(() => {});
+        });
+        database.ref('presence').on('value', (snapshot) => this.renderPresence(snapshot.val() || {}));
+
+        // Ridimensionamento o pagina cambiata: se un omino finisce sopra qualcosa, si sposta
+        let checkTimer = null;
+        const scheduleCheck = () => {
+            clearTimeout(checkTimer);
+            checkTimer = setTimeout(() => this.checkPresenceSpots(), 300);
+        };
+        window.addEventListener('resize', scheduleCheck);
+        setInterval(() => this.checkPresenceSpots(), 5000); // la pagina cambia anche senza scroll (lista, calendario)
+    }
+
+    stopPresence() {
+        if (!this.presenceRef) return Promise.resolve();
+        const ref = this.presenceRef;
+        this.presenceRef = null;
+        return ref.remove().catch(() => {});
+    }
+
+    renderPresence(presence) {
+        // Gli omini girano nella zona del titolo (#presenceArea), non su tutta la pagina
+        const area = document.getElementById('presenceArea');
+        if (!area) return;
+        let layer = document.getElementById('presenceLayer');
+        if (!layer) {
+            layer = document.createElement('div');
+            layer.id = 'presenceLayer';
+            area.appendChild(layer);
+        }
+        if (!this.presenceEyes) this.presenceEyes = {};
+
+        // Utenti collegati (escluso me): attivo se almeno un suo dispositivo è in primo piano
+        const online = {};
+        Object.entries(presence).forEach(([uid, connections]) => {
+            if (uid === this.userId || !connections) return;
+            const list = Object.values(connections).filter(Boolean);
+            if (list.length > 0) online[uid] = list.some(c => c.active);
+        });
+
+        // Spariscono gli omini di chi si è scollegato
+        Object.keys(this.presenceEyes).forEach(uid => {
+            if (!(uid in online)) {
+                clearInterval(this.presenceEyes[uid].timer);
+                this.presenceEyes[uid].el.remove();
+                delete this.presenceEyes[uid];
+            }
+        });
+
+        Object.entries(online).forEach(([uid, active]) => {
+            let figure = this.presenceEyes[uid];
+            if (!figure) {
+                figure = { el: this.createPresenceFigure(uid) };
+                layer.appendChild(figure.el);
+                this.movePresenceEye(figure.el, true);
+                // Ogni tanto cammina fino a un altro punto libero
+                figure.timer = setInterval(() => this.movePresenceEye(figure.el, false), 12000 + Math.random() * 12000);
+                this.presenceEyes[uid] = figure;
+            }
+            figure.el.classList.toggle('presence-asleep', !active);
+            const name = this.getParticipantName(uid);
+            figure.el.querySelector('.presence-name').textContent = active ? name : `${name} · in pausa`;
+            figure.el.setAttribute('aria-label', `${name} è collegato${active ? '' : ' (in pausa)'}`);
+        });
+        this.ensureUserNames(Object.keys(online)); // nomi di chi si è registrato dopo l'apertura
+    }
+
+    // Omino del colore dell'utente: saluta con la mano; in pausa resta fermo e sbiadito
+    createPresenceFigure(uid) {
+        const color = this.getUserColor(uid).bg;
+        const delay = (Math.random() * 3).toFixed(2);
+        const el = document.createElement('div');
+        el.className = 'presence-figure';
+        el.setAttribute('role', 'img');
+        el.innerHTML = `
+            <svg width="26" height="38" viewBox="0 0 26 38" aria-hidden="true">
+                <circle cx="13" cy="7" r="5.5" fill="${color}" stroke="#fff" stroke-width="1.2"/>
+                <rect x="7.5" y="13.5" width="11" height="13" rx="4.5" fill="${color}" stroke="#fff" stroke-width="1.2"/>
+                <rect x="8" y="25.5" width="4" height="10" rx="2" fill="${color}" stroke="#fff" stroke-width="1"/>
+                <rect x="14" y="25.5" width="4" height="10" rx="2" fill="${color}" stroke="#fff" stroke-width="1"/>
+                <rect x="3" y="15" width="4" height="9.5" rx="2" fill="${color}" stroke="#fff" stroke-width="1"/>
+                <rect class="presence-wave" style="animation-delay: ${delay}s" x="19" y="6" width="4" height="9.5" rx="2" fill="${color}" stroke="#fff" stroke-width="1"/>
+            </svg>
+            <span class="presence-name"></span>`;
+        // Sul telefono: il nome compare al tocco per qualche secondo
+        el.addEventListener('click', () => {
+            el.classList.add('presence-show');
+            clearTimeout(el.hideTimer);
+            el.hideTimer = setTimeout(() => el.classList.remove('presence-show'), 2500);
+        });
+        return el;
+    }
+
+    // Gli omini stanno nella zona del titolo ma mai sopra le scritte o sopra qualcosa di cliccabile.
+    // Si usano i rettangoli del TESTO (non dei blocchi: un <h1> è largo quanto tutta la zona),
+    // così gli omini possono stare ai lati del titolo. Se non c'è un punto libero l'omino resta dov'è,
+    // semitrasparente e trasparente ai clic.
+    getPresenceObstacles() {
+        const area = document.getElementById('presenceArea');
+        const rects = [];
+        if (!area) return rects;
+        area.querySelectorAll('h1, h2, p, button, a, input, img').forEach(el => {
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            for (const r of range.getClientRects()) {
+                if (r.width > 0 && r.height > 0) rects.push(r);
+            }
+        });
+        return rects;
+    }
+
+    isPresenceSpotFree(x, y, obstacles = this.getPresenceObstacles()) {
+        const W = 26, H = 38, M = 6; // dimensioni dell'omino + margine
+        return !obstacles.some(r => x - M < r.right && x + W + M > r.left && y - M < r.bottom && y + H + M > r.top);
+    }
+
+    pickPresenceSpot() {
+        const area = document.getElementById('presenceArea');
+        if (!area) return null;
+        const rect = area.getBoundingClientRect();
+        const maxLeft = rect.width - 26, maxTop = rect.height - 38;
+        if (maxLeft <= 0 || maxTop < 0) return null;
+        const obstacles = this.getPresenceObstacles();
+        for (let attempt = 0; attempt < 60; attempt++) {
+            const left = Math.random() * maxLeft;
+            const top = Math.random() * maxTop;
+            // Il controllo usa le coordinate della finestra: zona + posizione nella zona
+            if (this.isPresenceSpotFree(rect.left + left, rect.top + top, obstacles)) {
+                return { left, top, side: top < 30 ? 'top' : 'bottom' };
+            }
+        }
+        return null;
+    }
+
+    movePresenceEye(el, instant) {
+        const spot = this.pickPresenceSpot();
+        if (!spot) {
+            el.classList.add('presence-passive'); // nessun posto libero: non intercetta i clic
+            return;
+        }
+        el.classList.remove('presence-passive');
+        const fromLeft = parseFloat(el.style.left) || 0;
+        el.style.transform = spot.left < fromLeft ? 'scaleX(-1)' : ''; // si gira verso dove cammina
+        el.querySelector('.presence-name').style.transform = spot.left < fromLeft ? 'translateX(-50%) scaleX(-1)' : '';
+        if (instant) {
+            el.style.transition = 'none';
+        } else {
+            // Mentre cammina saltella e non intercetta i clic
+            el.style.transition = '';
+            el.classList.add('presence-moving');
+            clearTimeout(el.movingTimer);
+            el.movingTimer = setTimeout(() => el.classList.remove('presence-moving'), 4200);
+        }
+        el.style.left = `${Math.round(spot.left)}px`;
+        el.style.top = `${Math.round(spot.top)}px`;
+        el.dataset.side = spot.side;
+    }
+
+    // Dopo un ridimensionamento (o un cambio della zona) sotto un omino può esserci qualcosa: si sposta
+    checkPresenceSpots() {
+        const area = document.getElementById('presenceArea');
+        if (!area) return;
+        const rect = area.getBoundingClientRect();
+        Object.values(this.presenceEyes || {}).forEach(({ el }) => {
+            if (el.classList.contains('presence-moving')) return;
+            const left = parseFloat(el.style.left) || 0;
+            const top = parseFloat(el.style.top) || 0;
+            const outside = left > rect.width - 26 || top > rect.height - 38;
+            if (outside || !this.isPresenceSpotFree(rect.left + left, rect.top + top)) this.movePresenceEye(el, false);
+        });
+    }
+
     rebuildNotesIndex() {
         const index = {};
         Object.values(this.events).forEach(event => {
@@ -3095,11 +3289,10 @@ class BacheaCalendar {
         return Object.keys((event && event.participants) || {});
     }
 
-    // Modifica, spostamento ed eliminazione: solo chi ha creato l'evento.
-    // Gli eventi senza creatore (convertiti o importati dal vecchio DB) restano modificabili da tutti.
-    // Iscriversi e scrivere in chat resta permesso a tutti.
+    // Modifica, spostamento ed eliminazione: solo chi ha creato l'evento (come nelle regole Firebase).
+    // Un evento senza creatore è in sola lettura per tutti. Iscriversi e scrivere in chat resta permesso.
     canEditEvent(event) {
-        return !!event && (!event.creatorId || event.creatorId === this.userId);
+        return !!event && !!event.creatorId && event.creatorId === this.userId;
     }
 
     // Modal di modifica in sola lettura per chi non è il creatore
