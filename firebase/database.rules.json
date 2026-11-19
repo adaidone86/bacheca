@@ -96,10 +96,10 @@
     "proposals": {
       ".read": "auth != null",
       "$proposalId": {
-        ".write": "auth != null && (data.exists() ? data.child('creatorId').val() === auth.uid : newData.child('creatorId').val() === auth.uid)",
+        ".write": "auth != null && (data.exists() ? (!newData.exists() && data.child('creatorId').val() === auth.uid) : newData.child('creatorId').val() === auth.uid)",
         "dateOptions": {
           "$optionKey": {
-            ".write": "auth != null && (!data.exists() ? newData.child('addedById').val() === auth.uid : (data.child('addedById').val() === auth.uid || root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid))",
+            ".write": "auth != null && !data.exists() && newData.exists() && newData.child('addedById').val() === auth.uid && root.child('proposals/' + $proposalId).exists()",
             ".validate": "$optionKey.matches(/^\\d{4}-\\d{2}-\\d{2}(_\\d{4})?$/) && newData.hasChildren(['addedById', 'createdAt']) && newData.child('addedBy').isString() && newData.child('addedBy').val().length <= 40 && newData.child('createdAt').isNumber()",
             "$other": {
               ".validate": "$other === 'addedBy' || $other === 'addedById' || $other === 'createdAt'"
@@ -120,28 +120,36 @@
           ".validate": "newData.isString()"
         },
         "title": {
-          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100"
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100",
+          ".write": "auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid"
         },
         "time": {
-          ".validate": "newData.isString() && newData.val().length <= 30"
+          ".validate": "newData.isString() && newData.val().length <= 30",
+          ".write": "auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid"
         },
         "location": {
-          ".validate": "newData.isString() && newData.val().length <= 200"
+          ".validate": "newData.isString() && newData.val().length <= 200",
+          ".write": "auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid"
         },
         "notes": {
-          ".validate": "newData.isString() && newData.val().length <= 500"
+          ".validate": "newData.isString() && newData.val().length <= 500",
+          ".write": "auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid"
         },
         "link": {
-          ".validate": "newData.isString() && newData.val().length <= 500"
+          ".validate": "newData.isString() && newData.val().length <= 500",
+          ".write": "auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid"
         },
         "color": {
-          ".validate": "newData.isString() && newData.val().matches(/^color-[a-z]{2,20}$/)"
+          ".validate": "newData.isString() && newData.val().matches(/^color-[a-z]{2,20}$/)",
+          ".write": "auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid"
         },
         "fee": {
-          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 999"
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 999",
+          ".write": "auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid"
         },
         "imageVersion": {
-          ".validate": "newData.isNumber()"
+          ".validate": "newData.isNumber()",
+          ".write": "auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid"
         },
         "createdAt": {
           ".validate": "newData.isNumber()"
@@ -153,7 +161,8 @@
           ".validate": "newData.isString() && newData.val().length <= 10"
         },
         "fixedDate": {
-          ".validate": "newData.isString() && newData.val().length <= 20"
+          ".validate": "newData.isString() && newData.val().length <= 20",
+          ".write": "auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid"
         },
         "$other": {
           ".validate": false

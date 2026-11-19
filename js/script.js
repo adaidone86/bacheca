@@ -4188,6 +4188,23 @@ class BacheaCalendar {
         return best;
     }
 
+    // Date più votate, con i pari merito: solo date future con almeno un voto
+    getTopProposalOptions(proposal) {
+        const future = this.getProposalOptions(proposal).filter(option => option.isFuture && option.count > 0);
+        const max = Math.max(0, ...future.map(option => option.count));
+        return future.filter(option => option.count === max && max > 0);
+    }
+
+    // Date che il creatore può fissare:
+    // - si parte dalle più votate (pari merito compresi);
+    // - se il creatore ne ha votata qualcuna, solo quelle che ha votato;
+    // - se non ne ha votata nessuna, tutte le più votate.
+    getFixableProposalOptions(proposal) {
+        const top = this.getTopProposalOptions(proposal);
+        const withCreator = top.filter(option => option.voters.some(v => v.key === proposal.creatorId));
+        return withCreator.length > 0 ? withCreator : top;
+    }
+
     hasVotedProposal(proposal) {
         const voterKey = this.getVoterKey();
         return Object.values(proposal.votes || {}).some(dateVotes => dateVotes && dateVotes[voterKey]);
@@ -4234,7 +4251,10 @@ class BacheaCalendar {
             const voted = this.hasVotedProposal(proposal);
 
             let summary = 'Nessuna data proposta';
-            if (best) {
+            const tied = this.getTopProposalOptions(proposal).length;
+            if (best && tied > 1) {
+                summary = `⭐ ${tied} date a pari merito · ${best.count} ${best.count === 1 ? 'voto' : 'voti'}`;
+            } else if (best) {
                 summary = `⭐ ${this.formatProposalOption(best.key, true)} · ${best.count} ${best.count === 1 ? 'voto' : 'voti'}`;
             } else if (optionsCount > 0) {
                 summary = 'Nessun voto ancora';
@@ -4604,13 +4624,14 @@ class BacheaCalendar {
             return;
         }
 
-        const best = this.getBestProposalOption(proposal);
+        const topKeys = this.getTopProposalOptions(proposal).map(option => option.key);
+        const fixableKeys = this.getFixableProposalOptions(proposal).map(option => option.key);
         const voterKey = this.getVoterKey();
-        // "Fissa questa data": solo sull'opzione più votata e solo per chi ha creato la proposta
+        // "Fissa questa data": solo per il creatore e solo sulle date ammesse (vedi getFixableProposalOptions)
         const canFix = this.isProposalCreator(proposal) && !proposal.fixedDate;
 
         options.forEach(option => {
-            const isBest = best && best.key === option.key;
+            const isBest = topKeys.includes(option.key); // ⭐ su tutte le più votate (pari merito compresi)
             const mine = option.voters.some(v => v.key === voterKey);
 
             const row = document.createElement('div');
@@ -4619,7 +4640,7 @@ class BacheaCalendar {
             const names = option.voters.map(v => this.escapeHtml(v.name || 'Anonimo')).join(', ');
             row.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                    <strong>${this.formatProposalOption(option.key)}</strong>
+                    <strong>${this.escapeHtml(this.formatProposalOption(option.key))}</strong>
                     <span style="white-space: nowrap; font-weight: 600;">👍 ${option.count}</span>
                 </div>
                 ${isBest ? '<div style="font-size: 0.8rem; color: #4CAF50; font-weight: 600;">⭐ La più votata</div>' : ''}
@@ -4638,7 +4659,7 @@ class BacheaCalendar {
                 voteBtn.addEventListener('click', () => this.toggleProposalVote(option.key, mine));
                 actions.appendChild(voteBtn);
 
-                if (canFix && isBest) {
+                if (canFix && fixableKeys.includes(option.key)) {
                     const fixBtn = document.createElement('button');
                     fixBtn.type = 'button';
                     fixBtn.style.cssText = 'flex: 1; padding: 8px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;';
@@ -4703,9 +4724,8 @@ class BacheaCalendar {
         const proposalId = this.openProposalId;
         const proposal = this.proposals[proposalId];
         if (!proposal || !this.isProposalCreator(proposal)) return;
-        const best = this.getBestProposalOption(proposal);
-        if (!best || best.key !== optionKey) {
-            this.showErrorPopup('Si può fissare solo la data più votata');
+        if (!this.getFixableProposalOptions(proposal).some(option => option.key === optionKey)) {
+            this.showErrorPopup('Si può fissare solo una delle date più votate (tra quelle votate da chi ha creato la proposta, se ce ne sono)');
             return;
         }
         const { date: dateKey, time: optionTime } = this.parseProposalOptionKey(optionKey);

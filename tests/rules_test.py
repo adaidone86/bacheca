@@ -120,15 +120,32 @@ try:
     check('B: data con chiave non valida', 'bloccato', B, 'PUT', f'proposals/{pid}/dateOptions/domani', opt(B))
     check('A propone una data', 'permesso', A, 'PUT', f'proposals/{pid}/dateOptions/2099-01-04', opt(A))
     check('B cancella la data di A', 'bloccato', B, 'DELETE', f'proposals/{pid}/dateOptions/2099-01-04')
-    check('B cancella la propria data', 'permesso', B, 'DELETE', f'proposals/{pid}/dateOptions/2099-01-02_2030')
-    check('B propone di nuovo una data', 'permesso', B, 'PUT', f'proposals/{pid}/dateOptions/2099-01-05', opt(B))
-    check('A (creatore) cancella la data di B', 'permesso', A, 'DELETE', f'proposals/{pid}/dateOptions/2099-01-05')
+    check('B cancella la propria data', 'bloccato', B, 'DELETE', f'proposals/{pid}/dateOptions/2099-01-02_2030')
+    check('B modifica la propria data', 'bloccato', B, 'PUT', f'proposals/{pid}/dateOptions/2099-01-02_2030', {**opt(B), 'addedBy': 'altro'})
+    check('A (creatore) cancella la data di B', 'bloccato', A, 'DELETE', f'proposals/{pid}/dateOptions/2099-01-02_2030')
+    check('A (creatore) cancella la propria data', 'bloccato', A, 'DELETE', f'proposals/{pid}/dateOptions/2099-01-04')
+    check('A cancella le date con una scrittura sulla proposta', 'bloccato', A, 'PATCH', f'proposals/{pid}', {'dateOptions': None})
+    check('A (creatore) modifica il titolo', 'permesso', A, 'PUT', f'proposals/{pid}/title', 'Proposta modificata')
+    check('A (creatore) modifica più campi insieme', 'permesso', A, 'PATCH', f'proposals/{pid}', {'notes': 'note', 'fee': 5, 'color': 'color-blue'})
     check('B vota', 'permesso', B, 'PUT', f'proposals/{pid}/votes/2099-01-04/{B["uid"]}', {'name': 'ProvaB', 'deviceId': B['uid']})
     check('B vota a nome di A', 'bloccato', B, 'PUT', f'proposals/{pid}/votes/2099-01-04/{A["uid"]}', {'name': 'ProvaA', 'deviceId': A['uid']})
     check('B fissa la proposta di A', 'bloccato', B, 'PUT', f'proposals/{pid}/fixedDate', '2099-01-04')
     check('B scrive nella chat della proposta', 'permesso', B, 'PUT', f'eventChats/{pid}/messages/p1', msg(B, 'per me va bene'))
     check('A cancella solo la chat della proposta', 'bloccato', A, 'DELETE', f'eventChats/{pid}')
     check('B elimina la proposta di A', 'bloccato', B, 'DELETE', f'proposals/{pid}')
+
+    # "Fissa questa data" come fa l'app: blocco fixedDate, evento con lo stesso id e i votanti, poi via la proposta
+    fid = f'claudetestf_{now}'
+    check('A crea una seconda proposta', 'permesso', A, 'PUT', f'proposals/{fid}', {**pr, 'id': fid,
+          'dateOptions': {'2099-02-01_2100': opt(A)}})
+    check('B vota la data da fissare', 'permesso', B, 'PUT', f'proposals/{fid}/votes/2099-02-01_2100/{B["uid"]}', {'name': 'ProvaB', 'deviceId': B['uid']})
+    check('A fissa la data (fixedDate)', 'permesso', A, 'PUT', f'proposals/{fid}/fixedDate', '2099-02-01_2100')
+    check("A crea l'evento fissato con B partecipante", 'permesso', A, 'PUT', f'events/{fid}', {
+          'id': fid, 'date': '2099-02-01', 'title': 'Proposta di prova', 'time': '21:00', 'location': '', 'notes': '',
+          'fee': 0, 'color': 'color-neutral', 'link': '', 'participants': {B['uid']: True}, 'creatorId': A['uid'], 'createdAt': now})
+    check('A elimina la proposta fissata (con le sue date)', 'permesso', A, 'DELETE', f'proposals/{fid}')
+    check("B scrive nella chat dell'evento fissato", 'permesso', B, 'PUT', f'eventChats/{fid}/messages/f1', msg(B, 'ci sono!'))
+    check("A elimina l'evento fissato con la chat", 'permesso', A, 'PATCH', '', {f'events/{fid}': None, f'eventChats/{fid}': None})
 
     # Eliminazioni corrette (come fa l'app: tutto in un'unica scrittura)
     check('A elimina la proposta con chat e immagine insieme', 'permesso', A, 'PATCH', '',
@@ -142,7 +159,7 @@ finally:
         http('DELETE', f'{DB}/chatReadStatus/{u["uid"]}.json?auth={u["token"]}')
         http('DELETE', f'{DB}/users/{u["uid"]}.json?auth={u["token"]}')
     left = []
-    for path in [f'events/{eid}', f'proposals/{pid}', f'eventChats/{eid}', f'eventChats/{pid}', f'eventImages/{eid}']:
+    for path in [f'events/{eid}', f'proposals/{pid}', f'eventChats/{eid}', f'eventChats/{pid}', f'eventImages/{eid}', f'events/{fid}', f'proposals/{fid}', f'eventChats/{fid}']:
         st, val = db(A, 'GET', path)
         if val is not None: left.append(path)
     for u in (A, B):
