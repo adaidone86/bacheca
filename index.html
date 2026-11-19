@@ -919,20 +919,13 @@
 
         // Dove il browser lo permette (Chrome su Android e Windows), chiede al sistema se l'app è già
         // installata (manifest: related_applications). Serve quando il browser propone comunque l'installazione
-        // Ricordo dell'installazione su questo browser: si salva quando l'app viene installata o aperta
-        // come app, e da lì il pulsante non compare più (anche se il browser propone comunque l'installazione).
-        // Se l'app viene disinstallata, si reinstalla dal menu del browser (o dall'icona nella barra indirizzi).
-        const INSTALLED_KEY = 'bacheca_app_installed';
-        function rememberInstalled() {
-            try { localStorage.setItem(INSTALLED_KEY, '1'); } catch (e) { /* storage non disponibile */ }
-        }
-        function wasInstalled() {
-            try { return localStorage.getItem(INSTALLED_KEY) === '1'; } catch (e) { return false; }
-        }
-        if (isRunningAsApp()) rememberInstalled();
+        // Il vecchio "ricordo dell'installazione" (0.4.6) restava anche dopo una disinstallazione e
+        // nascondeva il pulsante per sempre: si cancella. Basta "beforeinstallprompt", che il browser
+        // manda solo se l'app NON è installata (il pulsante sempre visibile era colpa del CSS, corretto in 0.4.7)
+        try { localStorage.removeItem('bacheca_app_installed'); } catch (e) { /* storage non disponibile */ }
 
         async function isInstalledOnDevice() {
-            if (isRunningAsApp() || wasInstalled()) return true;
+            if (isRunningAsApp()) return true;
             if ('getInstalledRelatedApps' in navigator) {
                 try {
                     const apps = await navigator.getInstalledRelatedApps();
@@ -960,7 +953,6 @@
         // Installata (dal nostro pulsante o dal menu del browser): il pulsante sparisce
         window.addEventListener('appinstalled', () => {
             deferredPrompt = null;
-            rememberInstalled();
             updateInstallButton();
         });
 
@@ -973,8 +965,7 @@
                 updateInstallButton();
                 try {
                     prompt.prompt(); // finestra di installazione del browser
-                    const { outcome } = await prompt.userChoice;
-                    if (outcome === 'accepted') rememberInstalled();
+                    await prompt.userChoice;
                 } catch (err) {
                     console.error('Errore durante installazione:', err);
                 }
