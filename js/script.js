@@ -1,22 +1,30 @@
-// Version check - Auto-update quando env o versione cambia
+// Version check - Auto-update quando env o versione cambia.
+// Si ricarica solo DOPO aver cancellato tutte le cache e chiesto al service worker di aggiornarsi
+// (prima la ricarica partiva mentre la cancellazione era ancora in corso)
 let APP_FILE_VERSION = 'unknown';
-fetch('./descrizioni/versione')
+fetch('./descrizioni/versione', { cache: 'no-store' })
     .then(r => r.text())
-    .then(text => {
+    .then(async text => {
         APP_FILE_VERSION = text.trim();
         const APP_VERSION = `${APP_CONFIG.ENV}-${APP_FILE_VERSION}`;
         const STORED_VERSION = localStorage.getItem('APP_VERSION');
-        if (STORED_VERSION && STORED_VERSION !== APP_VERSION) {
-            console.log(`🔄 Versione app cambiata (${STORED_VERSION} → ${APP_VERSION}), ricaricare...`);
-            if ('caches' in window) {
-                caches.keys().then(names => {
-                    names.forEach(name => caches.delete(name));
-                });
-            }
-            localStorage.setItem('APP_VERSION', APP_VERSION);
-            location.reload(true);
-        }
         localStorage.setItem('APP_VERSION', APP_VERSION);
+        if (STORED_VERSION && STORED_VERSION !== APP_VERSION) {
+            console.log(`🔄 Versione app cambiata (${STORED_VERSION} → ${APP_VERSION}), ricarico...`);
+            try {
+                if ('caches' in window) {
+                    const names = await caches.keys();
+                    await Promise.all(names.map(name => caches.delete(name)));
+                }
+                if (navigator.serviceWorker) {
+                    const registration = await navigator.serviceWorker.getRegistration();
+                    if (registration) await registration.update();
+                }
+            } catch (e) {
+                console.warn('⚠️ Pulizia cache non completa:', e);
+            }
+            location.reload();
+        }
     })
     .catch(err => console.warn('⚠️ Non riesco a leggere la versione:', err));
 
@@ -659,17 +667,13 @@ class BacheaCalendar {
             this.isListView = true;
         }
 
-        // Ascolta il cambio di orientamento (più affidabile di resize su mobile)
-        window.addEventListener('orientationchange', () => {
-            // Aspetta che il layout si aggiorni
-            setTimeout(() => {
-                const nowMobile = window.innerWidth < 768;
-                if (nowMobile !== this.isListView) {
-                    // Se il dispositivo cambia (es: rotazione dello schermo), cambia vista
-                    this.toggleView();
-                }
-            }, 100);
-        });
+        // Rotazione dello schermo: la vista (lista o calendario) NON cambia mai da sola;
+        // si cambia solo dal menu. Nell'app installata si prova anche a bloccare lo schermo in
+        // verticale (Android lo fa già dal manifest; iPhone e i browser non lo permettono)
+        const runningAsApp = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+        if (runningAsApp && screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock('portrait').catch(() => { /* non supportato: si ignora */ });
+        }
     }
 
     setupEventListeners() {
