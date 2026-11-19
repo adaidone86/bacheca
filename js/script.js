@@ -881,9 +881,8 @@ class BacheaCalendar {
         });
         document.getElementById('proposalLinkOpenBtn').addEventListener('click', (e) => {
             e.preventDefault();
-            if (!this.currentProposalLink) return;
-            const url = /^https?:\/\//i.test(this.currentProposalLink) ? this.currentProposalLink : `https://${this.currentProposalLink}`;
-            window.open(url, '_blank');
+            const url = this.safeLink(this.currentProposalLink);
+            if (url) window.open(url, '_blank', 'noopener');
         });
         document.getElementById('proposalLinkModifyBtn').addEventListener('click', (e) => {
             e.preventDefault();
@@ -1121,14 +1120,8 @@ class BacheaCalendar {
         // Edit Link buttons
         document.getElementById('editLinkOpenBtn').addEventListener('click', (e) => {
             e.preventDefault();
-            if (this.currentEditingLink) {
-                // Se il link non ha protocollo, aggiungi https://
-                let url = this.currentEditingLink;
-                if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                    url = 'https://' + url;
-                }
-                window.open(url, '_blank');
-            }
+            const url = this.safeLink(this.currentEditingLink); // solo http/https, aggiunge https:// se manca
+            if (url) window.open(url, '_blank', 'noopener');
         });
 
         document.getElementById('editLinkModifyBtn').addEventListener('click', (e) => {
@@ -1170,14 +1163,8 @@ class BacheaCalendar {
         // Event Link buttons (per aggiungere nuovo evento)
         document.getElementById('eventLinkOpenBtn').addEventListener('click', (e) => {
             e.preventDefault();
-            if (this.currentEventLink) {
-                // Se il link non ha protocollo, aggiungi https://
-                let url = this.currentEventLink;
-                if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                    url = 'https://' + url;
-                }
-                window.open(url, '_blank');
-            }
+            const url = this.safeLink(this.currentEventLink); // solo http/https, aggiunge https:// se manca
+            if (url) window.open(url, '_blank', 'noopener');
         });
 
         document.getElementById('eventLinkModifyBtn').addEventListener('click', (e) => {
@@ -1980,10 +1967,27 @@ class BacheaCalendar {
         prevBtn.style.display = isCurrentMonth ? 'none' : 'block';
     }
 
+    // Rende sicuro un testo da inserire in HTML, sia come contenuto sia DENTRO un attributo:
+    // si trasformano anche le virgolette (prima no: un link o un id con " poteva aggiungere attributi e codice)
     escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+        return String(text === undefined || text === null ? '' : text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    // Link sicuro: solo http/https (aggiunge https:// se manca), altrimenti null
+    safeLink(link) {
+        if (!link) return null;
+        const raw = /^https?:\/\//i.test(link) ? link : `https://${link}`;
+        try {
+            const url = new URL(raw);
+            return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+        } catch (e) {
+            return null;
+        }
     }
 
     // Immagini: salvate a parte in eventImages/{eventId}.
@@ -3000,7 +3004,7 @@ class BacheaCalendar {
             return new Date(at).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
         };
         const row = (item, text, sub, unread) => `
-            <button type="button" class="notification-row" data-event-id="${item.eventId || ''}" data-proposal-id="${item.proposalId || ''}"
+            <button type="button" class="notification-row" data-event-id="${this.escapeHtml(item.eventId || '')}" data-proposal-id="${this.escapeHtml(item.proposalId || '')}"
                 style="width: 100%; text-align: left; display: block; padding: 10px 12px; margin-bottom: 6px; border-radius: 8px; cursor: pointer;
                        border: 1px solid ${unread ? '#667eea' : '#eee'}; background: ${unread ? '#eef0fd' : '#fff'}; color: #333;">
                 <div style="font-weight: 600; font-size: 0.95rem;">${this.escapeHtml(text)}</div>
@@ -4453,9 +4457,9 @@ class BacheaCalendar {
         if (proposal.time) details.push(`🕐 ${this.escapeHtml(proposal.time)}`);
         if (proposal.location) details.push(`📍 ${this.escapeHtml(proposal.location)}`);
         details.push(`💶 ${this.formatFee(proposal.fee)}`);
-        if (proposal.link) {
-            const url = /^https?:\/\//i.test(proposal.link) ? proposal.link : `https://${proposal.link}`;
-            details.push(`🌐 <a href="${this.escapeHtml(url)}" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline;">Vai sul sito</a>`);
+        const proposalUrl = this.safeLink(proposal.link);
+        if (proposalUrl) {
+            details.push(`🌐 <a href="${this.escapeHtml(proposalUrl)}" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: underline;">Vai sul sito</a>`);
         }
         if (proposal.notes) details.push(`📝 ${this.escapeHtml(proposal.notes).replace(/\n/g, '<br>')}`);
         details.push(`👤 Proposta da: ${this.escapeHtml(proposal.creatorName || 'Anonimo')}`);
