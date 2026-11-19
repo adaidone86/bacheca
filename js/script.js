@@ -95,6 +95,10 @@ class BacheaCalendar {
         this.eventsListener = null; // Listener per cambiamenti Firebase
         this.proposals = {}; // Eventi da fissare (senza data): proposals/{id}
         this.openProposalId = null; // Proposta aperta nel modal
+        this.PRESENCE_BEAT_MS = 60000; // battito della presenza: ogni minuto
+        this.PRESENCE_STALE_MS = 3 * 60000; // senza battito da 3 minuti l'omino sparisce
+        this.BUBBLE_MS = 8000; // la nuvoletta dell'omino resta 8 secondi
+        this.AVATAR_ASLEEP_MSG = '😴 Il tuo omino sta dormendo: non può parlare. Si sveglia quando entra qualcun altro.';
         this.setupCustomPopup();
         this.initializeAuth().then(() => this.init());
     }
@@ -705,6 +709,8 @@ class BacheaCalendar {
         this.setupNotificationListeners();
         this.setupLimitWarnings();
         this.setupAdminListeners();
+        this.setupAvatarListeners();
+        this.setupScrollLock();
         this.listenSettings();
         this.recordAppOpen();
         this.detectDevice();
@@ -1500,7 +1506,7 @@ class BacheaCalendar {
             `;
 
             // Aggiungi le note al giorno (solo se il colore è visibile)
-            const notesContainer = dayEl.querySelector(`#notes-${dateKey}`);
+            const notesContainer = dayEl.querySelector(`#notes-${CSS.escape(dateKey)}`);
 
             if (visibleNotes.length > 0) {
                 notesContainer.innerHTML = '';
@@ -3484,17 +3490,44 @@ class BacheaCalendar {
                 .then(() => this.removeGhostPresence(ref.key))
                 .catch(error => console.error('Errore presenza:', error));
         });
-        document.addEventListener('visibilitychange', () => {
+        // Aggiorna la propria voce (active e "at" = ultimo battito), solo se esiste ancora sul server:
+        // se Firebase l'ha già tolta (telefono in background), una semplice update la ricreerebbe senza
+        // onDisconnect e resterebbe per sempre ("fantasma"). La transazione la conferma il server: se la voce è sparita si annulla.
+        const beat = () => {
             const ref = this.presenceRef;
             if (!ref) return;
-            // Solo se la voce esiste ancora sul server: se Firebase l'ha già tolta (telefono in background),
-            // una semplice update la ricreerebbe senza onDisconnect e resterebbe per sempre ("fantasma").
-            // La transazione viene confermata dal server: con la voce sparita si annulla.
             const active = isActive();
-            ref.transaction(current => current ? Object.assign({}, current, { active }) : undefined, null, false)
+            const at = Date.now() + (this.serverTimeOffset || 0);
+            ref.transaction(current => current ? Object.assign({}, current, { active, at }) : undefined, null, false)
                 .catch(() => {});
+        };
+        document.addEventListener('visibilitychange', beat);
+        // Battito: ogni minuto "ci sono ancora". Se l'app viene chiusa o il telefono la sospende, il battito si ferma
+        // e dopo qualche minuto l'omino sparisce anche se Firebase non si è accorto della chiusura
+        setInterval(beat, this.PRESENCE_BEAT_MS);
+        database.ref('.info/serverTimeOffset').on('value', snapshot => { this.serverTimeOffset = snapshot.val() || 0; });
+
+        // Chiusura della pagina o dell'app: si chiude subito la connessione, così Firebase toglie l'omino
+        // all'istante (onDisconnect) invece di aspettare che si accorga da solo che non c'è più nessuno
+        window.addEventListener('pagehide', () => {
+            if (this.presenceRef) this.presenceRef.remove().catch(() => {});
+            database.goOffline();
         });
-        database.ref('presence').on('value', (snapshot) => this.renderPresence(snapshot.val() || {}));
+        window.addEventListener('pageshow', (event) => {
+            if (event.persisted) database.goOnline(); // pagina ripresa dalla cache del browser (tasto indietro)
+        });
+
+        database.ref('presence').on('value', (snapshot) => {
+            this.lastPresence = snapshot.val() || {};
+            this.renderPresence(this.lastPresence);
+        });
+        // Nuvolette: bubbles/{uid} = {text, at}; si vedono per 8 secondi
+        database.ref('bubbles').on('value', (snapshot) => {
+            this.lastBubbles = snapshot.val() || {};
+            this.renderPresenceBubbles();
+        }, () => { /* regole vecchie: niente nuvolette */ });
+        // Le voci senza battito da troppo tempo spariscono anche senza cambiamenti nel database
+        setInterval(() => { if (this.lastPresence) this.renderPresence(this.lastPresence); }, 30000);
 
         // Ridimensionamento o pagina cambiata: se un omino finisce sopra qualcosa, si sposta
         let checkTimer = null;
@@ -3518,9 +3551,11 @@ class BacheaCalendar {
         }).catch(() => {});
     }
 
-    // Una connessione conta solo se ha l'ora di collegamento: le voci fantasma non ce l'hanno
+    // Una connessione conta solo se ha l'ultimo battito ("at") e se è recente:
+    // le voci fantasma non ce l'hanno, quelle di un'app chiusa o sospesa smettono di aggiornarlo
     getLiveConnections(connections) {
-        return Object.values(connections || {}).filter(c => c && typeof c.at === 'number');
+        const now = Date.now() + (this.serverTimeOffset || 0);
+        return Object.values(connections || {}).filter(c => c && typeof c.at === 'number' && now - c.at < this.PRESENCE_STALE_MS);
     }
 
     stopPresence() {
@@ -3542,23 +3577,31 @@ class BacheaCalendar {
         }
         if (!this.presenceEyes) this.presenceEyes = {};
 
-        // Utenti collegati (escluso me): attivo se almeno un suo dispositivo è in primo piano
+        // Utenti collegati, me compreso (vedo anche il mio omino).
+        // Un omino è sveglio solo se il suo utente sta usando la Bacheca E c'è almeno un altro collegato:
+        // da solo dorme sempre, e si sveglia quando entra qualcun altro
         const online = {};
         Object.entries(presence).forEach(([uid, connections]) => {
-            if (uid === this.userId || !connections) return;
+            if (!connections) return;
             const list = this.getLiveConnections(connections);
             if (list.length > 0) online[uid] = list.some(c => c.active);
         });
+        const alone = Object.keys(online).length < 2;
+        if (alone) Object.keys(online).forEach(uid => { online[uid] = false; });
 
-        // Spariscono gli omini di chi si è scollegato
+        // Chi si è scollegato esce da una porta (al primo disegno, appena aperta l'app, nessuna animazione)
         Object.keys(this.presenceEyes).forEach(uid => {
             if (!(uid in online)) {
-                clearInterval(this.presenceEyes[uid].timer);
-                this.presenceEyes[uid].el.remove();
+                const figure = this.presenceEyes[uid];
+                clearInterval(figure.timer);
+                clearTimeout(figure.el.movingTimer);
                 delete this.presenceEyes[uid];
+                this.exitThroughDoor(figure.el);
             }
         });
 
+        const firstRender = !this.presenceRendered;
+        this.presenceRendered = true;
         Object.entries(online).forEach(([uid, active]) => {
             let figure = this.presenceEyes[uid];
             if (!figure) {
@@ -3566,40 +3609,305 @@ class BacheaCalendar {
                 layer.appendChild(figure.el);
                 this.movePresenceEye(figure.el, true);
                 // Ogni tanto cammina fino a un altro punto libero
-                figure.timer = setInterval(() => this.movePresenceEye(figure.el, false), 12000 + Math.random() * 12000);
+                figure.timer = setInterval(() => {
+                    if (!figure.el.classList.contains('presence-asleep')) this.movePresenceEye(figure.el, false); // chi dorme resta nel letto
+                }, 12000 + Math.random() * 12000);
                 this.presenceEyes[uid] = figure;
+                // Chi arriva mentre l'app è aperta entra da una porta
+                if (!firstRender) this.enterThroughDoor(figure.el);
             }
+            const wasAsleep = figure.el.classList.contains('presence-asleep');
             figure.el.classList.toggle('presence-asleep', !active);
+            if (!active && !wasAsleep) this.stopPresenceWalk(figure.el); // si addormenta: se stava camminando si ferma lì
             const name = this.getParticipantName(uid);
-            figure.el.querySelector('.presence-name').textContent = active ? name : `${name} · in pausa`;
+            const nameEl = figure.el.querySelector('.presence-name');
+            if (nameEl.textContent !== name) {
+                nameEl.textContent = name;
+                this.checkPresenceSpots(); // il nome è cambiato: potrebbe non starci più
+            }
             figure.el.setAttribute('aria-label', `${name} è collegato${active ? '' : ' (in pausa)'}`);
         });
         this.ensureUserNames(Object.keys(online)); // nomi di chi si è registrato dopo l'apertura
+        this.renderPresenceBubbles(); // nuvolette arrivate prima dell'omino
+    }
+
+    // ===== Porta, sonno, incontri e nuvolette degli omini (0.5.1) =====
+    createPresenceDoor(left, top) {
+        const layer = document.getElementById('presenceLayer');
+        const door = document.createElement('div');
+        door.className = 'presence-door';
+        door.style.left = `${Math.round(left)}px`;
+        door.style.top = `${Math.round(top) - 2}px`;
+        door.innerHTML = `
+            <svg width="26" height="40" viewBox="0 0 26 40" aria-hidden="true">
+                <rect x="1" y="1" width="24" height="38" rx="2" fill="#3e2723" stroke="#fff" stroke-width="1.2"/>
+                <g class="presence-door-panel">
+                    <rect x="2.5" y="2.5" width="21" height="35.5" rx="1.5" fill="#a1887f"/>
+                    <rect x="5" y="6" width="16" height="11" rx="1" fill="#8d6e63"/>
+                    <rect x="5" y="21" width="16" height="13" rx="1" fill="#8d6e63"/>
+                    <circle cx="20" cy="20" r="1.5" fill="#ffd54f"/>
+                </g>
+            </svg>`;
+        if (layer) layer.appendChild(door);
+        requestAnimationFrame(() => door.classList.add('show'));
+        return door;
+    }
+
+    // Arriva qualcuno: si apre una porta e l'omino esce camminando
+    enterThroughDoor(el) {
+        const left = parseFloat(el.style.left) || 0;
+        const top = parseFloat(el.style.top) || 0;
+        const door = this.createPresenceDoor(left, top);
+        el.classList.add('presence-hidden');
+        setTimeout(() => door.classList.add('open'), 300);
+        setTimeout(() => {
+            el.classList.remove('presence-hidden');
+            el.style.transition = '';
+            if (!el.classList.contains('presence-asleep')) this.movePresenceEye(el, false); // chi entra già addormentato va subito a letto
+        }, 700);
+        setTimeout(() => door.classList.remove('open'), 1500);
+        setTimeout(() => door.classList.remove('show'), 1900);
+        setTimeout(() => door.remove(), 2300);
+    }
+
+    // Qualcuno esce: accanto al suo omino compare una porta, ci entra e la porta si richiude
+    exitThroughDoor(el) {
+        const area = document.getElementById('presenceArea');
+        const width = area ? area.getBoundingClientRect().width : 0;
+        const left = parseFloat(el.style.left) || 0;
+        const top = parseFloat(el.style.top) || 0;
+        const doorLeft = left + 34 <= width - 26 ? left + 34 : Math.max(0, left - 34);
+        const door = this.createPresenceDoor(doorLeft, top);
+        el.classList.add('presence-leaving');
+        el.classList.remove('presence-asleep'); // si sveglia per uscire
+        setTimeout(() => door.classList.add('open'), 300);
+        setTimeout(() => {
+            this.setPresenceFacing(el, doorLeft < left);
+            el.classList.add('presence-moving');
+            el.style.transition = 'left 0.9s linear, opacity 0.3s';
+            el.style.left = `${Math.round(doorLeft)}px`;
+        }, 600);
+        setTimeout(() => el.classList.add('presence-hidden'), 1500);
+        setTimeout(() => door.classList.remove('open'), 1900);
+        setTimeout(() => door.classList.remove('show'), 2300);
+        setTimeout(() => { door.remove(); el.remove(); }, 2700);
+    }
+
+    // Ferma la camminata nel punto in cui si trova adesso (serve quando si addormenta mentre cammina)
+    stopPresenceWalk(el) {
+        if (!el.classList.contains('presence-moving')) return;
+        const area = document.getElementById('presenceArea');
+        if (!area) return;
+        const a = area.getBoundingClientRect();
+        const r = el.getBoundingClientRect();
+        clearTimeout(el.movingTimer);
+        el.classList.remove('presence-moving');
+        el.style.transition = 'none';
+        el.style.left = `${Math.round(r.left - a.left)}px`;
+        el.style.top = `${Math.round(r.top - a.top)}px`;
+    }
+
+    // Girato a sinistra (il disegno si specchia; nome e nuvoletta restano leggibili)
+    setPresenceFacing(el, left) {
+        el.style.transform = left ? 'scaleX(-1)' : '';
+        el.classList.toggle('presence-flipped', !!left);
+    }
+
+    // Finita una camminata: se c'è un altro omino sveglio vicino, si girano uno verso l'altro e si salutano
+    presenceMeet(el) {
+        if (!el.isConnected || el.classList.contains('presence-asleep')) return;
+        const x = parseFloat(el.style.left) || 0, y = parseFloat(el.style.top) || 0;
+        const other = Object.values(this.presenceEyes || {}).map(f => f.el).find(o =>
+            o !== el && !o.classList.contains('presence-asleep') && !o.classList.contains('presence-moving') &&
+            Math.hypot((parseFloat(o.style.left) || 0) - x, (parseFloat(o.style.top) || 0) - y) < 95);
+        if (!other) return;
+        const ox = parseFloat(other.style.left) || 0;
+        this.setPresenceFacing(el, ox < x);
+        this.setPresenceFacing(other, x < ox);
+        [el, other].forEach(o => {
+            o.classList.add('presence-greet');
+            clearTimeout(o.greetTimer);
+            o.greetTimer = setTimeout(() => o.classList.remove('presence-greet'), 2500);
+            this.showPresenceBubble(o, '👋', 2200, true);
+        });
+    }
+
+    // Nuvoletta sopra l'omino. auto = 👋 dell'incontro: non copre un messaggio scritto dall'utente
+    showPresenceBubble(el, text, ms, auto = false) {
+        let bubble = el.querySelector('.presence-bubble');
+        if (!bubble) {
+            bubble = document.createElement('span');
+            bubble.className = 'presence-bubble';
+            el.appendChild(bubble);
+        }
+        if (auto && bubble.classList.contains('show') && bubble.dataset.auto !== '1') return;
+        bubble.textContent = text;
+        bubble.dataset.auto = auto ? '1' : '';
+        bubble.classList.add('show');
+        clearTimeout(el.bubbleTimer);
+        el.bubbleTimer = setTimeout(() => bubble.classList.remove('show'), ms);
+    }
+
+    renderPresenceBubbles() {
+        const now = Date.now() + (this.serverTimeOffset || 0);
+        Object.entries(this.lastBubbles || {}).forEach(([uid, b]) => {
+            const figure = (this.presenceEyes || {})[uid];
+            if (!figure || !b || typeof b.text !== 'string' || typeof b.at !== 'number') return;
+            const left = this.BUBBLE_MS - (now - b.at);
+            if (left <= 0 || figure.bubbleAt === b.at) return;
+            figure.bubbleAt = b.at;
+            this.showPresenceBubble(figure.el, b.text.slice(0, 10), left);
+        });
+    }
+
+    // ===== 🧍 Omino: popup con la nuvoletta (e più avanti le azioni) =====
+    openAvatarPanel() {
+        this.closeMenu();
+        const preview = document.getElementById('avatarPreview');
+        preview.innerHTML = '';
+        const fig = this.createPresenceFigure(this.userId);
+        fig.style.left = 'calc(50% - 13px)';
+        fig.style.top = '44px';
+        fig.style.transition = 'none';
+        fig.style.cursor = 'default';
+        preview.appendChild(fig);
+        this.avatarPreviewFigure = fig;
+        document.getElementById('avatarBubbleInput').value = '';
+        // L'anteprima è come il tuo omino adesso: se dorme è a letto, e lo diciamo subito
+        const asleep = this.isMyOminoAsleep();
+        fig.classList.toggle('presence-asleep', asleep);
+        this.setAvatarMessage(asleep ? this.AVATAR_ASLEEP_MSG : '', 'info');
+        document.getElementById('avatarModal').style.display = 'flex';
+        document.getElementById('avatarBubbleInput').focus();
+    }
+
+    // ===== Pagina ferma sotto i popup =====
+    // Con un popup aperto la rotellina (o il dito) non deve far scorrere la pagina sotto.
+    // Un osservatore guarda quando un popup compare o sparisce e blocca/sblocca lo scorrimento della pagina.
+    setupScrollLock() {
+        const ids = ['authModal', 'namePromptModal', 'passwordModal', 'modal', 'settingsModal', 'infoModal', 'gifModal',
+            'selectDayModal', 'proposalModal', 'editModal', 'customPopup', 'confirmModal', 'notificationsModal',
+            'adminModal', 'avatarModal', 'userProfileModal', 'cropperModal'];
+        const overlays = ids.map(id => document.getElementById(id)).filter(Boolean);
+        let scheduled = false;
+        const update = () => {
+            scheduled = false;
+            const open = overlays.some(el => getComputedStyle(el).display !== 'none');
+            const value = open ? 'hidden' : '';
+            if (document.documentElement.style.overflow !== value) {
+                document.documentElement.style.overflow = value;
+                document.body.style.overflow = value;
+            }
+        };
+        const observer = new MutationObserver(() => {
+            if (!scheduled) { scheduled = true; requestAnimationFrame(update); }
+        });
+        overlays.forEach(el => observer.observe(el, { attributes: true, attributeFilter: ['style', 'class'] }));
+        update();
+    }
+
+    // Il mio omino dorme? (da solo, oppure Bacheca in background)
+    isMyOminoAsleep() {
+        const mine = (this.presenceEyes || {})[this.userId];
+        return !!(mine && mine.el.classList.contains('presence-asleep'));
+    }
+
+    // Messaggio sotto il campo della nuvoletta: info (grigio), errore (rosso), ok (verde)
+    setAvatarMessage(text, type = 'info') {
+        const el = document.getElementById('avatarBubbleMsg');
+        if (!el) return;
+        el.textContent = text;
+        el.style.display = text ? 'block' : 'none';
+        el.style.color = type === 'error' ? '#c62828' : (type === 'ok' ? '#2e7d32' : '#555');
+    }
+
+    closeAvatarPanel() {
+        document.getElementById('avatarModal').style.display = 'none';
+    }
+
+    sendAvatarBubble() {
+        const input = document.getElementById('avatarBubbleInput');
+        const text = input.value.trim();
+        if (this.isMyOminoAsleep()) {
+            this.setAvatarMessage(this.AVATAR_ASLEEP_MSG, 'error');
+            return;
+        }
+        if (!text) {
+            this.setAvatarMessage('✏️ Scrivi qualcosa da far dire al tuo omino.', 'error');
+            input.focus();
+            return;
+        }
+        if (text.length > 10) {
+            this.setAvatarMessage('✋ Il tuo omino dice al massimo 10 caratteri.', 'error');
+            return;
+        }
+        if (!navigator.onLine) {
+            this.setAvatarMessage('📶 Sei senza connessione: il tuo omino non può parlare. Riprova quando torna la rete.', 'error');
+            return;
+        }
+        this.setAvatarMessage('');
+        database.ref(`bubbles/${this.userId}`).set({ text, at: firebase.database.ServerValue.TIMESTAMP })
+            .then(() => {
+                input.value = '';
+                if (this.avatarPreviewFigure) this.showPresenceBubble(this.avatarPreviewFigure, text, this.BUBBLE_MS);
+                this.setAvatarMessage(`💬 Il tuo omino dice: "${text}" (per 8 secondi)`, 'ok');
+            })
+            .catch(error => {
+                console.error('Nuvoletta dell\'omino', error);
+                const code = String((error && (error.code || error.message)) || '').toUpperCase();
+                this.setAvatarMessage(code.includes('PERMISSION')
+                    ? '🔒 Il tuo omino per ora non può parlare: la Bacheca deve ancora essere aggiornata per le nuvolette. Avvisa l\'amministratore.'
+                    : '📶 Il tuo omino non è riuscito a parlare: controlla la connessione e riprova.', 'error');
+            });
+    }
+
+    setupAvatarListeners() {
+        document.getElementById('avatarBtn').addEventListener('click', () => this.openAvatarPanel());
+        document.getElementById('avatarCloseBtn').addEventListener('click', () => this.closeAvatarPanel());
+        document.getElementById('avatarBubbleSendBtn').addEventListener('click', () => this.sendAvatarBubble());
+        document.getElementById('avatarBubbleInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); this.sendAvatarBubble(); }
+        });
+        document.getElementById('avatarModal').addEventListener('click', (e) => {
+            if (e.target.id === 'avatarModal') this.closeAvatarPanel();
+        });
     }
 
     // Omino del colore dell'utente: saluta con la mano; in pausa resta fermo e sbiadito
     createPresenceFigure(uid) {
-        const color = this.getUserColor(uid).bg;
+        const userColor = this.getUserColor(uid);
+        const color = userColor.bg;
         const delay = (Math.random() * 3).toFixed(2);
         const el = document.createElement('div');
         el.className = 'presence-figure';
         el.setAttribute('role', 'img');
         el.innerHTML = `
-            <svg width="26" height="38" viewBox="0 0 26 38" aria-hidden="true">
-                <circle cx="13" cy="7" r="5.5" fill="${color}" stroke="#fff" stroke-width="1.2"/>
+            <svg class="presence-body" width="26" height="38" viewBox="0 0 26 38" aria-hidden="true">
+                <g class="presence-head">
+                    <circle cx="13" cy="7" r="5.5" fill="${color}" stroke="#fff" stroke-width="1.2"/>
+                    <g class="presence-eyes-open" fill="#fff"><circle cx="11" cy="6.5" r="0.9"/><circle cx="15" cy="6.5" r="0.9"/></g>
+                    <g class="presence-eyes-closed" stroke="#fff" stroke-width="0.9" stroke-linecap="round"><line x1="10" y1="7" x2="12" y2="7"/><line x1="14" y1="7" x2="16" y2="7"/></g>
+                </g>
                 <rect x="7.5" y="13.5" width="11" height="13" rx="4.5" fill="${color}" stroke="#fff" stroke-width="1.2"/>
                 <rect x="8" y="25.5" width="4" height="10" rx="2" fill="${color}" stroke="#fff" stroke-width="1"/>
                 <rect x="14" y="25.5" width="4" height="10" rx="2" fill="${color}" stroke="#fff" stroke-width="1"/>
                 <rect x="3" y="15" width="4" height="9.5" rx="2" fill="${color}" stroke="#fff" stroke-width="1"/>
                 <rect class="presence-wave" style="animation-delay: ${delay}s" x="19" y="6" width="4" height="9.5" rx="2" fill="${color}" stroke="#fff" stroke-width="1"/>
             </svg>
-            <span class="presence-name"></span>`;
-        // Sul telefono: il nome compare al tocco per qualche secondo
-        el.addEventListener('click', () => {
-            el.classList.add('presence-show');
-            clearTimeout(el.hideTimer);
-            el.hideTimer = setTimeout(() => el.classList.remove('presence-show'), 2500);
-        });
+            <span class="presence-name" style="background: ${color}; color: ${userColor.text};"></span>
+            <span class="presence-zzz" aria-hidden="true">💤</span>
+            <svg class="presence-bed-back" viewBox="0 0 44 40" aria-hidden="true">
+                <rect x="0" y="10" width="5" height="26" rx="1.5" fill="#5d4037" stroke="#fff" stroke-width="0.8"/>
+                <rect x="39" y="20" width="4" height="16" rx="1.5" fill="#5d4037" stroke="#fff" stroke-width="0.8"/>
+                <rect x="3" y="25" width="38" height="6" rx="1.5" fill="#f5f5f5" stroke="#fff" stroke-width="0.8"/>
+                <rect x="3" y="30" width="38" height="3" fill="#795548"/>
+                <rect x="4" y="18" width="11" height="7" rx="3" fill="#ffffff" stroke="#ddd" stroke-width="0.6"/>
+            </svg>
+            <svg class="presence-bed-blanket" viewBox="0 0 44 40" aria-hidden="true">
+                <rect x="16" y="13" width="25" height="14" rx="3" fill="${color}" stroke="#fff" stroke-width="1"/>
+                <path d="M18 17 h21" stroke="rgba(255,255,255,0.6)" stroke-width="1"/>
+            </svg>`;
+        el.querySelector('.presence-name').textContent = this.getParticipantName(uid); // subito, serve per trovare un posto
         return el;
     }
 
@@ -3618,42 +3926,80 @@ class BacheaCalendar {
                 if (r.width > 0 && r.height > 0) rects.push(r);
             }
         });
+        // Su PC il benvenuto e i pulsanti (🔔, ⚙️, Installa, Lista) stanno sopra la zona: niente omini lì sotto
+        ['welcomeMessage', 'notificationsBtn', 'menuBtn', 'installBtn', 'viewToggleBtn'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (id === 'welcomeMessage') {
+                const range = document.createRange();
+                range.selectNodeContents(el);
+                for (const r of range.getClientRects()) if (r.width > 0 && r.height > 0) rects.push(r);
+            } else {
+                const r = el.getBoundingClientRect();
+                if (r.width > 0 && r.height > 0) rects.push(r);
+            }
+        });
         return rects;
     }
 
-    isPresenceSpotFree(x, y, obstacles = this.getPresenceObstacles()) {
-        const W = 26, H = 38, M = 6; // dimensioni dell'omino + margine
-        return !obstacles.some(r => x - M < r.right && x + W + M > r.left && y - M < r.bottom && y + H + M > r.top);
+    // Larghezza e altezza dell'etichetta col nome (sopra la testa)
+    getPresenceLabelSize(el) {
+        const label = el && el.querySelector('.presence-name');
+        const w = label && label.offsetWidth ? label.offsetWidth : 60;
+        const h = label && label.offsetHeight ? label.offsetHeight : 16;
+        return { w, h };
     }
 
-    pickPresenceSpot() {
+    // x, y = angolo in alto a sinistra dell'omino (26x38); sopra c'è il nome, centrato
+    isPresenceSpotFree(x, y, obstacles = this.getPresenceObstacles(), label = { w: 60, h: 16 }) {
+        const W = 26, H = 38, M = 6; // dimensioni dell'omino + margine
+        const boxes = [
+            { left: x, right: x + W, top: y, bottom: y + H },
+            { left: x + W / 2 - label.w / 2, right: x + W / 2 + label.w / 2, top: y - label.h - 2, bottom: y }
+        ];
+        return !obstacles.some(r => boxes.some(b => b.left - M < r.right && b.right + M > r.left && b.top - M < r.bottom && b.bottom + M > r.top));
+    }
+
+    pickPresenceSpot(el) {
         const area = document.getElementById('presenceArea');
         if (!area) return null;
         const rect = area.getBoundingClientRect();
-        const maxLeft = rect.width - 26, maxTop = rect.height - 38;
-        if (maxLeft <= 0 || maxTop < 0) return null;
+        const label = this.getPresenceLabelSize(el);
+        // Il nome deve restare dentro la zona: niente omini attaccati ai bordi o in cima
+        const minLeft = Math.max(0, label.w / 2 - 13), maxLeft = rect.width - 26 - minLeft;
+        const minTop = label.h + 2, maxTop = rect.height - 38;
+        if (maxLeft <= minLeft || maxTop < minTop) return null;
         const obstacles = this.getPresenceObstacles();
-        for (let attempt = 0; attempt < 60; attempt++) {
-            const left = Math.random() * maxLeft;
-            const top = Math.random() * maxTop;
+        // Gli altri omini (dove sono o dove stanno andando) con il loro nome: non ci si sovrappone
+        Object.values(this.presenceEyes || {}).forEach(({ el: other }) => {
+            if (other === el || other.style.left === '') return;
+            const x = rect.left + (parseFloat(other.style.left) || 0);
+            const y = rect.top + (parseFloat(other.style.top) || 0);
+            const otherLabel = this.getPresenceLabelSize(other);
+            obstacles.push({ left: x, right: x + 26, top: y, bottom: y + 38 });
+            obstacles.push({ left: x + 13 - otherLabel.w / 2, right: x + 13 + otherLabel.w / 2, top: y - otherLabel.h - 2, bottom: y });
+        });
+        for (let attempt = 0; attempt < 80; attempt++) {
+            const left = minLeft + Math.random() * (maxLeft - minLeft);
+            const top = minTop + Math.random() * (maxTop - minTop);
             // Il controllo usa le coordinate della finestra: zona + posizione nella zona
-            if (this.isPresenceSpotFree(rect.left + left, rect.top + top, obstacles)) {
-                return { left, top, side: top < 30 ? 'top' : 'bottom' };
+            if (this.isPresenceSpotFree(rect.left + left, rect.top + top, obstacles, label)) {
+                return { left, top };
             }
         }
         return null;
     }
 
     movePresenceEye(el, instant) {
-        const spot = this.pickPresenceSpot();
+        if (!instant && el.classList.contains('presence-asleep')) return; // chi dorme non cammina
+        const spot = this.pickPresenceSpot(el);
         if (!spot) {
             el.classList.add('presence-passive'); // nessun posto libero: non intercetta i clic
             return;
         }
         el.classList.remove('presence-passive');
         const fromLeft = parseFloat(el.style.left) || 0;
-        el.style.transform = spot.left < fromLeft ? 'scaleX(-1)' : ''; // si gira verso dove cammina
-        el.querySelector('.presence-name').style.transform = spot.left < fromLeft ? 'translateX(-50%) scaleX(-1)' : '';
+        this.setPresenceFacing(el, spot.left < fromLeft); // si gira verso dove cammina
         if (instant) {
             el.style.transition = 'none';
         } else {
@@ -3661,11 +4007,13 @@ class BacheaCalendar {
             el.style.transition = '';
             el.classList.add('presence-moving');
             clearTimeout(el.movingTimer);
-            el.movingTimer = setTimeout(() => el.classList.remove('presence-moving'), 4200);
+            el.movingTimer = setTimeout(() => {
+                el.classList.remove('presence-moving');
+                this.presenceMeet(el); // c'è qualcuno vicino? si salutano
+            }, 4200);
         }
         el.style.left = `${Math.round(spot.left)}px`;
         el.style.top = `${Math.round(spot.top)}px`;
-        el.dataset.side = spot.side;
     }
 
     // Dopo un ridimensionamento (o un cambio della zona) sotto un omino può esserci qualcosa: si sposta
@@ -3677,8 +4025,14 @@ class BacheaCalendar {
             if (el.classList.contains('presence-moving')) return;
             const left = parseFloat(el.style.left) || 0;
             const top = parseFloat(el.style.top) || 0;
-            const outside = left > rect.width - 26 || top > rect.height - 38;
-            if (outside || !this.isPresenceSpotFree(rect.left + left, rect.top + top)) this.movePresenceEye(el, false);
+            const label = this.getPresenceLabelSize(el);
+            const outside = left > rect.width - 26 || top > rect.height - 38 || top < label.h + 2;
+            if (el.classList.contains('presence-asleep')) {
+                // Chi dorme resta nel suo letto: si sposta solo se è finito fuori dalla zona (finestra rimpicciolita)
+                if (outside) this.movePresenceEye(el, true);
+                return;
+            }
+            if (outside || !this.isPresenceSpotFree(rect.left + left, rect.top + top, undefined, label)) this.movePresenceEye(el, false);
         });
     }
 
@@ -3776,6 +4130,22 @@ class BacheaCalendar {
             .catch(error => this.notifyWriteError('Rimozione del partecipante', error));
     }
 
+    // Nome di chi ha creato la proposta: quello attuale (se lo cambia, si aggiorna), altrimenti quello salvato
+    getProposalCreatorName(proposal) {
+        return (proposal && proposal.creatorId && this.userNames[proposal.creatorId]) || (proposal && proposal.creatorName) || 'Anonimo';
+    }
+
+    // Due dispositivi dello stesso utente: si salvano solo i campi cambiati in questo modulo rispetto a quando
+    // è stato aperto. Così un modulo rimasto aperto sul PC non rimette i valori vecchi cambiati dal telefono.
+    keepChangedFields(fields, original, defaults = {}) {
+        const changed = {};
+        Object.keys(fields).forEach(key => {
+            const before = original && original[key] !== undefined && original[key] !== null ? original[key] : (key in defaults ? defaults[key] : '');
+            if (fields[key] !== before) changed[key] = fields[key];
+        });
+        return changed;
+    }
+
     canManageProposal(proposal) {
         return this.isProposalCreator(proposal) || !!this.isAdmin;
     }
@@ -3799,10 +4169,12 @@ class BacheaCalendar {
     }
 
     async loadAdminData() {
-        const [users, stats, blocked, presence] = await Promise.all(
-            ['users', 'stats', 'blocked', 'presence'].map(path =>
+        const [users, stats, blocked, presence, roles] = await Promise.all(
+            ['users', 'stats', 'blocked', 'presence', 'roles'].map(path =>
                 database.ref(path).once('value').then(s => s.val() || {}).catch(() => ({}))));
-        this.adminData = { users, stats, blocked, presence };
+        // Con le regole vecchie "roles" non si legge tutto insieme: almeno io risulto amministratore
+        if (this.isAdmin && !roles[this.userId]) roles[this.userId] = 'admin';
+        this.adminData = { users, stats, blocked, presence, roles };
     }
 
     showAdminTab(tab) {
@@ -3826,13 +4198,15 @@ class BacheaCalendar {
     renderAdminPanel() {
         const content = document.getElementById('adminContent');
         if (!content || !this.adminData) return;
-        const { users, stats, blocked, presence } = this.adminData;
+        const { users, stats, blocked, presence, roles = {} } = this.adminData;
         const esc = (t) => this.escapeHtml(t);
 
         if (this.adminTab === 'users') {
+            // Prima gli amministratori, poi tutti gli altri; dentro ogni gruppo per ultimo accesso
+            const isAdminUid = (uid) => roles[uid] === 'admin';
             const rows = Object.entries(users)
                 .map(([uid, user]) => ({ uid, user, s: stats[uid] || {} }))
-                .sort((a, b) => (b.s.lastActiveAt || 0) - (a.s.lastActiveAt || 0));
+                .sort((a, b) => (isAdminUid(b.uid) - isAdminUid(a.uid)) || ((b.s.lastActiveAt || 0) - (a.s.lastActiveAt || 0)));
             const last30 = new Date(); last30.setDate(last30.getDate() - 30);
             const from = this.getDateKey(last30);
             content.innerHTML = rows.map(({ uid, user, s }) => {
@@ -3843,7 +4217,7 @@ class BacheaCalendar {
                 return `
                     <div class="admin-user" style="border-left: 5px solid ${this.getUserColor(uid).bg}; ${isBlocked ? 'opacity: 0.6;' : ''}">
                         <div style="display:flex; justify-content:space-between; gap:8px; align-items:baseline;">
-                            <strong>${esc(user.name || '?')}${uid === this.userId ? ' (tu)' : ''}</strong>
+                            <strong>${esc(user.name || '?')}${uid === this.userId ? ' (tu)' : ''}${isAdminUid(uid) ? ' <span style="font-size:0.75rem; font-weight:600; color:#c62828; background:#ffebee; border-radius:6px; padding:1px 6px;">🛠️ Amministratore</span>' : ''}</strong>
                             <span style="font-size:0.8rem; color:${online ? '#2e7d32' : '#888'};">${online ? '● collegato' : esc(this.formatAgo(s.lastActiveAt))}</span>
                         </div>
                         <div style="font-size:0.8rem; color:#666;">@${esc(user.username || '?')} · registrato il ${esc(registered)}${isBlocked ? ' · <b style="color:#c62828">BLOCCATO</b>' : ''}</div>
@@ -4094,7 +4468,7 @@ class BacheaCalendar {
             if (eventId) {
                 this.updateNoteBadge(noteEl, eventId);
                 // Aggiorna anche il badge nella lista
-                const listEl = document.querySelector(`.event-item[data-event-id="${eventId}"]`);
+                const listEl = document.querySelector(`.event-item[data-event-id="${CSS.escape(eventId)}"]`);
                 if (listEl) {
                     this.updateListEventBadge(listEl, eventId);
                 }
@@ -4243,7 +4617,7 @@ class BacheaCalendar {
 
         // Aggiorna il colore
         this.selectedColor = note.color || 'color-yellow';
-        const colorRadio = document.querySelector(`input[name="editEventColor"][data-color="${this.selectedColor}"]`);
+        const colorRadio = document.querySelector(`input[name="editEventColor"][data-color="${CSS.escape(this.selectedColor || '')}"]`);
         if (colorRadio) {
             colorRadio.checked = true;
         }
@@ -4267,6 +4641,7 @@ class BacheaCalendar {
 
         this.editingNote = { id: eventId, dateKey: note.date };
 
+        this.editOriginal = JSON.parse(JSON.stringify(note)); // com'era l'evento all'apertura del modulo
         document.getElementById('editTitle').value = note.title || '';
         this.setEditDateField(note.date);
         document.getElementById('editTime').value = note.time || '';
@@ -4289,7 +4664,7 @@ class BacheaCalendar {
 
         // Set colore - mantieni il colore originale come default
         this.selectedColor = note.color || 'color-yellow';
-        const colorRadio = document.querySelector(`input[name="editEventColor"][data-color="${this.selectedColor}"]`);
+        const colorRadio = document.querySelector(`input[name="editEventColor"][data-color="${CSS.escape(this.selectedColor || '')}"]`);
         if (colorRadio) {
             colorRadio.checked = true;
         }
@@ -4511,7 +4886,7 @@ class BacheaCalendar {
 
     updateCalendarBadge(eventId) {
         // Trova il post-it nel calendario e aggiorna il badge
-        const noteEl = document.querySelector(`[data-event-id="${eventId}"]`);
+        const noteEl = document.querySelector(`[data-event-id="${CSS.escape(eventId)}"]`);
         if (noteEl) {
             this.updateNoteBadge(noteEl, eventId);
         }
@@ -4665,9 +5040,16 @@ class BacheaCalendar {
             color: this.selectedColor,
             link: link.error ? (current.link || '') : link.value
         };
-        if (isMoving) fields.date = newDateKey;
+        // Solo ciò che è stato cambiato in questo modulo (vedi keepChangedFields)
+        const changed = this.keepChangedFields(fields, this.editOriginal, { fee: 0, color: 'color-yellow' });
+        if (isMoving) changed.date = newDateKey;
+        if (!Object.keys(changed).length) {
+            this.closeEditModal();
+            setTimeout(() => this.showSuccessPopup('Nessuna modifica da salvare'), 100);
+            return;
+        }
 
-        this.updateEvent(current.id, fields);
+        this.updateEvent(current.id, changed);
         this.closeEditModal();
         const message = isMoving
             ? `Evento spostato a ${this.formatDateKey(newDateKey)}`
@@ -5069,6 +5451,7 @@ class BacheaCalendar {
         this.proposalImageData = null;
         this.proposalImageRemoved = false;
 
+        this.proposalEditOriginal = JSON.parse(JSON.stringify(proposal)); // com'era all'apertura della modifica
         const form = document.getElementById('proposalCreateForm');
         form.reset();
         document.getElementById('proposalTitle').value = proposal.title || '';
@@ -5076,7 +5459,7 @@ class BacheaCalendar {
         document.getElementById('proposalNotes').value = proposal.notes || '';
         this.setFeeInput('proposal', proposal.fee);
         this.renderProposalLink(proposal.link || '');
-        const colorRadio = document.querySelector(`input[name="proposalColor"][data-color="${proposal.color || 'color-neutral'}"]`);
+        const colorRadio = document.querySelector(`input[name="proposalColor"][data-color="${CSS.escape(proposal.color || 'color-neutral')}"]`);
         if (colorRadio) colorRadio.checked = true;
         this.updateCategoryDisplay('proposalCategorySelect');
         this.closeCategorySelects();
@@ -5114,6 +5497,9 @@ class BacheaCalendar {
             link: link !== undefined ? link : (this.currentProposalLink || ''),
             color: color
         };
+        // Solo ciò che è stato cambiato in questo modulo (vedi keepChangedFields)
+        const changedFields = this.keepChangedFields(fields, this.proposalEditOriginal, { fee: 0, color: 'color-neutral' });
+        Object.keys(fields).forEach(key => { if (!(key in changedFields)) delete fields[key]; });
 
         let imageSaved = Promise.resolve();
         if (this.proposalImageData) {
@@ -5258,7 +5644,7 @@ class BacheaCalendar {
             details.push(`🌐 <a href="${this.escapeHtml(proposalUrl)}" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: underline;">Vai sul sito</a>`);
         }
         if (proposal.notes) details.push(`📝 ${this.escapeHtml(proposal.notes).replace(/\n/g, '<br>')}`);
-        details.push(`👤 Proposta da: ${this.escapeHtml(proposal.creatorName || 'Anonimo')}`);
+        details.push(`👤 Proposta da: ${this.escapeHtml(this.getProposalCreatorName(proposal))}`);
         document.getElementById('proposalDetails').innerHTML = details.map(d => `<div style="margin-bottom: 4px;">${d}</div>`).join('');
 
         const isCreator = this.canManageProposal(proposal);

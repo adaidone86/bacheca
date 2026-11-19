@@ -179,6 +179,7 @@
       }
     },
     "roles": {
+      ".read": "auth != null && root.child('roles/' + auth.uid).val() === 'admin' && !root.child('blocked/' + auth.uid).exists()",
       "$uid": {
         ".read": "auth != null && (auth.uid === $uid || root.child('roles/' + auth.uid).val() === 'admin')"
       }
@@ -253,6 +254,22 @@
           "$day": {
             ".validate": "$day.matches(/^\\d{4}-\\d{2}-\\d{2}$/) && newData.val() === true"
           }
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "bubbles": {
+      ".read": "auth != null && !root.child('blocked/' + auth.uid).exists()",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid && !root.child('blocked/' + auth.uid).exists()",
+        ".validate": "newData.hasChildren(['text', 'at'])",
+        "text": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 10"
+        },
+        "at": {
+          ".validate": "newData.isNumber()"
         },
         "$other": {
           ".validate": false

@@ -175,6 +175,7 @@ try:
     check('B si dà il ruolo di admin', 'bloccato', B, 'PUT', f'roles/{B["uid"]}', 'admin')
     check('B legge il proprio ruolo', 'permesso', B, 'GET', f'roles/{B["uid"]}')
     check('B legge il ruolo di A', 'bloccato', B, 'GET', f'roles/{A["uid"]}')
+    check('B legge tutti i ruoli', 'bloccato', B, 'GET', 'roles')
     check('B blocca A', 'bloccato', B, 'PUT', f'blocked/{A["uid"]}', True)
     check('B legge chi è bloccato', 'bloccato', B, 'GET', 'blocked')
     check('B controlla se è bloccato', 'permesso', B, 'GET', f'blocked/{B["uid"]}')
@@ -190,6 +191,15 @@ try:
     check('B legge le statistiche di tutti', 'bloccato', B, 'GET', 'stats')
     check('B legge le proprie statistiche', 'permesso', B, 'GET', f'stats/{B["uid"]}')
 
+    # Nuvolette degli omini (0.5.1): bubbles/{uid} = {text <= 10, at}
+    check('B fa parlare il suo omino', 'permesso', B, 'PUT', f'bubbles/{B["uid"]}', {'text': 'Ciao a tut', 'at': now})
+    check('Nuvoletta di 11 caratteri', 'bloccato', B, 'PUT', f'bubbles/{B["uid"]}', {'text': 'Ciao a tutt', 'at': now})
+    check('Nuvoletta vuota', 'bloccato', B, 'PUT', f'bubbles/{B["uid"]}', {'text': '', 'at': now})
+    check('Nuvoletta senza ora', 'bloccato', B, 'PUT', f'bubbles/{B["uid"]}', {'text': 'ciao'})
+    check('Nuvoletta con campo sconosciuto', 'bloccato', B, 'PUT', f'bubbles/{B["uid"]}', {'text': 'ciao', 'at': now, 'x': 1})
+    check('B fa parlare l\'omino di A', 'bloccato', B, 'PUT', f'bubbles/{A["uid"]}', {'text': 'finto', 'at': now})
+    check('A legge le nuvolette', 'permesso', A, 'GET', 'bubbles')
+
     # Amministratore (solo con BACHECA_ADMIN_USER / BACHECA_ADMIN_PASS)
     if ADM:
         aid = f'claudetesta_{now}'
@@ -203,6 +213,7 @@ try:
         check('Admin toglie B dai partecipanti', 'permesso', ADM, 'DELETE', f'events/{aid}/participants/{B["uid"]}')
         check('Admin legge tutte le statistiche', 'permesso', ADM, 'GET', 'stats')
         check('Admin legge chi è bloccato', 'permesso', ADM, 'GET', 'blocked')
+        check('Admin legge tutti i ruoli', 'permesso', ADM, 'GET', 'roles')
         check('Admin rinomina B', 'permesso', ADM, 'PUT', f'users/{B["uid"]}/name', 'Rinominat')
         check('Admin pubblica un avviso', 'permesso', ADM, 'PUT', 'settings/announcement', {'text': 'Prova avviso', 'updatedAt': now})
         check('Avviso di 201 caratteri', 'bloccato', ADM, 'PUT', 'settings/announcement', {'text': 'A' * 201, 'updatedAt': now})
@@ -238,6 +249,17 @@ finally:
         http('DELETE', f'{DB}/chatReadStatus/{u["uid"]}.json?auth={u["token"]}')
         http('DELETE', f'{DB}/users/{u["uid"]}.json?auth={u["token"]}')
         http('DELETE', f'{DB}/stats/{u["uid"]}.json?auth={u["token"]}')
+        http('DELETE', f'{DB}/bubbles/{u["uid"]}.json?auth={u["token"]}')
+    # Eventi e proposte di prova ancora presenti (prova interrotta o fallita): li toglie chi li ha creati,
+    # altrimenti l'admin. Senza questa pulizia restavano su TEST (titoli "TTTT…" che allargavano la pagina)
+    for node in ('events', 'proposals'):
+        st, items = db(A, 'GET', f'{node}')
+        for key, item in (items or {}).items():
+            if not key.startswith('claudetest') or not isinstance(item, dict):
+                continue
+            owner = A if item.get('creatorId') == A['uid'] else (B if item.get('creatorId') == B['uid'] else ADM)
+            if owner:
+                db(owner, 'PATCH', '', {f'{node}/{key}': None, f'eventChats/{key}': None, f'eventImages/{key}': None})
     left = []
     for path in [f'events/{eid}', f'proposals/{pid}', f'eventChats/{eid}', f'eventChats/{pid}', f'eventImages/{eid}', f'events/{fid}', f'proposals/{fid}', f'eventChats/{fid}']:
         st, val = db(A, 'GET', path)

@@ -67,6 +67,7 @@
                     <button id="installBtn" style="display: none; background: #4CAF50; padding: 8px 16px; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.9rem;">⬇️ Installa app</button>
                     <div id="menuDropdown" style="display: none; position: absolute; top: 100%; right: 0; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); min-width: 200px; z-index: 1000; margin-top: 5px;">
                         <button id="userProfileBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #2196f3; font-weight: 600; border-bottom: 1px solid #eee; transition: background 0.2s;">👤 Utente</button>
+                        <button id="avatarBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">🧍 Omino</button>
                         <button id="settingsBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">🎨 Visualizzazione</button>
                         <button id="guideBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">📖 Modo d'uso</button>
                         <button id="infoBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">ℹ️ Info</button>
@@ -225,6 +226,13 @@
         /* Campi che non vanno bene (0.5.0): bordo rosso e spiegazione sotto */
         .field-error { border-color: #e53935 !important; background: #fff5f5 !important; }
         .field-error-msg { display: block; background: #fff; color: #c62828; border-left: 3px solid #e53935; border-radius: 6px; padding: 4px 8px; margin: 4px 0 8px; font-size: 0.8rem; font-weight: 600; text-align: left; line-height: 1.3; }
+        /* Popup: lo scorrimento dentro il popup non passa alla pagina sotto; la barra di scorrimento non fa saltare la pagina */
+        html { scrollbar-gutter: stable; }
+        /* Testi lunghi senza spazi (link, parole lunghissime) vanno a capo invece di allargare la pagina:
+           sul telefono si poteva scorrere a destra all'infinito */
+        body { overflow-wrap: anywhere; }
+        html, body { overflow-x: clip; }
+        .modal-content, .info-content, .settings-content, #adminContent, #notificationsModal > div { overscroll-behavior: contain; }
         /* Visualizzazione: Calendario / Lista */
         .view-choice { display: flex; gap: 8px; }
         .view-choice-btn { flex: 1; padding: 10px; border: 2px solid #667eea; background: white; color: #667eea; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.95rem; }
@@ -260,16 +268,50 @@
         /* Gli omini stanno SOTTO i pulsanti dell'intestazione (che hanno z-index 10): i pulsanti restano sempre cliccabili */
         #presenceLayer { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
         #presenceArea h1, #presenceArea p { position: relative; z-index: 2; }
-        .presence-figure { position: absolute; pointer-events: auto; cursor: pointer; transition: left 4s linear, top 4s linear; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.35)); }
+        .presence-figure { position: absolute; pointer-events: auto; cursor: pointer; transition: left 4s linear, top 4s linear, opacity 0.3s; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.35)); }
         .presence-wave { transform-box: fill-box; transform-origin: 50% 100%; animation: presence-wave 2.4s infinite ease-in-out; }
         @keyframes presence-wave { 0%, 60%, 100% { transform: rotate(0deg); } 70% { transform: rotate(-25deg); } 80% { transform: rotate(20deg); } 90% { transform: rotate(-25deg); } }
-        .presence-moving svg { animation: presence-hop 0.45s infinite ease-in-out; }
+        .presence-moving .presence-body { animation: presence-hop 0.45s infinite ease-in-out; }
         @keyframes presence-hop { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
-        .presence-asleep .presence-wave, .presence-asleep svg { animation: none; }
-        .presence-asleep svg { opacity: 0.5; }
-        .presence-name { position: absolute; left: 50%; bottom: calc(100% + 4px); transform: translateX(-50%); background: #fff; color: #333; font-size: 0.8rem; font-weight: 600; padding: 3px 8px; border-radius: 6px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.2); opacity: 0; pointer-events: none; transition: opacity 0.15s; }
-        .presence-figure[data-side="top"] .presence-name { bottom: auto; top: calc(100% + 4px); }
-        .presence-figure:hover .presence-name, .presence-figure.presence-show .presence-name { opacity: 1; }
+        .presence-asleep .presence-body { animation: none; opacity: 0.9; }
+        /* In pausa dorme: occhi chiusi, testa piegata, braccio giù e 💤 che sale */
+        .presence-eyes-closed { display: none; }
+        .presence-asleep .presence-eyes-open { display: none; }
+        .presence-asleep .presence-eyes-closed { display: inline; }
+        .presence-head { transform-box: fill-box; transform-origin: 50% 100%; transition: transform 0.4s; }
+        .presence-asleep .presence-head { transform: rotate(18deg) translateY(1px); }
+        .presence-asleep .presence-wave { animation: none; transform: rotate(160deg); }
+        .presence-zzz { display: none; position: absolute; left: -6px; top: 0; font-size: 0.7rem; pointer-events: none; z-index: 3; }
+        /* Letto: quando dorme si sdraia (l'omino ruota) sotto la coperta del suo colore; quando si sveglia si alza */
+        .presence-body { position: relative; z-index: 1; transition: transform 0.6s ease-in-out; }
+        .presence-asleep .presence-body { transform: rotate(-90deg); }
+        .presence-bed-back, .presence-bed-blanket { position: absolute; left: -9px; top: 0; width: 44px; height: 40px; pointer-events: none; opacity: 0; transition: opacity 0.5s; }
+        .presence-bed-back { z-index: 0; }
+        .presence-bed-blanket { z-index: 2; transition: opacity 0.4s, transform 0.4s; transform: translateY(-5px); }
+        .presence-asleep .presence-bed-back { opacity: 1; }
+        .presence-asleep .presence-bed-blanket { opacity: 1; transform: none; transition-delay: 0.4s; }
+        .presence-asleep .presence-zzz { display: block; animation: presence-zzz 2.6s infinite ease-out; }
+        @keyframes presence-zzz { 0% { opacity: 0; transform: translateY(4px) scale(0.7); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateY(-14px) scale(1.1); } }
+        /* Si incontrano: salutano più in fretta */
+        .presence-greet .presence-wave { animation-duration: 0.8s; animation-delay: 0s !important; }
+        /* Nuvoletta: quello che l'utente fa dire al suo omino (e il 👋 quando si incontrano) */
+        .presence-bubble { position: absolute; left: 50%; bottom: calc(100% + 22px); transform: translateX(-50%); background: #fff; color: #333; font-size: 0.75rem; font-weight: 600; line-height: 1.2; padding: 2px 8px; border-radius: 10px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.25); pointer-events: none; opacity: 0; transition: opacity 0.2s; }
+        .presence-bubble::after { content: ''; position: absolute; left: 50%; top: 100%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: #fff; }
+        .presence-bubble.show { opacity: 1; }
+        /* Girato verso sinistra: il disegno si specchia, nome e nuvoletta no */
+        .presence-flipped .presence-name, .presence-flipped .presence-bubble { transform: translateX(-50%) scaleX(-1); }
+        /* Porta da cui si entra e si esce */
+        .presence-figure.presence-hidden { opacity: 0; }
+        .presence-door { position: absolute; pointer-events: none; opacity: 0; transition: opacity 0.25s; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.35)); }
+        .presence-door.show { opacity: 1; }
+        .presence-door-panel { transform-box: fill-box; transform-origin: 0% 50%; transition: transform 0.35s ease-in-out; }
+        .presence-door.open .presence-door-panel { transform: scaleX(0.15); }
+        .presence-figure.presence-leaving { pointer-events: none; }
+        /* Nome sempre visibile sopra la testa, nel colore dell'utente */
+        .presence-name { position: absolute; left: 50%; bottom: calc(100% + 2px); transform: translateX(-50%); font-size: 0.7rem; font-weight: 700; line-height: 1.2; padding: 1px 6px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.85); white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,0.25); pointer-events: none; }
+        .presence-asleep .presence-name { opacity: 0.6; }
+        /* Telefono: la zona del titolo è stretta; un po' di spazio in più sotto il sottotitolo per omini e nomi */
+        @media (max-width: 767px) { #presenceArea { min-height: 180px !important; } }
         .presence-figure.presence-moving { pointer-events: none; }
         .presence-figure.presence-passive { pointer-events: none; opacity: 0.45; }
     </style>
@@ -928,6 +970,28 @@
                 <button type="button" class="admin-tab" data-tab="app">⚙️ App</button>
             </div>
             <div id="adminContent" style="overflow-y: auto; flex: 1;"></div>
+        </div>
+    </div>
+
+    <!-- 🧍 Omino: nuvoletta con un messaggio breve (bubbles/{uid}) e, più avanti, le azioni -->
+    <div id="avatarModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 10001; align-items: center; justify-content: center;">
+        <div class="modal-content" style="max-width: 400px; width: calc(100% - 24px); box-sizing: border-box; background: white; border-radius: 12px; padding: 24px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);">
+            <h2 style="margin: 0 0 12px; color: #333; font-size: 1.4rem; text-align: center;">🧍 Il tuo omino</h2>
+            <div id="avatarPreview" style="position: relative; height: 96px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 10px; margin-bottom: 16px; overflow: visible;"></div>
+            <div style="background: #f5f5f5; padding: 14px; border-radius: 8px; margin-bottom: 12px;">
+                <strong style="color: #555;">💬 Fai parlare il tuo omino</strong>
+                <p style="margin: 4px 0 10px; font-size: 0.8rem; color: #777;">Chi è collegato vedrà la nuvoletta sopra il tuo omino per 8 secondi (al massimo 10 caratteri).</p>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="avatarBubbleInput" maxlength="10" placeholder="Es: Ciao! 👋" style="flex: 1; min-width: 0; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 0.95rem; box-sizing: border-box;">
+                    <button type="button" id="avatarBubbleSendBtn" style="padding: 10px 16px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">Invia</button>
+                </div>
+                <p id="avatarBubbleMsg" style="display: none; margin: 8px 0 0; font-size: 0.85rem; font-weight: 600;"></p>
+            </div>
+            <div style="background: #f5f5f5; padding: 14px; border-radius: 8px; margin-bottom: 16px;">
+                <strong style="color: #555;">🎭 Azioni</strong>
+                <p style="margin: 4px 0 0; font-size: 0.85rem; color: #999;">In arrivo…</p>
+            </div>
+            <button type="button" id="avatarCloseBtn" style="width: 100%; padding: 12px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">Chiudi</button>
         </div>
     </div>
 
