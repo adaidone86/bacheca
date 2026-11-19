@@ -9,7 +9,7 @@
           ".validate": "newData.isString() && newData.val().matches(/^[a-z0-9._-]{3,20}$/)"
         },
         "name": {
-          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 40"
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 10"
         }
       }
     },
@@ -22,7 +22,7 @@
           ".validate": "newData.isString() && newData.val().matches(/^\\d{4}-\\d{2}-\\d{2}$/)"
         },
         "title": {
-          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 200"
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100"
         },
         "participants": {
           "$uid": {
@@ -31,7 +31,37 @@
           }
         },
         "fee": {
-          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100000"
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 999"
+        },
+        "time": {
+          ".validate": "newData.isString() && newData.val().length <= 30"
+        },
+        "location": {
+          ".validate": "newData.isString() && newData.val().length <= 200"
+        },
+        "notes": {
+          ".validate": "newData.isString() && newData.val().length <= 500"
+        },
+        "link": {
+          ".validate": "newData.isString() && newData.val().length <= 500"
+        },
+        "color": {
+          ".validate": "newData.isString() && newData.val().matches(/^color-[a-z]{2,20}$/)"
+        },
+        "imageVersion": {
+          ".validate": "newData.isNumber()"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "creatorId": {
+          ".validate": "newData.isString() && newData.val().length <= 128"
+        },
+        "id": {
+          ".validate": "newData.isString()"
+        },
+        "$other": {
+          ".validate": false
         }
       }
     },
@@ -39,17 +69,17 @@
       ".read": "auth != null",
       "$eventId": {
         ".write": "auth != null && (root.child('events/' + $eventId).exists() ? root.child('events/' + $eventId + '/creatorId').val() === auth.uid : (root.child('proposals/' + $eventId).exists() ? root.child('proposals/' + $eventId + '/creatorId').val() === auth.uid : true))",
-        ".validate": "newData.isString() && newData.val().beginsWith('data:image/') && newData.val().length < 3000000"
+        ".validate": "newData.isString() && newData.val().beginsWith('data:image/') && newData.val().length < 100000"
       }
     },
     "eventChats": {
       ".read": "auth != null",
       "$chatId": {
-        ".write": "auth != null && !newData.exists() && (root.child('events/' + $chatId).exists() ? root.child('events/' + $chatId + '/creatorId').val() === auth.uid : (root.child('proposals/' + $chatId).exists() ? root.child('proposals/' + $chatId + '/creatorId').val() === auth.uid : true))",
+        ".write": "auth != null && !newData.exists() && !newData.parent().parent().child('events/' + $chatId).exists() && !newData.parent().parent().child('proposals/' + $chatId).exists() && (root.child('events/' + $chatId).exists() ? root.child('events/' + $chatId + '/creatorId').val() === auth.uid : (root.child('proposals/' + $chatId).exists() ? root.child('proposals/' + $chatId + '/creatorId').val() === auth.uid : true))",
         "messages": {
           "$messageId": {
             ".write": "auth != null && !data.exists() && newData.exists() && (root.child('events/' + $chatId).exists() ? root.child('events/' + $chatId + '/participants/' + auth.uid).val() === true : root.child('proposals/' + $chatId).exists())",
-            ".validate": "newData.hasChildren(['deviceId', 'name', 'text', 'timestamp']) && newData.child('deviceId').val() === auth.uid && newData.child('text').isString() && newData.child('text').val().length <= 2000"
+            ".validate": "newData.hasChildren(['deviceId', 'name', 'text', 'timestamp']) && newData.child('deviceId').val() === auth.uid && newData.child('text').isString() && newData.child('text').val().length <= 300"
           }
         }
       }
@@ -69,15 +99,64 @@
         ".write": "auth != null && (data.exists() ? data.child('creatorId').val() === auth.uid : newData.child('creatorId').val() === auth.uid)",
         "dateOptions": {
           "$optionKey": {
-            ".write": "auth != null"
+            ".write": "auth != null && (!data.exists() ? newData.child('addedById').val() === auth.uid : (data.child('addedById').val() === auth.uid || root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid))",
+            ".validate": "$optionKey.matches(/^\\d{4}-\\d{2}-\\d{2}(_\\d{4})?$/) && newData.hasChildren(['addedById', 'createdAt']) && newData.child('addedBy').isString() && newData.child('addedBy').val().length <= 40 && newData.child('createdAt').isNumber()",
+            "$other": {
+              ".validate": "$other === 'addedBy' || $other === 'addedById' || $other === 'createdAt'"
+            }
           }
         },
         "votes": {
           "$optionKey": {
+            ".validate": "$optionKey.matches(/^\\d{4}-\\d{2}-\\d{2}(_\\d{4})?$/)",
             "$voter": {
-              ".write": "auth != null && auth.uid === $voter"
+              ".write": "auth != null && auth.uid === $voter",
+              ".validate": "newData.child('deviceId').val() === $voter && newData.child('name').isString() && newData.child('name').val().length <= 40"
             }
           }
+        },
+        ".validate": "newData.hasChildren(['id', 'title', 'creatorId']) && newData.child('id').val() === $proposalId && (!data.exists() || newData.child('creatorId').val() === data.child('creatorId').val())",
+        "id": {
+          ".validate": "newData.isString()"
+        },
+        "title": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100"
+        },
+        "time": {
+          ".validate": "newData.isString() && newData.val().length <= 30"
+        },
+        "location": {
+          ".validate": "newData.isString() && newData.val().length <= 200"
+        },
+        "notes": {
+          ".validate": "newData.isString() && newData.val().length <= 500"
+        },
+        "link": {
+          ".validate": "newData.isString() && newData.val().length <= 500"
+        },
+        "color": {
+          ".validate": "newData.isString() && newData.val().matches(/^color-[a-z]{2,20}$/)"
+        },
+        "fee": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 999"
+        },
+        "imageVersion": {
+          ".validate": "newData.isNumber()"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "creatorId": {
+          ".validate": "newData.isString() && newData.val().length <= 128"
+        },
+        "creatorName": {
+          ".validate": "newData.isString() && newData.val().length <= 10"
+        },
+        "fixedDate": {
+          ".validate": "newData.isString() && newData.val().length <= 20"
+        },
+        "$other": {
+          ".validate": false
         }
       }
     },

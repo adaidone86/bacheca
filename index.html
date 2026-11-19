@@ -118,6 +118,8 @@
         .auth-form input { width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 1rem; box-sizing: border-box; }
         .auth-form input:focus { outline: none; border-color: #667eea; }
         .auth-form .hint { font-size: 0.8rem; color: #888; margin: 4px 0 0 0; }
+        .auth-form .hint.hint-ok { color: #2e7d32; }
+        .auth-form .hint.hint-error { color: #c62828; }
         .auth-error { display: none; background: #ffebee; color: #c62828; padding: 10px 12px; border-radius: 8px; margin: 0 0 14px 0; font-size: 0.9rem; }
     </style>
     <div class="modal" id="authModal" style="z-index: 10000 !important;">
@@ -148,20 +150,22 @@
                 <div class="form-group">
                     <label for="registerUsername">Username</label>
                     <input type="text" id="registerUsername" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="20">
-                    <p class="hint">Da 3 a 20 caratteri: lettere, numeri, punto, trattino, _</p>
+                    <p class="hint" id="registerUsernameHint">Da 3 a 20 caratteri: lettere, numeri, punto (.), trattino (-) e _. Serve per entrare.</p>
                 </div>
                 <div class="form-group">
                     <label for="registerName">Nome visualizzato</label>
-                    <input type="text" id="registerName" maxlength="40" placeholder="Come ti vedono gli altri (facoltativo)">
+                    <input type="text" id="registerName" maxlength="10" required placeholder="Es: Ely, Maria, Ugo">
+                    <p class="hint" id="registerNameHint">Obbligatorio: un nome breve, fino a 10 caratteri (es. Ely, Maria, Ugo).</p>
                 </div>
                 <div class="form-group">
                     <label for="registerPassword">Password</label>
                     <input type="password" id="registerPassword" autocomplete="new-password">
-                    <p class="hint">Almeno 6 caratteri</p>
+                    <p class="hint" id="registerPasswordHint">Almeno 6 caratteri.</p>
                 </div>
                 <div class="form-group">
                     <label for="registerPasswordConfirm">Ripeti la password</label>
                     <input type="password" id="registerPasswordConfirm" autocomplete="new-password">
+                    <p class="hint" id="registerPasswordConfirmHint">Scrivi di nuovo la stessa password.</p>
                 </div>
                 <div class="modal-buttons">
                     <button type="submit" class="btn-save" style="background: #4CAF50 !important;">Crea account</button>
@@ -176,7 +180,7 @@
             <div class="modal-header" style="text-align: center;">👤 Il tuo nome</div>
             <form id="namePromptForm" style="padding: 20px 30px;">
                 <div class="form-group">
-                    <input type="text" id="nameInput" maxlength="40" placeholder="Come ti vedono gli altri">
+                    <input type="text" id="nameInput" maxlength="10" placeholder="Es: Ely, Maria, Ugo">
                 </div>
                 <div class="modal-buttons">
                     <button type="submit" class="btn-save" style="background: #4CAF50 !important;">Salva</button>
@@ -213,6 +217,14 @@
     </div>
 
     <!-- Modal per aggiungere nota -->
+    <!-- Avvisi non invasivi (showToast): in basso al centro, spariscono da soli -->
+    <style>
+        #toastBox { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 20000; display: flex; flex-direction: column; gap: 8px; width: min(92vw, 460px); pointer-events: none; }
+        .toast { pointer-events: auto; cursor: pointer; padding: 10px 14px; border-radius: 10px; font-size: 0.9rem; line-height: 1.35; color: #fff; background: #333; box-shadow: 0 4px 14px rgba(0,0,0,0.25); border-left: 5px solid #ff9800; animation: toast-in 0.2s ease-out; }
+        .toast-info { border-left-color: #64b5f6; }
+        @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    </style>
+
     <!-- Presenza: omini degli utenti collegati nella zona del titolo (#presenceArea) -->
     <style>
         /* Gli omini stanno SOTTO i pulsanti dell'intestazione (che hanno z-index 10): i pulsanti restano sempre cliccabili */
@@ -260,7 +272,7 @@
                             <button type="button" id="eventLinkModifyBtn" style="flex: 1; min-width: 0; height: 40px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: white; background: #FF9800;">🔗 Aggiungi link</button>
                         </div>
                         <div id="eventLinkInputContainer" style="display: none; gap: 6px; align-items: center;">
-                            <input type="url" id="eventLink" placeholder="https://..." style="flex: 1; min-width: 0; height: 40px; padding: 0 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 0.95rem; box-sizing: border-box;">
+                            <input type="url" id="eventLink" maxlength="500" placeholder="https://..." style="flex: 1; min-width: 0; height: 40px; padding: 0 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 0.95rem; box-sizing: border-box;">
                             <button type="button" id="eventLinkSaveBtn" title="Salva link" style="flex: 0 0 auto; height: 40px; padding: 0 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #4CAF50; color: white;">✅</button>
                             <button type="button" id="eventLinkDeleteBtn" title="Elimina link" style="flex: 0 0 auto; height: 40px; padding: 0 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #f44336; color: white;">🗑️</button>
                             <button type="button" id="eventLinkCancelBtn" title="Annulla" style="flex: 0 0 auto; height: 40px; padding: 0 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #ccc; color: #333;">✖</button>
@@ -269,7 +281,7 @@
 
                     <div class="form-group">
                         <label for="eventTitle">📌 Nome evento</label>
-                        <input type="text" id="eventTitle" placeholder="Es: SAGRA DEL TORTELLO" required>
+                        <input type="text" id="eventTitle" maxlength="100" placeholder="Es: SAGRA DEL TORTELLO" required>
                     </div>
 
                     <div class="edit-row">
@@ -286,7 +298,7 @@
                     <div class="edit-row">
                         <div class="form-group">
                             <label for="eventLocation">📍 Luogo</label>
-                            <input type="text" id="eventLocation" placeholder="Es: Parco dell'Oliveta">
+                            <input type="text" id="eventLocation" maxlength="200" placeholder="Es: Parco dell'Oliveta">
                         </div>
                         <div class="form-group">
                             <label>🎨 Categoria</label>
@@ -333,14 +345,14 @@
                     <div class="form-group">
                         <label for="eventFee">💶 Quota</label>
                         <div style="position: relative;">
-                            <input type="text" id="eventFee" inputmode="decimal" placeholder="Gratis" style="padding-right: 28px;">
+                            <input type="text" id="eventFee" maxlength="6" inputmode="decimal" placeholder="Gratis" style="padding-right: 28px;">
                             <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: #666; pointer-events: none;">€</span>
                         </div>
                     </div>
 
                     <div class="form-group">
                         <label for="eventNotes">📝 Note aggiuntive</label>
-                        <textarea id="eventNotes" placeholder="Es: con cena cantata! 📞 Prenotazioni..."></textarea>
+                        <textarea id="eventNotes" maxlength="500" placeholder="Es: con cena cantata! 📞 Prenotazioni..."></textarea>
                     </div>
                 </div>
 
@@ -495,7 +507,7 @@
                         <button type="button" id="proposalLinkModifyBtn" style="flex: 1; min-width: 0; height: 40px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: white; background: #FF9800;">🔗 Aggiungi link</button>
                     </div>
                     <div id="proposalLinkInputContainer" style="display: none; gap: 6px; align-items: center;">
-                        <input type="url" id="proposalLink" placeholder="https://..." style="flex: 1; min-width: 0; height: 40px; padding: 0 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 0.95rem; box-sizing: border-box;">
+                        <input type="url" id="proposalLink" maxlength="500" placeholder="https://..." style="flex: 1; min-width: 0; height: 40px; padding: 0 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 0.95rem; box-sizing: border-box;">
                         <button type="button" id="proposalLinkSaveBtn" title="Salva link" style="flex: 0 0 auto; height: 40px; padding: 0 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #4CAF50; color: white;">✅</button>
                         <button type="button" id="proposalLinkDeleteBtn" title="Elimina link" style="flex: 0 0 auto; height: 40px; padding: 0 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #f44336; color: white;">🗑️</button>
                         <button type="button" id="proposalLinkCancelBtn" title="Annulla" style="flex: 0 0 auto; height: 40px; padding: 0 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #ccc; color: #333;">✖</button>
@@ -504,13 +516,13 @@
 
                 <div class="form-group">
                     <label for="proposalTitle">📌 Nome evento</label>
-                    <input type="text" id="proposalTitle" placeholder="Es: CENA DI CLASSE" required>
+                    <input type="text" id="proposalTitle" maxlength="100" placeholder="Es: CENA DI CLASSE" required>
                 </div>
 
                 <div class="edit-row">
                     <div class="form-group">
                         <label for="proposalLocation">📍 Luogo</label>
-                        <input type="text" id="proposalLocation" placeholder="Anche da decidere">
+                        <input type="text" id="proposalLocation" maxlength="200" placeholder="Anche da decidere">
                     </div>
                     <div class="form-group">
                         <label>🎨 Categoria</label>
@@ -557,14 +569,14 @@
                 <div class="form-group">
                     <label for="proposalFee">💶 Quota</label>
                     <div style="position: relative;">
-                        <input type="text" id="proposalFee" inputmode="decimal" placeholder="Gratis" style="padding-right: 28px;">
+                        <input type="text" id="proposalFee" maxlength="6" inputmode="decimal" placeholder="Gratis" style="padding-right: 28px;">
                         <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: #666; pointer-events: none;">€</span>
                     </div>
                 </div>
 
                 <div class="form-group">
                     <label for="proposalNotes">📝 Note aggiuntive</label>
-                    <textarea id="proposalNotes"></textarea>
+                    <textarea id="proposalNotes" maxlength="500"></textarea>
                 </div>
 
                 <!-- Separatore, nota e poi data/ora facoltative (solo in creazione: dopo si propongono e votano) -->
@@ -615,7 +627,7 @@
                 <div id="proposalChatPane" style="display: none; margin-bottom: 16px;">
                     <div id="proposalChatMessages" style="overflow-y: auto; padding: 12px; max-height: 350px; min-height: 120px; display: flex; flex-direction: column; gap: 12px; background: #f5f5f5; border-radius: 8px; margin-bottom: 12px;"></div>
                     <div style="display: flex; gap: 8px;">
-                        <input type="text" id="proposalChatInput" placeholder="Es: io posso solo nel weekend..." style="flex: 1; min-width: 0; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 0.95rem;">
+                        <input type="text" id="proposalChatInput" maxlength="300" placeholder="Es: io posso solo nel weekend..." style="flex: 1; min-width: 0; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 0.95rem;">
                         <button type="button" id="proposalChatSendBtn" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Invia</button>
                     </div>
                     <p style="font-size: 0.8rem; opacity: 0.85; margin: 8px 0 0 0;">La chat è aperta a tutti. Quando la data viene fissata, continua nell'evento.</p>
@@ -685,7 +697,7 @@
                             <button type="button" id="editLinkModifyBtn" style="flex: 1; min-width: 0; height: 40px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: white; background: #FF9800;">🔗 Aggiungi link</button>
                         </div>
                         <div id="editLinkInputContainer" style="display: none; gap: 6px; align-items: center;">
-                            <input type="url" id="editLink" placeholder="https://..." style="flex: 1; min-width: 0; height: 40px; padding: 0 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 0.95rem; box-sizing: border-box;">
+                            <input type="url" id="editLink" maxlength="500" placeholder="https://..." style="flex: 1; min-width: 0; height: 40px; padding: 0 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 0.95rem; box-sizing: border-box;">
                             <button type="button" id="editLinkSaveBtn" title="Salva link" style="flex: 0 0 auto; height: 40px; padding: 0 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #4CAF50; color: white;">✅</button>
                             <button type="button" id="editLinkDeleteBtn" title="Elimina link" style="flex: 0 0 auto; height: 40px; padding: 0 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #f44336; color: white;">🗑️</button>
                             <button type="button" id="editLinkCancelBtn" title="Annulla" style="flex: 0 0 auto; height: 40px; padding: 0 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #ccc; color: #333;">✖</button>
@@ -694,7 +706,7 @@
 
                     <div class="form-group">
                         <label for="editTitle">📌 Nome evento</label>
-                        <input type="text" id="editTitle" required>
+                        <input type="text" id="editTitle" maxlength="100" required>
                     </div>
 
                     <div class="edit-row">
@@ -711,7 +723,7 @@
                     <div class="edit-row">
                         <div class="form-group">
                             <label for="editLocation">📍 Luogo</label>
-                            <input type="text" id="editLocation">
+                            <input type="text" id="editLocation" maxlength="200">
                         </div>
                         <div class="form-group">
                             <label>🎨 Categoria</label>
@@ -758,14 +770,14 @@
                     <div class="form-group">
                         <label for="editFee">💶 Quota</label>
                         <div style="position: relative;">
-                            <input type="text" id="editFee" inputmode="decimal" placeholder="Gratis" style="padding-right: 28px;">
+                            <input type="text" id="editFee" maxlength="6" inputmode="decimal" placeholder="Gratis" style="padding-right: 28px;">
                             <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: #666; pointer-events: none;">€</span>
                         </div>
                     </div>
 
                     <div class="form-group">
                         <label for="editNotes">📝 Note aggiuntive</label>
-                        <textarea id="editNotes"></textarea>
+                        <textarea id="editNotes" maxlength="500"></textarea>
                     </div>
                 </div>
 
@@ -789,7 +801,7 @@
                             <!-- I messaggi vengono inseriti qui -->
                         </div>
                         <div id="chatInputContainer" style="display: flex; gap: 8px;">
-                            <input type="text" id="chatMessageInput" placeholder="Scrivi un messaggio..." style="flex: 1; min-width: 0; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 0.95rem;">
+                            <input type="text" id="chatMessageInput" maxlength="300" placeholder="Scrivi un messaggio..." style="flex: 1; min-width: 0; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 0.95rem;">
                             <button type="button" id="chatSendBtn" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Invia</button>
                         </div>
                     </div>

@@ -105,6 +105,36 @@ class BacheaCalendar {
         });
     }
 
+    // ===== Avvisi non invasivi =====
+    // Piccola barra in basso che sparisce da sola (o al tocco). Usata quando un limite viene superato o
+    // Firebase rifiuta un salvataggio: l'utente capisce cosa è successo e può segnalarlo all'amministratore.
+    showToast(message, type = 'warning') {
+        let box = document.getElementById('toastBox');
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'toastBox';
+            document.body.appendChild(box);
+        }
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.textContent = message;
+        toast.addEventListener('click', () => toast.remove());
+        box.appendChild(toast);
+        while (box.children.length > 3) box.firstChild.remove(); // al massimo 3 avvisi insieme
+        setTimeout(() => toast.remove(), 7000);
+    }
+
+    // Salvataggio rifiutato: avviso breve con cosa non è riuscito e, se è un limite o un permesso, l'invito a segnalarlo
+    notifyWriteError(action, error) {
+        console.error(`Errore: ${action}`, error);
+        const code = String((error && (error.code || error.message)) || '').toUpperCase();
+        if (code.includes('PERMISSION_DENIED')) {
+            this.showToast(`⚠️ ${action}: non consentito (superato un limite o permesso mancante). Se ti sembra un errore, scrivi all'amministratore.`);
+        } else {
+            this.showToast(`⚠️ ${action}: non riuscito. Controlla la connessione e riprova.`);
+        }
+    }
+
     showSuccessPopup(message) {
         const popup = document.getElementById('customPopup');
         const icon = document.getElementById('popupIcon');
@@ -282,7 +312,7 @@ class BacheaCalendar {
         } else {
             // Account senza profilo (registrazione interrotta): lo ricreo dallo username
             this.username = (user.email || '').split('@')[0];
-            this.userName = this.username;
+            this.userName = this.username.slice(0, 10);
             await database.ref(`users/${user.uid}`).set({
                 username: this.username,
                 name: this.userName,
@@ -349,6 +379,65 @@ class BacheaCalendar {
                 }
             };
 
+            // Registrazione: suggerimenti che si aggiornano mentre si scrive (verde = ok, rosso = da correggere)
+            const setHint = (id, state, text) => {
+                const hint = document.getElementById(id);
+                hint.textContent = text;
+                hint.classList.toggle('hint-ok', state === 'ok');
+                hint.classList.toggle('hint-error', state === 'error');
+            };
+            const usernameInput = document.getElementById('registerUsername');
+            const nameInput = document.getElementById('registerName');
+            const passwordInput = document.getElementById('registerPassword');
+            const confirmInput = document.getElementById('registerPasswordConfirm');
+            // Username mentre si scrive: le maiuscole diventano subito minuscole e i caratteri non ammessi
+            // non vengono scritti (con un avviso rosso che dice quale carattere è stato tolto)
+            let rejectedChars = '';
+            const cleanUsernameInput = () => {
+                const value = usernameInput.value;
+                const cursor = usernameInput.selectionStart;
+                const lower = value.toLowerCase();
+                const rejected = [...new Set(lower.replace(/[a-z0-9._-]/g, ''))];
+                const cleaned = lower.replace(/[^a-z0-9._-]/g, '');
+                rejectedChars = rejected.map(c => c === ' ' ? 'lo spazio' : `"${c}"`).join(', ');
+                if (cleaned !== value) {
+                    const removedBeforeCursor = lower.slice(0, cursor).replace(/[a-z0-9._-]/g, '').length;
+                    usernameInput.value = cleaned;
+                    const position = Math.max(0, cursor - removedBeforeCursor);
+                    usernameInput.setSelectionRange(position, position);
+                }
+            };
+            const checkRegisterFields = () => {
+                const username = usernameInput.value;
+                if (rejectedChars) {
+                    setHint('registerUsernameHint', 'error', `Non puoi usare ${rejectedChars}: solo lettere senza accenti, numeri, punto (.), trattino (-) e _.`);
+                } else if (!username) {
+                    setHint('registerUsernameHint', '', 'Da 3 a 20 caratteri: lettere, numeri, punto (.), trattino (-) e _. Serve per entrare.');
+                } else if (username.length < 3) {
+                    setHint('registerUsernameHint', 'error', `Troppo corto: ancora ${3 - username.length} ${3 - username.length === 1 ? 'carattere' : 'caratteri'}.`);
+                } else {
+                    setHint('registerUsernameHint', 'ok', `✓ Entrerai come "${username}".`);
+                }
+
+                const name = nameInput.value.trim();
+                setHint('registerNameHint', name ? 'ok' : '', name
+                    ? `✓ Gli altri ti vedranno come "${name}" (${name.length}/10).`
+                    : "Obbligatorio: un nome breve, fino a 10 caratteri (es. Ely, Maria, Ugo).");
+
+                const password = passwordInput.value;
+                if (!password) setHint('registerPasswordHint', '', 'Almeno 6 caratteri.');
+                else if (password.length < 6) setHint('registerPasswordHint', 'error', `Troppo corta: ancora ${6 - password.length} ${6 - password.length === 1 ? 'carattere' : 'caratteri'}.`);
+                else setHint('registerPasswordHint', 'ok', '✓ Password valida.');
+
+                const confirm = confirmInput.value;
+                if (!confirm) setHint('registerPasswordConfirmHint', '', 'Scrivi di nuovo la stessa password.');
+                else if (confirm !== password) setHint('registerPasswordConfirmHint', 'error', 'Le due password non coincidono.');
+                else setHint('registerPasswordConfirmHint', 'ok', '✓ Le password coincidono.');
+            };
+            usernameInput.oninput = () => { cleanUsernameInput(); checkRegisterFields(); };
+            [nameInput, passwordInput, confirmInput].forEach(input => { input.oninput = checkRegisterFields; });
+            checkRegisterFields();
+
             registerForm.onsubmit = async (e) => {
                 e.preventDefault();
                 const username = this.normalizeUsername(document.getElementById('registerUsername').value);
@@ -358,6 +447,10 @@ class BacheaCalendar {
 
                 if (!this.isValidUsername(username)) {
                     showError('Username: da 3 a 20 caratteri tra lettere, numeri, punto, trattino e _');
+                    return;
+                }
+                if (!name) {
+                    showError('Scrivi il nome con cui ti vedranno gli altri (fino a 10 caratteri)');
                     return;
                 }
                 if (password.length < 6) {
@@ -377,7 +470,7 @@ class BacheaCalendar {
                     createdUser = cred.user;
                     await database.ref(`users/${cred.user.uid}`).set({
                         username: username,
-                        name: name || username,
+                        name: name,
                         createdAt: Date.now()
                     });
                     createdUser = null; // profilo salvato: l'account è completo
@@ -511,8 +604,7 @@ class BacheaCalendar {
                 modal.classList.remove('active');
                 this.showSuccessPopup('Nome aggiornato');
             } catch (error) {
-                console.error('Errore cambio nome:', error);
-                this.showErrorPopup('Errore nel salvataggio del nome');
+                this.notifyWriteError('Cambio del nome', error);
             }
         };
 
@@ -586,6 +678,7 @@ class BacheaCalendar {
             console.warn('Errore setup listener:', e.message);
         }
         this.setupNotificationListeners();
+        this.setupLimitWarnings();
         this.detectDevice();
         this.loadVersion();
         this.loadTitle();
@@ -1555,7 +1648,7 @@ class BacheaCalendar {
                     // Scrive solo la propria iscrizione: non tocca quelle degli altri
                     if (this.editingNote) {
                         database.ref(`events/${this.editingNote.id}/participants/${this.userId}`).remove()
-                            .catch(error => console.error('Errore rimozione partecipazione:', error));
+                            .catch(error => this.notifyWriteError('Ritiro dall\'evento', error));
                     }
                 });
             }
@@ -1611,8 +1704,7 @@ class BacheaCalendar {
                 database.ref(`events/${this.editingNote.id}/participants/${this.userId}`).set(true)
                     .then(() => this.showSuccessPopup('Adesso sei un partecipante!'))
                     .catch(error => {
-                        console.error('Errore iscrizione:', error);
-                        this.showErrorPopup('Errore nell\'iscrizione. Riprova.');
+                        this.notifyWriteError('Iscrizione all\'evento', error);
                     });
             }
         }
@@ -1656,7 +1748,27 @@ class BacheaCalendar {
             fillColor: '#fff',
             imageSmoothingQuality: 'high'
         });
-        const croppedImage = canvas.toDataURL('image/jpeg', 0.65);
+        // Sotto il limite delle regole (100.000 caratteri, ~73 KB): si punta a 80.000.
+        // Prima si abbassa la qualità, poi, se non basta, si rimpicciolisce l'immagine
+        const TARGET = 80000;
+        let source = canvas;
+        let quality = 0.65;
+        let croppedImage = source.toDataURL('image/jpeg', quality);
+        while (croppedImage.length > TARGET && quality > 0.4) {
+            quality -= 0.1;
+            croppedImage = source.toDataURL('image/jpeg', quality);
+        }
+        while (croppedImage.length > TARGET && source.width > 300) {
+            const smaller = document.createElement('canvas');
+            smaller.width = Math.round(source.width * 0.8);
+            smaller.height = Math.round(source.height * 0.8);
+            const ctx = smaller.getContext('2d');
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, smaller.width, smaller.height);
+            ctx.drawImage(source, 0, 0, smaller.width, smaller.height);
+            source = smaller;
+            croppedImage = source.toDataURL('image/jpeg', quality);
+        }
 
         if (this.currentCropType === 'event') {
             this.eventImageData = croppedImage;
@@ -1784,8 +1896,8 @@ class BacheaCalendar {
         const raw = document.getElementById(`${prefix}Fee`).value.replace('€', '').replace(',', '.').trim();
         if (!raw) return { ok: true, value: 0 };
         const value = Number(raw);
-        if (!/^\d+(\.\d{1,2})?$/.test(raw) || !isFinite(value) || value > 100000) {
-            this.showErrorPopup('Quota non valida: scrivi un importo (es. 15 o 12,50), oppure lascia vuoto per Gratis');
+        if (!/^\d+(\.\d{1,2})?$/.test(raw) || !isFinite(value) || value > 999) {
+            this.showErrorPopup('Quota non valida: scrivi un importo fino a 999 € (es. 15 o 12,50), oppure lascia vuoto per Gratis');
             return { ok: false };
         }
         return { ok: true, value: Math.round(value * 100) / 100 };
@@ -1911,8 +2023,7 @@ class BacheaCalendar {
             .then(() => database.ref(`events/${id}`).set(event))
             .then(() => this.showSuccessPopup('Evento aggiunto con successo!'))
             .catch(error => {
-                console.error('Errore creazione evento:', error);
-                this.showErrorPopup('Errore nel salvataggio dell\'evento. Riprova.');
+                this.notifyWriteError('Creazione dell\'evento', error);
             });
         this.closeModal();
     }
@@ -1926,8 +2037,7 @@ class BacheaCalendar {
             [`chatReadStatus/${this.userId}/${eventId}`]: null,
             [`eventImages/${eventId}`]: null
         }).catch(error => {
-            console.error('Errore eliminazione evento:', error);
-            this.showErrorPopup('Errore nell\'eliminazione dell\'evento. Riprova.');
+            this.notifyWriteError('Eliminazione dell\'evento', error);
         });
     }
 
@@ -3056,6 +3166,26 @@ class BacheaCalendar {
         }
     }
 
+    // Avvisi globali: salvataggi rifiutati non gestiti altrove e limite di caratteri raggiunto in un campo
+    setupLimitWarnings() {
+        window.addEventListener('unhandledrejection', (e) => {
+            const code = String((e.reason && (e.reason.code || e.reason.message)) || '').toUpperCase();
+            if (code.includes('PERMISSION_DENIED')) this.notifyWriteError('Salvataggio', e.reason);
+        });
+        document.addEventListener('input', (e) => {
+            const field = e.target;
+            if (!field || !(field.maxLength > 0) || field.type === 'password') return;
+            if (field.value.length >= field.maxLength) {
+                if (!field.dataset.limitWarned) {
+                    field.dataset.limitWarned = '1';
+                    this.showToast(`✋ Hai raggiunto il limite di ${field.maxLength} caratteri per questo campo.`, 'info');
+                }
+            } else {
+                delete field.dataset.limitWarned;
+            }
+        });
+    }
+
     setupNotificationListeners() {
         document.getElementById('notificationsBtn').addEventListener('click', () => this.openNotificationsPanel());
         document.getElementById('notificationsCloseBtn').addEventListener('click', () => this.closeNotificationsPanel());
@@ -3332,8 +3462,7 @@ class BacheaCalendar {
 
     updateEvent(eventId, fields) {
         return database.ref(`events/${eventId}`).update(fields).catch(error => {
-            console.error('Errore salvataggio evento:', error);
-            this.showErrorPopup('Errore nel salvataggio. Riprova.');
+            this.notifyWriteError('Salvataggio dell\'evento', error);
         });
     }
 
@@ -3760,7 +3889,7 @@ class BacheaCalendar {
         const status = { lastReadTimestamp: Date.now() };
         this.readStatus[eventId] = status; // subito in memoria, prima della risposta di Firebase
         database.ref(`chatReadStatus/${this.userId}/${eventId}`).set(status)
-            .catch(error => console.error('Errore salvataggio messaggi letti:', error));
+            .catch(error => this.notifyWriteError('Segnare i messaggi come letti', error));
     }
 
     updateCalendarBadge(eventId) {
@@ -3867,7 +3996,7 @@ class BacheaCalendar {
             document.getElementById('chatMessageInput').value = '';
             // Il listener su Firebase carica i messaggi automaticamente
         } catch (error) {
-            console.error('Errore invio messaggio:', error);
+            this.notifyWriteError('Invio del messaggio', error);
         }
     }
 
@@ -4234,8 +4363,7 @@ class BacheaCalendar {
             });
             input.value = '';
         } catch (error) {
-            console.error('Errore invio messaggio proposta:', error);
-            this.showErrorPopup('Errore nell\'invio del messaggio');
+            this.notifyWriteError('Invio del messaggio', error);
         }
     }
 
@@ -4358,8 +4486,7 @@ class BacheaCalendar {
                 this.showSuccessPopup('Proposta modificata');
             })
             .catch(error => {
-                console.error('Errore modifica proposta:', error);
-                this.showErrorPopup('Errore nel salvataggio della proposta');
+                this.notifyWriteError('Salvataggio della proposta', error);
             });
     }
 
@@ -4397,7 +4524,7 @@ class BacheaCalendar {
             link: this.currentProposalLink || '',
             color: checkedColor ? checkedColor.dataset.color : 'color-neutral',
             creatorId: this.userId,
-            creatorName: this.userName || '',
+            creatorName: (this.userName || '').slice(0, 10), // regola: al massimo 10 caratteri (i nomi vecchi possono essere più lunghi)
             createdAt: Date.now()
         };
         // Chi crea non vota in automatico: magari non può esserci
@@ -4418,8 +4545,7 @@ class BacheaCalendar {
                 this.showSuccessPopup('Proposta creata! Ora tutti possono votare le date.');
             })
             .catch(error => {
-                console.error('Errore creazione proposta:', error);
-                this.showErrorPopup('Errore nella creazione della proposta');
+                this.notifyWriteError('Creazione della proposta', error);
             });
     }
 
@@ -4535,8 +4661,7 @@ class BacheaCalendar {
             ? ref.remove()
             : ref.set({ name: this.userName, deviceId: this.userId });
         write.catch(error => {
-            console.error('Errore voto proposta:', error);
-            this.showErrorPopup('Errore nel salvataggio del voto');
+            this.notifyWriteError('Voto', error);
         });
     }
 
@@ -4570,8 +4695,7 @@ class BacheaCalendar {
             input.value = '';
             timeInput.value = '';
         }).catch(error => {
-            console.error('Errore aggiunta data:', error);
-            this.showErrorPopup('Errore nel salvataggio della data');
+            this.notifyWriteError('Proposta della data', error);
         });
     }
 
@@ -4635,9 +4759,8 @@ class BacheaCalendar {
             await proposalRef.remove();
             this.showSuccessPopup(`Data fissata! L'evento è nel calendario per ${this.formatProposalOption(optionKey)}.`);
         } catch (error) {
-            console.error('Errore nel fissare la data:', error);
+            this.notifyWriteError('Fissare la data', error);
             proposalRef.child('fixedDate').remove().catch(() => {});
-            this.showErrorPopup('Errore nel fissare la data. Riprova.');
         }
     }
 
@@ -4650,15 +4773,17 @@ class BacheaCalendar {
         if (!confirmed) return;
 
         this.closeProposalModal();
-        // La chat serve solo alla proposta: si elimina con lei
-        database.ref(`eventChats/${proposalId}`).remove().catch(() => {});
-        database.ref(`chatReadStatus/${this.userId}/${proposalId}`).remove().catch(() => {});
-        if (proposal.imageVersion) this.saveEventImage(proposalId, null).catch(() => {});
-        database.ref(`proposals/${proposalId}`).remove()
+        // Proposta, chat, immagine e letture in un'unica scrittura: le regole permettono di cancellare
+        // una chat solo insieme alla sua proposta (o al suo evento)
+        database.ref().update({
+            [`proposals/${proposalId}`]: null,
+            [`eventChats/${proposalId}`]: null,
+            [`eventImages/${proposalId}`]: null,
+            [`chatReadStatus/${this.userId}/${proposalId}`]: null
+        })
             .then(() => this.showSuccessPopup('Proposta eliminata'))
             .catch(error => {
-                console.error('Errore eliminazione proposta:', error);
-                this.showErrorPopup('Errore nell\'eliminazione della proposta');
+                this.notifyWriteError('Eliminazione della proposta', error);
             });
     }
 }
