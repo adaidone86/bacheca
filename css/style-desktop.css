@@ -1057,8 +1057,8 @@ button[type="button"]:hover {
     margin: 0;
 }
 
+/* Niente "display" qui: se mostrare il pulsante lo decide lo script (solo se l'app non è installata) */
 #installBtn {
-    display: inline-block !important;
     order: -1 !important;
 }
 

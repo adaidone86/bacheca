@@ -50,10 +50,6 @@ header > div:last-child {
     flex-shrink: 0 !important;
 }
 
-#installBtn {
-    display: inline-block !important;
-}
-
 header > div:last-child > div {
     flex-shrink: 0 !important;
     display: flex !important;
