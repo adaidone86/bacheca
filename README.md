@@ -75,13 +75,14 @@ e apri `http://localhost:8000/bacheca/`.
 
 | Colore | Categoria | Esempi |
 |--------|-----------|--------|
-| ⚪ Grigio | Senza categoria | — |
-| 🟨 Giallo | 🍽️ Gastronomia/Cibo | Sagre, cene, aperitivi |
-| 🔴 Rosa | 👥 Serate/Sociali | Party, serate, incontri |
-| 🟩 Verde | ⛹️ Sport/Attività | Trekking, running, palestra |
-| 🟦 Blu | 🎮 Intrattenimento | Board game, cinema |
-| 🟪 Viola | 🎵 Cultura/Musica | Concerti, mostre, teatro |
-| 🟧 Arancione | 🏞️ Escursioni/Turismo | Gite, weekend |
+| 🟣 Viola | Senza categoria | — |
+| 🟨 Giallo | 🍽️ Cena | Sagre, cene, aperitivi |
+| 🔴 Rosa | 👥 Discoteca | Serate, party |
+| 🟩 Verde | ⛹️ Sport | Trekking, running, go kart |
+| 🟦 Blu | 🎮 Cinema | Film, serie, giochi |
+| 🩵 Verde acqua | 🎵 Concerti | Concerti, festival musicali |
+| 🟥 Rosso | 🎭 Teatro | Spettacoli, cabaret |
+| 🟧 Arancione | 🏞️ Escursioni | Gite, weekend |
 
 ## 💾 Dati
 

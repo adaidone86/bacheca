@@ -229,7 +229,7 @@ button {
 }
 
 .color-neutral {
-    background: #999;
+    background: #764ba2;
     color: white;
 }
 
@@ -254,7 +254,12 @@ button {
 }
 
 .color-purple {
-    background: #ba68c8;
+    background: #26a69a;
+    color: white;
+}
+
+.color-teal {
+    background: #b71c1c;
     color: white;
 }
 
@@ -617,7 +622,7 @@ footer {
 
 .event-item {
     padding: 16px;
-    border-left: 5px solid #667eea;
+    border: 3px solid #667eea; /* tutto il bordo del colore della categoria */
     background: #f9f9f9;
     border-radius: 8px;
     cursor: pointer;
@@ -724,31 +729,35 @@ footer {
 }
 
 .event-item.color-neutral {
-    border-left-color: #999;
+    border-color: #764ba2;
 }
 
 .event-item.color-yellow {
-    border-left-color: #ffd54f;
+    border-color: #ffd54f;
 }
 
 .event-item.color-pink {
-    border-left-color: #ff6b9d;
+    border-color: #ff6b9d;
 }
 
 .event-item.color-green {
-    border-left-color: #81c784;
+    border-color: #81c784;
 }
 
 .event-item.color-blue {
-    border-left-color: #64b5f6;
+    border-color: #64b5f6;
 }
 
 .event-item.color-purple {
-    border-left-color: #ba68c8;
+    border-color: #26a69a;
+}
+
+.event-item.color-teal {
+    border-color: #b71c1c;
 }
 
 .event-item.color-orange {
-    border-left-color: #ffb74d;
+    border-color: #ffb74d;
 }
 
 .empty-list {

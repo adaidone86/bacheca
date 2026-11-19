@@ -1826,7 +1826,8 @@ class BacheaCalendar {
         modifyBtn.style.padding = hasLink ? '0' : '';
     }
 
-    // Categoria (crea e modifica): il pulsante mostra la categoria scelta col suo colore
+    // Categoria (crea, modifica, proposta): il pulsante mostra la categoria scelta col suo colore
+    // e lo sfondo del modal prende il colore della categoria
     updateCategoryDisplay(selectId) {
         const select = document.getElementById(selectId);
         if (!select) return;
@@ -1837,6 +1838,27 @@ class BacheaCalendar {
         current.textContent = option.textContent.trim();
         current.style.background = option.style.background;
         current.style.color = option.style.color;
+        const modal = select.closest('.modal');
+        if (modal) this.applyCategoryTheme(modal.id, checked.dataset.color);
+    }
+
+    // Sfondo del modal per categoria: sfumatura dal colore della categoria a una sua tonalità più scura
+    // (abbastanza scura per il testo bianco). Senza categoria = viola dell'app
+    applyCategoryTheme(modalId, color) {
+        const themes = {
+            'color-neutral': ['#667eea', '#764ba2'],
+            'color-yellow': ['#fbc02d', '#f57f17'],
+            'color-pink': ['#ec407a', '#ad1457'],
+            'color-green': ['#66bb6a', '#2e7d32'],
+            'color-blue': ['#42a5f5', '#1565c0'],
+            'color-purple': ['#26a69a', '#00695c'], // Concerti (verde acqua)
+            'color-teal': ['#b71c1c', '#7f0000'],   // Teatro (rosso sipario)
+            'color-orange': ['#fb8c00', '#e64a19']
+        };
+        const [from, to] = themes[color] || themes['color-neutral'];
+        const content = document.querySelector(`#${modalId} .modal-content`);
+        // !important: il CSS di .modal-content usa !important per il viola di base
+        if (content) content.style.setProperty('background', `linear-gradient(135deg, ${from} 0%, ${to} 100%)`, 'important');
     }
 
     closeCategorySelects() {
@@ -2886,6 +2908,7 @@ class BacheaCalendar {
             'color-green': true,
             'color-blue': true,
             'color-purple': true,
+            'color-teal': true,
             'color-orange': true
         };
     }
@@ -3519,11 +3542,11 @@ class BacheaCalendar {
             }
 
             const categoryColors = {
-                'color-neutral': '#999', 'color-yellow': '#ffd54f', 'color-pink': '#ff6b9d', 'color-green': '#81c784',
-                'color-blue': '#64b5f6', 'color-purple': '#ba68c8', 'color-orange': '#ffb74d'
+                'color-neutral': '#764ba2', 'color-yellow': '#ffd54f', 'color-pink': '#ff6b9d', 'color-green': '#81c784',
+                'color-blue': '#64b5f6', 'color-purple': '#26a69a', 'color-teal': '#b71c1c', 'color-orange': '#ffb74d'
             };
             const card = document.createElement('div');
-            card.style.cssText = `margin-top: 10px; padding: 10px 12px; background: white; border-left: 5px solid ${categoryColors[proposal.color] || '#999'}; border-radius: 8px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.1);`;
+            card.style.cssText = `margin-top: 10px; padding: 10px 12px; background: white; border: 3px solid ${categoryColors[proposal.color] || '#999'}; border-radius: 8px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.1);`;
             card.setAttribute('data-proposal-id', proposal.id);
             card.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
@@ -3847,6 +3870,7 @@ class BacheaCalendar {
     renderProposalView() {
         const proposal = this.proposals[this.openProposalId];
         if (!proposal) return;
+        this.applyCategoryTheme('proposalModal', proposal.color);
 
         document.getElementById('proposalModalTitle').textContent = `🗳️ ${proposal.title}`;
         this.setProposalCover(null);
