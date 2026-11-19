@@ -1,6 +1,8 @@
 """Prove delle regole Firebase su TEST via REST (Auth + Realtime Database).
-Crea 2 utenti di prova, prova ogni regola (permesso/bloccato), poi cancella dati e utenti."""
-import json, re, secrets, sys, time, urllib.request, urllib.error
+Crea 2 utenti di prova, prova ogni regola (permesso/bloccato), poi cancella dati e utenti.
+Prove dell'amministratore (0.5.0): servono le credenziali di un account che su TEST ha roles/{uid} = "admin",
+passate con le variabili d'ambiente BACHECA_ADMIN_USER e BACHECA_ADMIN_PASS (senza, quelle prove si saltano)."""
+import json, os, re, secrets, sys, time, urllib.request, urllib.error
 sys.stdout.reconfigure(encoding="utf-8")
 
 cfg = open(sys.argv[1], encoding='utf-8').read()
@@ -9,7 +11,17 @@ API_KEY = re.search(r'apiKey:\s*"([^"]+)"', test_block).group(1)
 DB = re.search(r'databaseURL:\s*"([^"]+)"', test_block).group(1)
 assert 'bacheca-test' in DB, 'Non è il database di TEST!'
 
-def http(method, url, body=None):
+def http(method, url, body=None, tries=3):
+    # Se la connessione cade (capita con Google), riprova fino a 3 volte
+    for attempt in range(tries):
+        try:
+            return _http(method, url, body)
+        except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as e:
+            if isinstance(e, urllib.error.HTTPError) or attempt == tries - 1:
+                raise
+            time.sleep(1 + attempt)
+
+def _http(method, url, body=None):
     data = None if body is None else json.dumps(body).encode()
     req = urllib.request.Request(url, data=data, method=method, headers={'Content-Type': 'application/json'})
     try:
@@ -41,7 +53,17 @@ def check(name, expected, user, method, path, body=None):
     results.append((('✅' if good else '❌ PROBLEMA'), name, expected, 'permesso' if ok else f'bloccato ({st})'))
     return ok
 
+def signin(username, password):
+    email = username if '@' in username else f'{username}@bacheca.local'
+    st, r = http('POST', f'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={API_KEY}',
+                 {'email': email, 'password': password, 'returnSecureToken': True})
+    assert st == 200, f'Login amministratore fallito: {st}'
+    return {'uid': r['localId'], 'token': r['idToken'], 'username': username}
+
 A = signup('a'); B = signup('b')
+ADM = None
+if os.environ.get('BACHECA_ADMIN_USER') and os.environ.get('BACHECA_ADMIN_PASS'):
+    ADM = signin(os.environ['BACHECA_ADMIN_USER'], os.environ['BACHECA_ADMIN_PASS'])
 now = int(time.time() * 1000)
 try:
     # Profili
@@ -103,6 +125,8 @@ try:
     check('B segna la propria presenza', 'permesso', B, 'PUT', f'presence/{B["uid"]}/c1', {'active': True, 'at': now})
     check('Presenza con active non booleano', 'bloccato', B, 'PUT', f'presence/{B["uid"]}/c2', {'active': 'si'})
     check('B segna la presenza di A', 'bloccato', B, 'PUT', f'presence/{A["uid"]}/c1', {'active': True})
+    check('Presenza fantasma (senza at)', 'bloccato', B, 'PUT', f'presence/{B["uid"]}/c3', {'active': True})
+    check('B cambia active della propria presenza', 'permesso', B, 'PATCH', f'presence/{B["uid"]}/c1', {'active': False})
 
     # Proposte
     pid = f'claudetestp_{now}'
@@ -147,17 +171,73 @@ try:
     check("B scrive nella chat dell'evento fissato", 'permesso', B, 'PUT', f'eventChats/{fid}/messages/f1', msg(B, 'ci sono!'))
     check("A elimina l'evento fissato con la chat", 'permesso', A, 'PATCH', '', {f'events/{fid}': None, f'eventChats/{fid}': None})
 
+    # Ruoli, blocchi, impostazioni e statistiche (0.5.0): utenti normali
+    check('B si dà il ruolo di admin', 'bloccato', B, 'PUT', f'roles/{B["uid"]}', 'admin')
+    check('B legge il proprio ruolo', 'permesso', B, 'GET', f'roles/{B["uid"]}')
+    check('B legge il ruolo di A', 'bloccato', B, 'GET', f'roles/{A["uid"]}')
+    check('B blocca A', 'bloccato', B, 'PUT', f'blocked/{A["uid"]}', True)
+    check('B legge chi è bloccato', 'bloccato', B, 'GET', 'blocked')
+    check('B controlla se è bloccato', 'permesso', B, 'GET', f'blocked/{B["uid"]}')
+    check('B legge le impostazioni', 'permesso', B, 'GET', 'settings')
+    check('B scrive un avviso a tutti', 'bloccato', B, 'PUT', 'settings/announcement', {'text': 'hack', 'updatedAt': now})
+    check('B cambia il titolo', 'bloccato', B, 'PUT', 'settings/title', {'line1': 'hack'})
+    check('B aggiorna le proprie statistiche', 'permesso', B, 'PATCH', f'stats/{B["uid"]}',
+          {'opens': 3, 'lastActiveAt': now, 'firstSeenAt': now, 'days/2099-01-01': True, 'messagesSent': 2})
+    check('Statistica negativa', 'bloccato', B, 'PUT', f'stats/{B["uid"]}/opens', -1)
+    check('Statistica sconosciuta', 'bloccato', B, 'PUT', f'stats/{B["uid"]}/minutiUso', 5)
+    check('Giorno in formato sbagliato', 'bloccato', B, 'PUT', f'stats/{B["uid"]}/days/oggi', True)
+    check('B scrive le statistiche di A', 'bloccato', B, 'PUT', f'stats/{A["uid"]}/opens', 99)
+    check('B legge le statistiche di tutti', 'bloccato', B, 'GET', 'stats')
+    check('B legge le proprie statistiche', 'permesso', B, 'GET', f'stats/{B["uid"]}')
+
+    # Amministratore (solo con BACHECA_ADMIN_USER / BACHECA_ADMIN_PASS)
+    if ADM:
+        aid = f'claudetesta_{now}'
+        check('A crea un evento per le prove admin', 'permesso', A, 'PUT', f'events/{aid}', {**ev, 'id': aid})
+        check('B si iscrive (prove admin)', 'permesso', B, 'PUT', f'events/{aid}/participants/{B["uid"]}', True)
+        check('B scrive in chat (prove admin)', 'permesso', B, 'PUT', f'eventChats/{aid}/messages/x1', msg(B, 'messaggio da moderare'))
+        check('Admin modifica il titolo dell\'evento di A', 'permesso', ADM, 'PUT', f'events/{aid}/title', 'Moderato')
+        check('Admin passa l\'evento di A a B', 'permesso', ADM, 'PUT', f'events/{aid}/creatorId', B['uid'])
+        check('Admin cancella un messaggio di B', 'permesso', ADM, 'DELETE', f'eventChats/{aid}/messages/x1')
+        check('Admin modifica un messaggio di B', 'bloccato', ADM, 'PUT', f'eventChats/{aid}/messages/x2', msg(B, 'finto'))
+        check('Admin toglie B dai partecipanti', 'permesso', ADM, 'DELETE', f'events/{aid}/participants/{B["uid"]}')
+        check('Admin legge tutte le statistiche', 'permesso', ADM, 'GET', 'stats')
+        check('Admin legge chi è bloccato', 'permesso', ADM, 'GET', 'blocked')
+        check('Admin rinomina B', 'permesso', ADM, 'PUT', f'users/{B["uid"]}/name', 'Rinominat')
+        check('Admin pubblica un avviso', 'permesso', ADM, 'PUT', 'settings/announcement', {'text': 'Prova avviso', 'updatedAt': now})
+        check('Avviso di 201 caratteri', 'bloccato', ADM, 'PUT', 'settings/announcement', {'text': 'A' * 201, 'updatedAt': now})
+        check('Admin toglie l\'avviso', 'permesso', ADM, 'DELETE', 'settings/announcement')
+        check('Admin blocca sé stesso', 'bloccato', ADM, 'PUT', f'blocked/{ADM["uid"]}', True)
+        check('Admin si cambia il ruolo', 'bloccato', ADM, 'PUT', f'roles/{ADM["uid"]}', 'user')
+        check('Admin blocca B', 'permesso', ADM, 'PUT', f'blocked/{B["uid"]}', True)
+        check('B bloccato legge gli eventi', 'bloccato', B, 'GET', 'events')
+        check('B bloccato scrive in chat', 'bloccato', B, 'PUT', f'eventChats/{eid}/messages/z1', msg(B, 'ci sono ancora'))
+        check('B bloccato aggiorna le statistiche', 'bloccato', B, 'PUT', f'stats/{B["uid"]}/opens', 4)
+        check('B bloccato vede di essere bloccato', 'permesso', B, 'GET', f'blocked/{B["uid"]}')
+        check('Admin sblocca B', 'permesso', ADM, 'DELETE', f'blocked/{B["uid"]}')
+        check('B sbloccato legge gli eventi', 'permesso', B, 'GET', 'events')
+        check('Admin elimina l\'evento di altri con la chat', 'permesso', ADM, 'PATCH', '', {f'events/{aid}': None, f'eventChats/{aid}': None})
+        qid = f'claudetestq_{now}'
+        check('A crea una proposta per le prove admin', 'permesso', A, 'PUT', f'proposals/{qid}', {**pr, 'id': qid})
+        check('Admin modifica la proposta di A', 'permesso', ADM, 'PUT', f'proposals/{qid}/title', 'Moderata')
+        check('Admin elimina la proposta di A', 'permesso', ADM, 'PATCH', '', {f'proposals/{qid}': None, f'eventChats/{qid}': None})
+    else:
+        results.append(('⏭️', 'Prove admin saltate (manca BACHECA_ADMIN_USER / BACHECA_ADMIN_PASS)', '-', '-'))
+
     # Eliminazioni corrette (come fa l'app: tutto in un'unica scrittura)
     check('A elimina la proposta con chat e immagine insieme', 'permesso', A, 'PATCH', '',
           {f'proposals/{pid}': None, f'eventChats/{pid}': None, f'eventImages/{pid}': None})
     check('A elimina l\'evento con chat e immagine insieme', 'permesso', A, 'PATCH', '',
           {f'events/{eid}': None, f'eventChats/{eid}': None, f'eventImages/{eid}': None})
 finally:
-    # Pulizia: dati degli utenti di prova e account
+    # Pulizia: dati degli utenti di prova e account (prima si sblocca B, se una prova si è interrotta)
+    if ADM:
+        http('DELETE', f'{DB}/blocked/{B["uid"]}.json?auth={ADM["token"]}')
     for u in (A, B):
         http('DELETE', f'{DB}/presence/{u["uid"]}.json?auth={u["token"]}')
         http('DELETE', f'{DB}/chatReadStatus/{u["uid"]}.json?auth={u["token"]}')
         http('DELETE', f'{DB}/users/{u["uid"]}.json?auth={u["token"]}')
+        http('DELETE', f'{DB}/stats/{u["uid"]}.json?auth={u["token"]}')
     left = []
     for path in [f'events/{eid}', f'proposals/{pid}', f'eventChats/{eid}', f'eventChats/{pid}', f'eventImages/{eid}', f'events/{fid}', f'proposals/{fid}', f'eventChats/{fid}']:
         st, val = db(A, 'GET', path)
@@ -168,6 +248,6 @@ finally:
 w = max(len(r[1]) for r in results)
 for r in results:
     print(f'{r[0]:<12} {r[1]:<{w}}  atteso: {r[2]:<9} esito: {r[3]}')
-bad = [r for r in results if r[0] != '✅']
+bad = [r for r in results if r[0] not in ('✅', '⏭️')]
 print(f'\n{len(results)} prove, {len(results) - len(bad)} ok, {len(bad)} problemi')
 print('Dati di prova rimasti:', left or 'nessuno')

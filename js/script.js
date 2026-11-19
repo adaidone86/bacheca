@@ -141,6 +141,8 @@ class BacheaCalendar {
         const messageEl = document.getElementById('popupMessage');
         icon.textContent = '✅';
         messageEl.textContent = message;
+        messageEl.style.whiteSpace = 'pre-line';
+        messageEl.style.textAlign = message.includes('\n') ? 'left' : '';
         popup.style.display = 'flex';
     }
 
@@ -150,10 +152,12 @@ class BacheaCalendar {
         const messageEl = document.getElementById('popupMessage');
         icon.textContent = '❌';
         messageEl.textContent = message;
+        messageEl.style.whiteSpace = 'pre-line'; // elenchi su più righe
+        messageEl.style.textAlign = message.includes('\n') ? 'left' : '';
         popup.style.display = 'flex';
     }
 
-    showConfirmDialog(message, okLabel = 'Elimina', okColor = '#f44336') {
+    showConfirmDialog(message, okLabel = 'Elimina', okColor = '#f44336', cancelLabel = 'Annulla') {
         return new Promise((resolve) => {
             const modal = document.getElementById('confirmModal');
             const messageEl = document.getElementById('confirmMessage');
@@ -161,6 +165,9 @@ class BacheaCalendar {
             const okBtn = document.getElementById('confirmOkBtn');
 
             messageEl.textContent = message;
+            messageEl.style.whiteSpace = 'pre-line';
+            messageEl.style.textAlign = message.includes('\n') ? 'left' : '';
+            cancelBtn.textContent = cancelLabel;
             okBtn.textContent = okLabel;
             okBtn.style.background = okColor;
             modal.style.display = 'flex';
@@ -274,7 +281,8 @@ class BacheaCalendar {
             'auth/network-request-failed': 'Connessione assente. Controlla la rete e riprova',
             'auth/operation-not-allowed': 'Login non abilitato su Firebase (Authentication → Email/Password)',
             'auth/configuration-not-found': 'Authentication non attivata su questo progetto Firebase (Authentication → Inizia → Email/Password)',
-            'auth/requires-recent-login': 'Per sicurezza esci, rientra e riprova'
+            'auth/requires-recent-login': 'Per sicurezza esci, rientra e riprova',
+            'app/blocked': 'Questo account è stato bloccato dall\'amministratore.'
         };
         return messages[error && error.code] || `Errore: ${(error && error.message) || error}`;
     }
@@ -289,10 +297,18 @@ class BacheaCalendar {
             });
         });
 
+        let blockedMessage = '';
         if (user) {
-            await this.loadUserProfile(user);
-        } else {
-            await this.promptForLogin();
+            try {
+                await this.loadUserProfile(user);
+            } catch (error) {
+                if (!error || error.code !== 'app/blocked') throw error;
+                blockedMessage = this.authErrorMessage(error);
+                this.userId = null;
+            }
+        }
+        if (!user || blockedMessage) {
+            await this.promptForLogin(blockedMessage);
         }
 
         // Se la sessione finisce (logout da un'altra scheda) ricarico: torna la schermata di login
@@ -302,6 +318,14 @@ class BacheaCalendar {
     }
 
     async loadUserProfile(user) {
+        // Account bloccato dall'amministratore: si esce subito (le regole gli negano comunque tutto)
+        const blocked = await database.ref(`blocked/${user.uid}`).once('value').then(s => s.exists()).catch(() => false);
+        if (blocked) {
+            await firebase.auth().signOut();
+            const error = new Error('Account bloccato');
+            error.code = 'app/blocked';
+            throw error;
+        }
         this.userId = user.uid;
         const snapshot = await database.ref(`users/${user.uid}`).once('value');
         const profile = snapshot.val();
@@ -320,9 +344,10 @@ class BacheaCalendar {
             });
         }
         this.userNames[this.userId] = this.userName;
+        await this.loadRole();
     }
 
-    promptForLogin() {
+    promptForLogin(initialError = '') {
         return new Promise(resolve => {
             const modal = document.getElementById('authModal');
             const loginForm = document.getElementById('loginForm');
@@ -349,6 +374,7 @@ class BacheaCalendar {
             };
 
             tabs.forEach(tab => tab.onclick = () => showTab(tab.dataset.tab));
+            if (initialError) setTimeout(() => showError(initialError), 0);
 
             const finish = async (user) => {
                 await this.loadUserProfile(user);
@@ -569,10 +595,9 @@ class BacheaCalendar {
     }
 
     updateEditNameButtonText() {
-        const editNameBtn = document.getElementById('editNameBtn');
-        if (editNameBtn) {
-            editNameBtn.textContent = '👤 Cambia il tuo nome';
-        }
+        // Il nome si cambia da 👤 Utente: aggiorno il nome mostrato nel profilo
+        const nameEl = document.getElementById('userProfileName');
+        if (nameEl) nameEl.textContent = this.userName || 'Non impostato';
     }
 
     showEditNameModal() {
@@ -679,6 +704,9 @@ class BacheaCalendar {
         }
         this.setupNotificationListeners();
         this.setupLimitWarnings();
+        this.setupAdminListeners();
+        this.listenSettings();
+        this.recordAppOpen();
         this.detectDevice();
         this.loadVersion();
         this.loadTitle();
@@ -721,6 +749,7 @@ class BacheaCalendar {
         fetch('./descrizioni/titolo')
             .then(response => response.text())
             .then(content => {
+                if (this.settingsTitleOverridden) return; // c'è il titolo impostato dall'amministratore
                 const lines = content.trim().split('\n');
                 if (lines[0]) {
                     document.getElementById('titleLine1').textContent = lines[0];
@@ -783,7 +812,6 @@ class BacheaCalendar {
         // Menu dropdown
         const menuBtn = document.getElementById('menuBtn');
         const menuDropdown = document.getElementById('menuDropdown');
-        const changeModalBtn = document.getElementById('changeModalBtn');
 
         if (menuBtn && menuDropdown) {
             menuBtn.addEventListener('click', () => {
@@ -798,20 +826,19 @@ class BacheaCalendar {
             });
         }
 
-        if (changeModalBtn) {
-            changeModalBtn.addEventListener('click', () => {
-                this.toggleView();
-                menuDropdown.style.display = 'none';
+        // Utente: il cambio del nome ora è dentro il profilo
+        const userProfileNameBtn = document.getElementById('userProfileNameBtn');
+        if (userProfileNameBtn) {
+            userProfileNameBtn.addEventListener('click', () => {
+                this.closeUserProfile();
+                this.showEditNameModal();
             });
         }
 
-        const editNameBtn = document.getElementById('editNameBtn');
-        if (editNameBtn) {
-            editNameBtn.addEventListener('click', () => {
-                this.showEditNameModal();
-                menuDropdown.style.display = 'none';
-            });
-        }
+        // Visualizzazione: Calendario o Lista (prima era "Cambia Modalità" nel menu)
+        document.querySelectorAll('.view-choice-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.setView(btn.dataset.view === 'list'));
+        });
 
         addListener('prevBtn', 'click', () => this.previousMonth());
         addListener('nextBtn', 'click', () => this.nextMonth());
@@ -957,7 +984,7 @@ class BacheaCalendar {
             e.preventDefault();
             const url = document.getElementById('proposalImageUrl').value.trim();
             if (!url) {
-                this.showErrorPopup('Inserisci un URL valido');
+                this.showErrorPopup('Scrivi l\'indirizzo dell\'immagine oppure chiudi');
                 return;
             }
             this.loadImageFromUrl(url, 'proposal');
@@ -985,12 +1012,14 @@ class BacheaCalendar {
         });
         document.getElementById('proposalLinkSaveBtn').addEventListener('click', (e) => {
             e.preventDefault();
-            const link = document.getElementById('proposalLink').value.trim();
-            if (!link) {
-                this.showErrorPopup('Inserisci un link valido oppure annulla');
+            const check = this.checkLink(document.getElementById('proposalLink').value);
+            this.clearFieldErrors();
+            if (check.error || !check.value) {
+                this.markFieldError({ id: 'proposalLink', anchor: 'proposalLinkInputContainer', label: 'Link',
+                    message: check.error || 'è vuoto: scrivi l\'indirizzo del sito oppure premi ✖' });
                 return;
             }
-            this.renderProposalLink(link);
+            this.renderProposalLink(check.value);
         });
         document.getElementById('proposalLinkDeleteBtn').addEventListener('click', (e) => {
             e.preventDefault();
@@ -1010,13 +1039,15 @@ class BacheaCalendar {
 
         // Settings
         const settingsBtn = document.getElementById('settingsBtn');
-        if (settingsBtn) settingsBtn.addEventListener('click', () => this.openSettings());
+        if (settingsBtn) settingsBtn.addEventListener('click', () => { this.closeMenu(); this.openSettings(); });
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
         if (closeSettingsBtn) closeSettingsBtn.addEventListener('click', () => this.closeSettings());
 
         // Info
         const infoBtn = document.getElementById('infoBtn');
-        if (infoBtn) infoBtn.addEventListener('click', () => this.openInfo());
+        if (infoBtn) infoBtn.addEventListener('click', () => { this.closeMenu(); this.openInfo(); });
+        const guideBtn = document.getElementById('guideBtn');
+        if (guideBtn) guideBtn.addEventListener('click', () => { this.closeMenu(); this.openGuide(); });
         const closeInfoBtn = document.getElementById('closeInfoBtn');
         if (closeInfoBtn) closeInfoBtn.addEventListener('click', () => this.closeInfo());
         const infoModal = document.getElementById('infoModal');
@@ -1139,7 +1170,7 @@ class BacheaCalendar {
             e.preventDefault();
             const url = document.getElementById('eventImageUrl').value.trim();
             if (!url) {
-                this.showErrorPopup('Inserisci un URL valido');
+                this.showErrorPopup('Scrivi l\'indirizzo dell\'immagine oppure chiudi');
                 return;
             }
             this.loadImageFromUrl(url, 'event');
@@ -1189,7 +1220,7 @@ class BacheaCalendar {
             e.preventDefault();
             const url = document.getElementById('editImageUrl').value.trim();
             if (!url) {
-                this.showErrorPopup('Inserisci un URL valido');
+                this.showErrorPopup('Scrivi l\'indirizzo dell\'immagine oppure chiudi');
                 return;
             }
             this.loadImageFromUrl(url, 'edit');
@@ -1225,15 +1256,17 @@ class BacheaCalendar {
 
         document.getElementById('editLinkSaveBtn').addEventListener('click', (e) => {
             e.preventDefault();
-            const newLink = document.getElementById('editLink').value.trim();
-            if (newLink) {
-                if (this.editingNote) {
-                    this.updateEvent(this.editingNote.id, { link: newLink });
-                    this.renderEditLink(newLink);
-                    this.showSuccessPopup('Link salvato');
-                }
-            } else {
-                this.showErrorPopup('Inserisci un link valido oppure annulla');
+            const check = this.checkLink(document.getElementById('editLink').value);
+            this.clearFieldErrors();
+            if (check.error || !check.value) {
+                this.markFieldError({ id: 'editLink', anchor: 'editLinkInputContainer', label: 'Link',
+                    message: check.error || 'è vuoto: scrivi l\'indirizzo del sito oppure premi ✖' });
+                return;
+            }
+            if (this.editingNote) {
+                this.updateEvent(this.editingNote.id, { link: check.value });
+                this.renderEditLink(check.value);
+                this.showSuccessPopup('Link salvato');
             }
         });
 
@@ -1270,14 +1303,16 @@ class BacheaCalendar {
         if (eventLinkSaveBtn) {
             eventLinkSaveBtn.addEventListener('click', (e) => {
                 e.preventDefault();
-                const newLink = document.getElementById('eventLink').value.trim();
-                if (newLink) {
-                    this.currentEventLink = newLink;
-                    this.renderEventLink(newLink);
-                    this.showSuccessPopup('Link salvato');
-                } else {
-                    this.showErrorPopup('Inserisci un link valido oppure annulla');
+                const check = this.checkLink(document.getElementById('eventLink').value);
+                this.clearFieldErrors();
+                if (check.error || !check.value) {
+                    this.markFieldError({ id: 'eventLink', anchor: 'eventLinkInputContainer', label: 'Link',
+                        message: check.error || 'è vuoto: scrivi l\'indirizzo del sito oppure premi ✖' });
+                    return;
                 }
+                this.currentEventLink = check.value;
+                this.renderEventLink(check.value);
+                this.showSuccessPopup('Link salvato');
             });
         }
 
@@ -1586,6 +1621,7 @@ class BacheaCalendar {
     }
 
     closeModal() {
+        this.clearFieldErrors(); // gli avvisi sui campi non restano per la prossima apertura
         // Pulisci i campi del form
         document.getElementById('eventTitle').value = '';
         document.getElementById('eventTime').value = '';
@@ -1634,7 +1670,15 @@ class BacheaCalendar {
             } else {
                 itemEl.innerHTML = `
                     <span><span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: ${this.getUserColor(participantId).bg};"></span>${this.escapeHtml(names[index])}</span>
+                    ${this.isAdmin ? '<button type="button" class="btn-admin-remove-participant" style="background: #ff9800;">Togli</button>' : ''}
                 `;
+                const adminRemoveBtn = itemEl.querySelector('.btn-admin-remove-participant');
+                if (adminRemoveBtn) {
+                    adminRemoveBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        this.adminRemoveParticipant(participantId);
+                    });
+                }
             }
 
             const removeBtn = itemEl.querySelector('.btn-remove-participant');
@@ -1664,7 +1708,7 @@ class BacheaCalendar {
             const messagesContainer = document.getElementById('chatMessagesContainer');
             const scrollTop = messagesContainer.scrollTop;
             messagesContainer.innerHTML = '';
-            this.renderChatInto(messagesContainer, this.currentChat.messages, this.currentChat.lastReadTimestamp, this.editParticipantsList, false);
+            this.renderChatInto(messagesContainer, this.currentChat.messages, this.currentChat.lastReadTimestamp, this.editParticipantsList, false, this.currentChat.eventId);
             messagesContainer.scrollTop = scrollTop;
         }
     }
@@ -1702,7 +1746,7 @@ class BacheaCalendar {
             // Scrive solo la propria iscrizione: non tocca quelle degli altri
             if (this.editingNote) {
                 database.ref(`events/${this.editingNote.id}/participants/${this.userId}`).set(true)
-                    .then(() => this.showSuccessPopup('Adesso sei un partecipante!'))
+                    .then(() => { this.recordStat('joins'); this.showSuccessPopup('Adesso sei un partecipante!'); })
                     .catch(error => {
                         this.notifyWriteError('Iscrizione all\'evento', error);
                     });
@@ -1825,7 +1869,7 @@ class BacheaCalendar {
                 document.getElementById({ event: 'eventImageUrl', edit: 'editImageUrl', proposal: 'proposalImageUrl' }[type]).value = '';
             })
             .catch(error => {
-                this.showErrorPopup('Errore nel caricamento. Verifica l\'URL e i permessi CORS.');
+                this.showErrorPopup('Non riesco a caricare l\'immagine da questo indirizzo: forse non è un\'immagine, oppure il sito non permette di usarla.\nProva a salvarla sul telefono o sul PC e caricala con "Carica Img".');
             });
     }
 
@@ -1891,16 +1935,100 @@ class BacheaCalendar {
         document.getElementById(`${prefix}Fee`).value = fee ? String(fee).replace('.', ',') : '';
     }
 
-    // Legge la quota dal modal: {ok, value}. Vuota = 0 (Gratis). Accetta "15", "15,50", "15.5", "15 €"
-    readFeeInput(prefix) {
-        const raw = document.getElementById(`${prefix}Fee`).value.replace('€', '').replace(',', '.').trim();
-        if (!raw) return { ok: true, value: 0 };
-        const value = Number(raw);
-        if (!/^\d+(\.\d{1,2})?$/.test(raw) || !isFinite(value) || value > 999) {
-            this.showErrorPopup('Quota non valida: scrivi un importo fino a 999 € (es. 15 o 12,50), oppure lascia vuoto per Gratis');
-            return { ok: false };
+    // ===== Controllo dei campi prima di salvare (0.5.0) =====
+    // Obbligatori sbagliati (nome, data): non si salva e si spiega cosa sistemare.
+    // Facoltativi scritti ma sbagliati (link, quota, immagine, prima data): si chiede se salvare senza.
+    // Ogni campo sbagliato diventa rosso e sotto compare cosa non va; sparisce appena lo si corregge.
+
+    // Link: spazi all'inizio e alla fine tolti da soli; https:// aggiunto se manca. {value} oppure {error}
+    checkLink(raw) {
+        const text = String(raw || '').trim();
+        if (!text) return { value: '' };
+        if (/\s/.test(text)) return { error: 'c\'è uno spazio in mezzo. Un indirizzo si scrive tutto attaccato (es. https://www.sito.it)' };
+        if (text.length > 500) return { error: 'è troppo lungo (al massimo 500 caratteri)' };
+        const url = this.safeLink(text);
+        if (!url) return { error: 'non è l\'indirizzo di un sito. Scrivilo così: https://www.sito.it' };
+        const host = new URL(url).hostname;
+        if (!host.includes('.') || host.startsWith('.') || host.endsWith('.')) {
+            return { error: 'manca il nome del sito con il punto (es. www.sito.it)' };
         }
-        return { ok: true, value: Math.round(value * 100) / 100 };
+        if (url.length > 500) return { error: 'è troppo lungo (al massimo 500 caratteri)' };
+        return { value: url };
+    }
+
+    // Quota: vuota = Gratis. Accetta "15", "15,50", "15.5", "15 €". {value} oppure {error}
+    checkFee(raw) {
+        const text = String(raw || '').replace('€', '').replace(',', '.').trim();
+        if (!text) return { value: 0 };
+        const value = Number(text);
+        if (!/^\d+(\.\d{1,2})?$/.test(text) || !isFinite(value)) {
+            return { error: 'scrivi solo un importo, es. 15 oppure 12,50 (vuota = Gratis)' };
+        }
+        if (value > 999) return { error: 'al massimo 999 €' };
+        return { value: Math.round(value * 100) / 100 };
+    }
+
+    // problem: {id, anchor?, label, message, without?, show?}
+    markFieldError(problem) {
+        const input = document.getElementById(problem.id);
+        if (!input) return;
+        input.classList.add('field-error');
+        const anchor = (problem.anchor && document.getElementById(problem.anchor)) || input;
+        const msg = document.createElement('div');
+        msg.className = 'field-error-msg';
+        msg.dataset.for = problem.id;
+        msg.textContent = `⚠️ ${problem.label}: ${problem.message}`;
+        anchor.insertAdjacentElement('afterend', msg);
+        const clear = () => {
+            input.classList.remove('field-error');
+            document.querySelectorAll(`.field-error-msg[data-for="${problem.id}"]`).forEach(el => el.remove());
+            input.removeEventListener('input', clear);
+        };
+        input.addEventListener('input', clear);
+    }
+
+    clearFieldErrors() {
+        document.querySelectorAll('.field-error-msg').forEach(el => el.remove());
+        document.querySelectorAll('.field-error').forEach(el => el.classList.remove('field-error'));
+    }
+
+    // true = si può salvare (senza i campi facoltativi sbagliati); false = l'utente deve correggere
+    async checkFormFields(required, optional, action) {
+        this.clearFieldErrors();
+        [...required, ...optional].forEach(problem => {
+            if (problem.show) problem.show();
+            this.markFieldError(problem);
+        });
+        const line = (problem) => `• ${problem.label}: ${problem.message}`;
+        if (required.length) {
+            let message = `⚠️ Prima di salvare sistema:\n${required.map(line).join('\n')}`;
+            if (optional.length) message += `\n\nControlla anche:\n${optional.map(line).join('\n')}`;
+            this.showErrorPopup(message);
+            return false;
+        }
+        if (!optional.length) return true;
+        const parts = optional.map(problem => `senza ${problem.without}`);
+        const withoutText = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} e ${parts[parts.length - 1]}` : parts[0];
+        const ok = await this.showConfirmDialog(
+            `❓ ${optional.length > 1 ? 'Alcuni campi non vanno bene' : 'Un campo non va bene'}:\n${optional.map(line).join('\n')}\n\nVuoi ${action} ${withoutText}?`,
+            optional.length > 1 ? 'Salva senza questi campi' : 'Salva senza questo campo', '#ff9800', '✏️ Correggo');
+        if (ok) this.clearFieldErrors();
+        return ok;
+    }
+
+    // Indirizzo di un'immagine scritto ma non caricato con ✅
+    pendingImageUrlProblem(inputId, containerId, panelId, keepText) {
+        const value = document.getElementById(inputId).value.trim();
+        if (!value) return null;
+        return {
+            id: inputId, anchor: containerId, label: 'Immagine',
+            message: 'hai scritto un indirizzo ma non hai premuto ✅ per caricarla',
+            without: keepText,
+            show: () => {
+                document.getElementById(panelId).style.display = 'block';
+                document.getElementById(containerId).style.display = 'flex';
+            }
+        };
     }
 
     setProposalCover(image) {
@@ -1982,18 +2110,33 @@ class BacheaCalendar {
         document.getElementById('eventImageUrlInputContainer').style.display = 'none';
     }
 
-    addNote(e) {
+    async addNote(e) {
         e.preventDefault();
         const title = document.getElementById('eventTitle').value.trim();
-        if (!title || !this.selectedDate) return;
+        const dateKey = document.getElementById('eventDate').value || (this.selectedDate ? this.getDateKey(this.selectedDate) : '');
 
-        const dateKey = document.getElementById('eventDate').value || this.getDateKey(this.selectedDate);
-        if (!this.isFutureDateKey(dateKey)) {
-            this.showErrorPopup('Puoi aggiungere eventi solo da domani in poi');
-            return;
-        }
-        const fee = this.readFeeInput('event');
-        if (!fee.ok) return;
+        // Controllo di tutti i campi
+        const required = [];
+        const optional = [];
+        if (!title) required.push({ id: 'eventTitle', label: 'Nome evento', message: 'è vuoto: scrivi come si chiama l\'evento' });
+        if (!dateKey) required.push({ id: 'eventDate', label: 'Data', message: 'scegli il giorno dell\'evento' });
+        else if (!this.isFutureDateKey(dateKey)) required.push({ id: 'eventDate', label: 'Data', message: 'gli eventi si creano da domani in poi' });
+        const fee = this.checkFee(document.getElementById('eventFee').value);
+        if (fee.error) optional.push({ id: 'eventFee', label: 'Quota', message: fee.error, without: 'quota (sarà Gratis)' });
+        // Il link scritto e non confermato con ✅ vale lo stesso
+        const linkTyping = document.getElementById('eventLinkInputContainer').style.display === 'flex';
+        const link = this.checkLink(linkTyping ? document.getElementById('eventLink').value : this.currentEventLink);
+        if (link.error) optional.push({
+            id: 'eventLink', anchor: 'eventLinkInputContainer', label: 'Link', message: link.error, without: 'link',
+            show: () => {
+                document.getElementById('eventLinkContainer').style.display = 'none';
+                document.getElementById('eventLinkInputContainer').style.display = 'flex';
+            }
+        });
+        const pendingImage = this.pendingImageUrlProblem('eventImageUrl', 'eventImageUrlInputContainer', 'addImagePanel', 'l\'immagine di quell\'indirizzo');
+        if (pendingImage) optional.push(pendingImage);
+        if (!await this.checkFormFields(required, optional, 'creare l\'evento')) return;
+        document.getElementById('eventImageUrl').value = '';
 
         // Genera un ID unico
         const id = 'evt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -2011,9 +2154,9 @@ class BacheaCalendar {
             time: document.getElementById('eventTime').value.trim(),
             location: document.getElementById('eventLocation').value.trim(),
             notes: document.getElementById('eventNotes').value.trim(),
-            fee: fee.value,
+            fee: fee.error ? 0 : fee.value,
             color: this.selectedColor,
-            link: this.currentEventLink,
+            link: link.error ? '' : link.value,
             imageVersion: imageVersion,
             creatorId: this.userId,
             createdAt: Date.now()
@@ -2021,7 +2164,7 @@ class BacheaCalendar {
 
         imageSaved
             .then(() => database.ref(`events/${id}`).set(event))
-            .then(() => this.showSuccessPopup('Evento aggiunto con successo!'))
+            .then(() => { this.recordStat('eventsCreated'); this.showSuccessPopup('Evento aggiunto con successo!'); })
             .catch(error => {
                 this.notifyWriteError('Creazione dell\'evento', error);
             });
@@ -2411,6 +2554,22 @@ class BacheaCalendar {
     }
 
     // View Toggle
+    setView(isList) {
+        if (this.isListView !== isList) this.toggleView();
+        this.updateViewChoice();
+    }
+
+    updateViewChoice() {
+        document.querySelectorAll('.view-choice-btn').forEach(btn => {
+            btn.classList.toggle('active', (btn.dataset.view === 'list') === !!this.isListView);
+        });
+    }
+
+    closeMenu() {
+        const menuDropdown = document.getElementById('menuDropdown');
+        if (menuDropdown) menuDropdown.style.display = 'none';
+    }
+
     toggleView() {
         this.isListView = !this.isListView;
         // Salva la preferenza nel localStorage
@@ -2706,6 +2865,7 @@ class BacheaCalendar {
     // Settings
     openSettings() {
         document.getElementById('settingsModal').classList.add('active');
+        this.updateViewChoice();
         // Aggiorna lo stato dei checkbox
         document.querySelectorAll('.color-filter').forEach(checkbox => {
             const color = checkbox.dataset.color;
@@ -2717,17 +2877,97 @@ class BacheaCalendar {
         document.getElementById('settingsModal').classList.remove('active');
     }
 
-    openInfo() {
+    // 📖 Modo d'uso: la guida (descrizioni/info)
+    openGuide() {
+        document.getElementById('infoHeader').textContent = '📖 Modo d\'uso';
+        const body = document.getElementById('infoBody');
+        body.textContent = 'Caricamento…';
         document.getElementById('infoModal').classList.add('active');
-        // Carica il file info
-        fetch('./descrizioni/info')
+        fetch('./descrizioni/info', { cache: 'no-store' })
             .then(response => response.text())
-            .then(content => {
-                document.getElementById('infoBody').textContent = content;
-            })
-            .catch(error => {
-                document.getElementById('infoBody').textContent = 'Errore nel caricamento del file informazioni.';
+            .then(content => this.renderGuideSections(body, content))
+            .catch(() => { body.textContent = 'Errore nel caricamento della guida.'; });
+    }
+
+    // La guida è divisa in sezioni: ogni riga che inizia senza spazi è il titolo di una sezione,
+    // le righe rientrate sotto sono il suo testo. Ogni sezione ha la freccetta (tutte chiuse);
+    // la prima riga del file ("🎯 Come usare la Bacheca") resta come introduzione
+    renderGuideSections(body, content) {
+        const lines = content.replace(/\r/g, '').split('\n');
+        const sections = [];
+        let intro = '';
+        lines.forEach(line => {
+            if (!line.trim()) {
+                if (sections.length) sections[sections.length - 1].lines.push('');
+                return;
+            }
+            if (!/^\s/.test(line)) {
+                if (!intro && !sections.length) intro = line.trim();
+                else sections.push({ title: line.trim(), lines: [] });
+                return;
+            }
+            if (sections.length) sections[sections.length - 1].lines.push(line.replace(/^ {3}/, '')); // toglie il primo rientro
+        });
+        body.innerHTML = '';
+        if (intro) {
+            const introEl = document.createElement('div');
+            introEl.style.cssText = 'font-weight: 600; margin-bottom: 4px;';
+            introEl.textContent = `${intro} (tocca una sezione per aprirla)`;
+            body.appendChild(introEl);
+        }
+        this.renderAccordion(body, sections.map(section => ({ title: section.title, text: section.lines.join('\n').trim(), open: false })));
+    }
+
+    // Elenco di sezioni con la freccetta ▸/▾ (Modo d'uso e Info): aprendone una, le altre si chiudono
+    renderAccordion(body, items) {
+        items.forEach(item => {
+            const details = document.createElement('details');
+            details.className = item.className ? `release-old ${item.className}` : 'release-old';
+            details.open = !!item.open;
+            const summary = document.createElement('summary');
+            summary.textContent = item.title;
+            const content = document.createElement('div');
+            content.textContent = item.text;
+            details.appendChild(summary);
+            details.appendChild(content);
+            details.addEventListener('toggle', () => {
+                if (!details.open) return;
+                body.querySelectorAll('details.release-old').forEach(other => {
+                    if (other !== details) other.open = false;
+                });
             });
+            body.appendChild(details);
+        });
+    }
+
+    // ℹ️ Info: cosa c'è di nuovo nell'ultima versione, e le due precedenti da aprire con la freccetta.
+    // L'elenco delle versioni è in rilasci/elenco (dalla più nuova), il testo in rilasci/<versione>
+    async openInfo() {
+        document.getElementById('infoHeader').textContent = 'ℹ️ Informazione';
+        const body = document.getElementById('infoBody');
+        body.textContent = 'Caricamento…';
+        document.getElementById('infoModal').classList.add('active');
+        const get = (path) => fetch(path, { cache: 'no-store' }).then(r => {
+            if (!r.ok) throw new Error(r.status);
+            return r.text();
+        });
+        try {
+            const current = (await get('./descrizioni/versione')).trim();
+            const all = (await get('./rilasci/elenco')).split('\n').map(v => v.trim()).filter(Boolean);
+            const index = all.indexOf(current);
+            const versions = (index >= 0 ? all.slice(index) : [current, ...all]).slice(0, 3);
+            const texts = await Promise.all(versions.map(v => get(`./rilasci/${v}`).catch(() => `🆕 Versione ${v}\n\nNessuna descrizione.`)));
+            body.innerHTML = '';
+            // Tre versioni con la freccetta: l'ultima aperta, le altre chiuse; aprendone una le altre si chiudono
+            this.renderAccordion(body, texts.map((text, i) => ({
+                title: i === 0 ? `🆕 Versione ${versions[i]}` : `Versione ${versions[i]}`,
+                text: text.trim().split(/\r?\n/).slice(1).join('\n').trim(), // senza la riga del titolo
+                open: i === 0,
+                className: i === 0 ? 'release-latest' : ''
+            })));
+        } catch (e) {
+            body.textContent = 'Errore nel caricamento delle novità.';
+        }
     }
 
     closeInfo() {
@@ -3231,15 +3471,28 @@ class BacheaCalendar {
         if (!this.userId) return;
         const isActive = () => document.visibilityState === 'visible';
         database.ref('.info/connected').on('value', (snapshot) => {
-            if (snapshot.val() !== true) return;
+            if (snapshot.val() !== true) {
+                // Connessione caduta: Firebase toglie la voce, non va più usata (alla riconnessione se ne crea una nuova)
+                this.presenceRef = null;
+                return;
+            }
             // A ogni (ri)connessione una voce nuova, tolta da Firebase alla disconnessione
-            this.presenceRef = database.ref(`presence/${this.userId}`).push();
-            this.presenceRef.onDisconnect().remove()
-                .then(() => this.presenceRef.set({ active: isActive(), at: firebase.database.ServerValue.TIMESTAMP }))
+            const ref = database.ref(`presence/${this.userId}`).push();
+            this.presenceRef = ref;
+            ref.onDisconnect().remove()
+                .then(() => ref.set({ active: isActive(), at: firebase.database.ServerValue.TIMESTAMP }))
+                .then(() => this.removeGhostPresence(ref.key))
                 .catch(error => console.error('Errore presenza:', error));
         });
         document.addEventListener('visibilitychange', () => {
-            if (this.presenceRef) this.presenceRef.update({ active: isActive() }).catch(() => {});
+            const ref = this.presenceRef;
+            if (!ref) return;
+            // Solo se la voce esiste ancora sul server: se Firebase l'ha già tolta (telefono in background),
+            // una semplice update la ricreerebbe senza onDisconnect e resterebbe per sempre ("fantasma").
+            // La transazione viene confermata dal server: con la voce sparita si annulla.
+            const active = isActive();
+            ref.transaction(current => current ? Object.assign({}, current, { active }) : undefined, null, false)
+                .catch(() => {});
         });
         database.ref('presence').on('value', (snapshot) => this.renderPresence(snapshot.val() || {}));
 
@@ -3251,6 +3504,23 @@ class BacheaCalendar {
         };
         window.addEventListener('resize', scheduleCheck);
         setInterval(() => this.checkPresenceSpots(), 5000); // la pagina cambia anche senza scroll (lista, calendario)
+    }
+
+    // Voci fantasma lasciate dalle versioni precedenti (solo {active}, senza "at"): le tolgo, sono mie
+    removeGhostPresence(currentKey) {
+        database.ref(`presence/${this.userId}`).once('value').then(snapshot => {
+            const updates = {};
+            snapshot.forEach(child => {
+                const value = child.val();
+                if (child.key !== currentKey && (!value || typeof value.at !== 'number')) updates[child.key] = null;
+            });
+            if (Object.keys(updates).length) return database.ref(`presence/${this.userId}`).update(updates);
+        }).catch(() => {});
+    }
+
+    // Una connessione conta solo se ha l'ora di collegamento: le voci fantasma non ce l'hanno
+    getLiveConnections(connections) {
+        return Object.values(connections || {}).filter(c => c && typeof c.at === 'number');
     }
 
     stopPresence() {
@@ -3276,7 +3546,7 @@ class BacheaCalendar {
         const online = {};
         Object.entries(presence).forEach(([uid, connections]) => {
             if (uid === this.userId || !connections) return;
-            const list = Object.values(connections).filter(Boolean);
+            const list = this.getLiveConnections(connections);
             if (list.length > 0) online[uid] = list.some(c => c.active);
         });
 
@@ -3423,6 +3693,328 @@ class BacheaCalendar {
         this.notes = index;
     }
 
+    // ===== Ruoli, blocco, statistiche e impostazioni dell'app (0.5.0) =====
+    // roles/{uid}: "admin"        -> si imposta SOLO dalla console di Firebase
+    // blocked/{uid}: true         -> l'admin blocca un utente: le regole gli negano letture e scritture
+    // stats/{uid}: {eventsCreated, proposalsCreated, messagesSent, joins, opens, lastActiveAt, firstSeenAt, days/{YYYY-MM-DD}}
+    // settings: {announcement: {text, updatedAt}, title: {line1, line2, line3}}
+
+    async loadRole() {
+        try {
+            const snapshot = await database.ref(`roles/${this.userId}`).once('value');
+            this.isAdmin = snapshot.val() === 'admin';
+        } catch (e) {
+            this.isAdmin = false;
+        }
+        const adminBtn = document.getElementById('adminBtn');
+        if (adminBtn) adminBtn.style.display = this.isAdmin ? 'block' : 'none';
+    }
+
+    // Contatori d'uso: li scrive ognuno per sé (con increment, senza leggere prima)
+    recordStat(field) {
+        if (!this.userId) return;
+        database.ref(`stats/${this.userId}/${field}`).set(firebase.database.ServerValue.increment(1)).catch(() => {});
+    }
+
+    // All'apertura: un'apertura in più, ultimo accesso e giorno di attività (un solo aggiornamento)
+    recordAppOpen() {
+        if (!this.userId) return;
+        const today = this.getDateKey(new Date());
+        database.ref(`stats/${this.userId}`).update({
+            opens: firebase.database.ServerValue.increment(1),
+            lastActiveAt: firebase.database.ServerValue.TIMESTAMP,
+            [`days/${today}`]: true
+        }).catch(() => {});
+        database.ref(`stats/${this.userId}/firstSeenAt`).transaction(current => current || Date.now()).catch(() => {});
+    }
+
+    // Avviso a tutti (striscia in alto) e titoli modificabili dall'admin
+    listenSettings() {
+        // Se l'admin blocca questo account mentre è aperto: si ricarica e compare il messaggio di blocco
+        database.ref(`blocked/${this.userId}`).on('value', (snapshot) => {
+            if (snapshot.exists()) location.reload();
+        }, () => {});
+        database.ref('settings').on('value', (snapshot) => {
+            this.settings = snapshot.val() || {};
+            const banner = document.getElementById('announcementBanner');
+            const text = this.settings.announcement && this.settings.announcement.text;
+            if (banner) {
+                banner.textContent = text ? `📣 ${text}` : '';
+                banner.style.display = text ? 'block' : 'none';
+            }
+            const title = this.settings.title;
+            const wasOverridden = this.settingsTitleOverridden;
+            this.settingsTitleOverridden = !!(title && (title.line1 || title.line2 || title.line3));
+            if (this.settingsTitleOverridden) {
+                document.getElementById('titleLine1').textContent = title.line1 || '';
+                document.getElementById('titleLine2').textContent = title.line2 || '';
+                document.getElementById('titleLine3').textContent = title.line3 || '';
+            } else if (wasOverridden) {
+                this.loadTitle(); // titolo tolto dall'admin: torna quello del file
+            }
+        }, () => { /* utente bloccato o regole vecchie: niente impostazioni */ });
+    }
+
+    async adminDeleteMessage(chatId, messageId, text) {
+        if (!this.isAdmin) return;
+        const preview = text.length > 60 ? text.slice(0, 60) + '…' : text;
+        const ok = await this.showConfirmDialog(`Cancellare il messaggio "${preview}"?`);
+        if (!ok) return;
+        database.ref(`eventChats/${chatId}/messages/${messageId}`).remove()
+            .then(() => this.showToast('Messaggio cancellato', 'info'))
+            .catch(error => this.notifyWriteError('Cancellazione del messaggio', error));
+    }
+
+    // Amministratore: toglie un partecipante dall'evento
+    async adminRemoveParticipant(participantId) {
+        const event = this.getEditingEvent();
+        if (!this.isAdmin || !event) return;
+        const ok = await this.showConfirmDialog(`Togliere ${this.getParticipantName(participantId)} dai partecipanti di "${event.title}"?`, 'Togli');
+        if (!ok) return;
+        database.ref(`events/${event.id}/participants/${participantId}`).remove()
+            .then(() => this.showToast('Partecipante tolto', 'info'))
+            .catch(error => this.notifyWriteError('Rimozione del partecipante', error));
+    }
+
+    canManageProposal(proposal) {
+        return this.isProposalCreator(proposal) || !!this.isAdmin;
+    }
+
+    // ===== Pagina Amministrazione =====
+    async openAdminPanel() {
+        if (!this.isAdmin) return;
+        const menuDropdown = document.getElementById('menuDropdown');
+        if (menuDropdown) menuDropdown.style.display = 'none';
+        document.getElementById('adminModal').style.display = 'flex';
+        document.body.style.overflow = 'hidden'; // a tutta pagina: sotto non scorre niente
+        this.showAdminTab(this.adminTab || 'users');
+        document.getElementById('adminContent').innerHTML = '<p style="color:#666">Caricamento…</p>';
+        await this.loadAdminData();
+        this.renderAdminPanel();
+    }
+
+    closeAdminPanel() {
+        document.getElementById('adminModal').style.display = 'none';
+        document.body.style.overflow = '';
+    }
+
+    async loadAdminData() {
+        const [users, stats, blocked, presence] = await Promise.all(
+            ['users', 'stats', 'blocked', 'presence'].map(path =>
+                database.ref(path).once('value').then(s => s.val() || {}).catch(() => ({}))));
+        this.adminData = { users, stats, blocked, presence };
+    }
+
+    showAdminTab(tab) {
+        this.adminTab = tab;
+        document.querySelectorAll('.admin-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
+        if (this.adminData) this.renderAdminPanel();
+    }
+
+    formatAgo(timestamp) {
+        if (!timestamp) return 'mai';
+        const minutes = Math.round((Date.now() - timestamp) / 60000);
+        if (minutes < 2) return 'adesso';
+        if (minutes < 60) return `${minutes} min fa`;
+        const hours = Math.round(minutes / 60);
+        if (hours < 24) return `${hours} h fa`;
+        const days = Math.round(hours / 24);
+        if (days < 30) return `${days} g fa`;
+        return new Date(timestamp).toLocaleDateString('it-IT');
+    }
+
+    renderAdminPanel() {
+        const content = document.getElementById('adminContent');
+        if (!content || !this.adminData) return;
+        const { users, stats, blocked, presence } = this.adminData;
+        const esc = (t) => this.escapeHtml(t);
+
+        if (this.adminTab === 'users') {
+            const rows = Object.entries(users)
+                .map(([uid, user]) => ({ uid, user, s: stats[uid] || {} }))
+                .sort((a, b) => (b.s.lastActiveAt || 0) - (a.s.lastActiveAt || 0));
+            const last30 = new Date(); last30.setDate(last30.getDate() - 30);
+            const from = this.getDateKey(last30);
+            content.innerHTML = rows.map(({ uid, user, s }) => {
+                const online = this.getLiveConnections(presence[uid]).length > 0;
+                const isBlocked = !!blocked[uid];
+                const days30 = Object.keys(s.days || {}).filter(d => d >= from).length;
+                const registered = user.createdAt ? new Date(user.createdAt).toLocaleDateString('it-IT') : '?';
+                return `
+                    <div class="admin-user" style="border-left: 5px solid ${this.getUserColor(uid).bg}; ${isBlocked ? 'opacity: 0.6;' : ''}">
+                        <div style="display:flex; justify-content:space-between; gap:8px; align-items:baseline;">
+                            <strong>${esc(user.name || '?')}${uid === this.userId ? ' (tu)' : ''}</strong>
+                            <span style="font-size:0.8rem; color:${online ? '#2e7d32' : '#888'};">${online ? '● collegato' : esc(this.formatAgo(s.lastActiveAt))}</span>
+                        </div>
+                        <div style="font-size:0.8rem; color:#666;">@${esc(user.username || '?')} · registrato il ${esc(registered)}${isBlocked ? ' · <b style="color:#c62828">BLOCCATO</b>' : ''}</div>
+                        <div style="font-size:0.8rem; color:#444; margin:4px 0;">
+                            📅 ${s.eventsCreated || 0} eventi · 🗳️ ${s.proposalsCreated || 0} proposte · 💬 ${s.messagesSent || 0} messaggi · 🙋 ${s.joins || 0} iscrizioni · 📲 ${s.opens || 0} aperture · 🗓️ ${days30} giorni attivi (30 g)
+                        </div>
+                        ${uid === this.userId ? '' : `
+                        <div style="display:flex; gap:6px;">
+                            <button type="button" class="admin-action" data-action="rename" data-uid="${esc(uid)}">✏️ Rinomina</button>
+                            <button type="button" class="admin-action" data-action="${isBlocked ? 'unblock' : 'block'}" data-uid="${esc(uid)}">${isBlocked ? '✅ Sblocca' : '⛔ Blocca'}</button>
+                        </div>`}
+                    </div>`;
+            }).join('') || '<p>Nessun utente</p>';
+            content.querySelectorAll('.admin-action').forEach(btn => btn.addEventListener('click', () => this.adminUserAction(btn.dataset.action, btn.dataset.uid)));
+            return;
+        }
+
+        if (this.adminTab === 'stats') {
+            const now = Date.now();
+            const list = Object.entries(users).map(([uid, user]) => ({ uid, name: user.name || '?', s: stats[uid] || {} }));
+            const activeSince = (ms) => list.filter(u => u.s.lastActiveAt && now - u.s.lastActiveAt < ms).length;
+            const sum = (f) => list.reduce((t, u) => t + (u.s[f] || 0), 0);
+            const events = Object.values(this.events || {}).filter(e => e && e.id);
+            const bar = (label, value, max, color) => `
+                <div style="margin:4px 0;">
+                    <div style="display:flex; justify-content:space-between; font-size:0.85rem;"><span>${esc(label)}</span><b>${value}</b></div>
+                    <div style="height:8px; background:#eee; border-radius:4px;"><div style="height:8px; width:${max ? Math.round(value / max * 100) : 0}%; background:${color}; border-radius:4px;"></div></div>
+                </div>`;
+            const top = (field, label) => {
+                const sorted = list.filter(u => u.s[field]).sort((a, b) => b.s[field] - a.s[field]).slice(0, 5);
+                const max = sorted.length ? sorted[0].s[field] : 0;
+                return `<h4>${label}</h4>` + (sorted.map(u => bar(u.name, u.s[field], max, this.getUserColor(u.uid).bg)).join('') || '<p style="color:#888">Ancora niente</p>');
+            };
+            const byParticipants = events.map(e => ({ t: e.title, n: this.getParticipantIds(e).length }))
+                .filter(e => e.n > 0).sort((a, b) => b.n - a.n).slice(0, 5);
+            const categories = {};
+            events.forEach(e => { categories[e.color || 'color-neutral'] = (categories[e.color || 'color-neutral'] || 0) + 1; });
+            const catNames = {};
+            document.querySelectorAll('input[name="editEventColor"]').forEach(input => {
+                catNames[input.dataset.color] = input.closest('.category-option').textContent.trim();
+            });
+            const catSorted = Object.entries(categories).sort((a, b) => b[1] - a[1]);
+            const catMax = catSorted.length ? catSorted[0][1] : 0;
+            content.innerHTML = `
+                <div class="admin-cards">
+                    <div><b>${list.length}</b><span>utenti</span></div>
+                    <div><b>${activeSince(86400000)}</b><span>attivi oggi</span></div>
+                    <div><b>${activeSince(7 * 86400000)}</b><span>attivi in 7 giorni</span></div>
+                    <div><b>${events.length}</b><span>eventi in calendario</span></div>
+                    <div><b>${Object.keys(this.proposals || {}).length}</b><span>proposte aperte</span></div>
+                    <div><b>${sum('messagesSent')}</b><span>messaggi scritti</span></div>
+                </div>
+                ${top('eventsCreated', '📅 Chi crea più eventi')}
+                ${top('messagesSent', '💬 Chi scrive di più in chat')}
+                ${top('opens', '📲 Chi apre di più l\'app')}
+                <h4>👥 Eventi più partecipati</h4>
+                ${byParticipants.map(e => bar(e.t, e.n, byParticipants[0].n, '#667eea')).join('') || '<p style="color:#888">Nessuna iscrizione</p>'}
+                <h4>🎨 Categorie più usate</h4>
+                ${catSorted.map(([c, n]) => bar(catNames[c] || c, n, catMax, '#ffb74d')).join('') || '<p style="color:#888">Nessun evento</p>'}
+                <p style="font-size:0.75rem; color:#888;">I contatori partono dalla versione 0.5.0: le azioni precedenti non sono contate.</p>`;
+            return;
+        }
+
+        // Scheda App: avviso a tutti e titolo
+        const s = this.settings || {};
+        const a = s.announcement || {};
+        const t = s.title || {};
+        content.innerHTML = `
+            <h4>📣 Avviso a tutti</h4>
+            <p style="font-size:0.8rem; color:#666; margin:0 0 6px;">Compare in una striscia in cima alla Bacheca per tutti, finché non lo togli.</p>
+            <textarea id="adminAnnouncement" maxlength="200" rows="2" style="width:100%; box-sizing:border-box; padding:8px; border:2px solid #eee; border-radius:8px;">${esc(a.text || '')}</textarea>
+            <div style="display:flex; gap:8px; margin:6px 0 16px;">
+                <button type="button" id="adminAnnouncementSave" class="admin-action">💾 Pubblica</button>
+                <button type="button" id="adminAnnouncementClear" class="admin-action">🗑️ Togli</button>
+            </div>
+            <h4>🏷️ Titolo della Bacheca</h4>
+            <p style="font-size:0.8rem; color:#666; margin:0 0 6px;">Se vuoti si usa il testo del file descrizioni/titolo.</p>
+            <input id="adminTitle1" maxlength="60" placeholder="Riga 1" value="${esc(t.line1 || '')}" style="width:100%; box-sizing:border-box; padding:8px; margin-bottom:6px; border:2px solid #eee; border-radius:8px;">
+            <input id="adminTitle2" maxlength="60" placeholder="Riga 2" value="${esc(t.line2 || '')}" style="width:100%; box-sizing:border-box; padding:8px; margin-bottom:6px; border:2px solid #eee; border-radius:8px;">
+            <input id="adminTitle3" maxlength="100" placeholder="Sottotitolo" value="${esc(t.line3 || '')}" style="width:100%; box-sizing:border-box; padding:8px; margin-bottom:6px; border:2px solid #eee; border-radius:8px;">
+            <div style="display:flex; gap:8px;">
+                <button type="button" id="adminTitleSave" class="admin-action">💾 Salva titolo</button>
+                <button type="button" id="adminTitleReset" class="admin-action">↩️ Usa quello del file</button>
+            </div>`;
+        const done = (msg) => () => this.showToast(msg, 'info');
+        const fail = (what) => (error) => this.notifyWriteError(what, error);
+        document.getElementById('adminAnnouncementSave').addEventListener('click', () => {
+            const text = document.getElementById('adminAnnouncement').value.trim();
+            if (!text) return this.showToast('Scrivi il testo dell\'avviso', 'info');
+            database.ref('settings/announcement').set({ text, updatedAt: Date.now() }).then(done('📣 Avviso pubblicato')).catch(fail('Avviso a tutti'));
+        });
+        document.getElementById('adminAnnouncementClear').addEventListener('click', () => {
+            database.ref('settings/announcement').remove().then(done('Avviso tolto')).catch(fail('Avviso a tutti'));
+        });
+        document.getElementById('adminTitleSave').addEventListener('click', () => {
+            const title = {
+                line1: document.getElementById('adminTitle1').value.trim(),
+                line2: document.getElementById('adminTitle2').value.trim(),
+                line3: document.getElementById('adminTitle3').value.trim()
+            };
+            database.ref('settings/title').set(title).then(done('Titolo salvato')).catch(fail('Titolo'));
+        });
+        document.getElementById('adminTitleReset').addEventListener('click', () => {
+            database.ref('settings/title').remove().then(done('Titolo del file ripristinato')).catch(fail('Titolo'));
+        });
+    }
+
+    async adminUserAction(action, uid) {
+        const user = (this.adminData.users || {})[uid] || {};
+        const name = user.name || 'questo utente';
+        if (action === 'rename') {
+            const newName = (prompt(`Nuovo nome per ${name} (massimo 10 caratteri):`, user.name || '') || '').trim();
+            if (!newName) return;
+            if (newName.length > 10) return this.showToast('Il nome può avere al massimo 10 caratteri', 'info');
+            await database.ref(`users/${uid}/name`).set(newName).then(() => {
+                this.userNames[uid] = newName;
+                this.showToast(`Nome cambiato in "${newName}"`, 'info');
+            }).catch(error => this.notifyWriteError('Rinomina utente', error));
+        } else if (action === 'block') {
+            const ok = await this.showConfirmDialog(`Bloccare ${name}? Non potrà più vedere né scrivere niente finché non lo sblocchi.`, '⛔ Blocca');
+            if (!ok) return;
+            await database.ref(`blocked/${uid}`).set(true).then(() => this.showToast(`${name} è bloccato`, 'info'))
+                .catch(error => this.notifyWriteError('Blocco utente', error));
+        } else if (action === 'unblock') {
+            await database.ref(`blocked/${uid}`).remove().then(() => this.showToast(`${name} è sbloccato`, 'info'))
+                .catch(error => this.notifyWriteError('Sblocco utente', error));
+        }
+        await this.loadAdminData();
+        this.renderAdminPanel();
+    }
+
+    setupAdminListeners() {
+        document.getElementById('adminBtn').addEventListener('click', () => this.openAdminPanel());
+        document.getElementById('adminCloseBtn').addEventListener('click', () => this.closeAdminPanel());
+        document.getElementById('adminRefreshBtn').addEventListener('click', async () => {
+            await this.loadAdminData();
+            this.renderAdminPanel();
+        });
+        document.querySelectorAll('.admin-tab').forEach(btn => btn.addEventListener('click', () => this.showAdminTab(btn.dataset.tab)));
+        document.getElementById('adminModal').addEventListener('click', (e) => {
+            if (e.target.id === 'adminModal') this.closeAdminPanel();
+        });
+        document.getElementById('editCreatorSelect').addEventListener('change', async (e) => {
+            const event = this.getEditingEvent();
+            const newCreator = e.target.value;
+            if (!event || !this.isAdmin || !newCreator || newCreator === event.creatorId) return;
+            const ok = await this.showConfirmDialog(`Passare l'evento "${event.title}" a ${this.getParticipantName(newCreator)}? Da quel momento potrà modificarlo solo lui (e l'amministratore).`, 'Passa', '#667eea');
+            if (!ok) { e.target.value = event.creatorId || ''; return; }
+            database.ref(`events/${event.id}`).update({ creatorId: newCreator })
+                .then(() => this.showToast('Creatore cambiato', 'info'))
+                .catch(error => {
+                    e.target.value = event.creatorId || '';
+                    this.notifyWriteError('Cambio del creatore', error);
+                });
+        });
+    }
+
+    // Nel modal di modifica, solo per l'admin: scelta del creatore dell'evento
+    renderCreatorSelect(event) {
+        const group = document.getElementById('editCreatorGroup');
+        const select = document.getElementById('editCreatorSelect');
+        if (!group || !select) return;
+        group.style.display = this.isAdmin ? 'block' : 'none';
+        if (!this.isAdmin) return;
+        const options = Object.entries(this.userNames || {})
+            .sort((a, b) => String(a[1]).localeCompare(String(b[1])))
+            .map(([uid, name]) => `<option value="${this.escapeHtml(uid)}">${this.escapeHtml(name)}</option>`);
+        select.innerHTML = (event.creatorId && !this.userNames[event.creatorId] ? '<option value="">(sconosciuto)</option>' : '') + options.join('');
+        select.value = event.creatorId || '';
+    }
+
     getParticipantIds(event) {
         return Object.keys((event && event.participants) || {});
     }
@@ -3430,6 +4022,7 @@ class BacheaCalendar {
     // Modifica, spostamento ed eliminazione: solo chi ha creato l'evento (come nelle regole Firebase).
     // Un evento senza creatore è in sola lettura per tutti. Iscriversi e scrivere in chat resta permesso.
     canEditEvent(event) {
+        if (event && this.isAdmin) return true; // l'amministratore modera tutto
         return !!event && !!event.creatorId && event.creatorId === this.userId;
     }
 
@@ -3481,7 +4074,7 @@ class BacheaCalendar {
         try {
             const updates = {};
             Object.values(this.events).forEach(event => {
-                if (event && event.id && event.date && event.date < firstOfMonth && this.canEditEvent(event)) {
+                if (event && event.id && event.date && event.date < firstOfMonth && event.creatorId && event.creatorId === this.userId) { // solo i propri, anche per l'admin
                     removeEvent(updates, event.id);
                 }
             });
@@ -3645,6 +4238,8 @@ class BacheaCalendar {
         this.editParticipantsList = this.getParticipantIds(note);
         this.renderEditParticipants();
         this.updateChatInputVisibility(this.editParticipantsList);
+        this.loadAndDisplayCreatorName(note.creatorId);
+        this.renderCreatorSelect(note);
 
         // Aggiorna il colore
         this.selectedColor = note.color || 'color-yellow';
@@ -3685,6 +4280,7 @@ class BacheaCalendar {
 
         // Carica il nome del creatore
         this.loadAndDisplayCreatorName(note.creatorId);
+        this.renderCreatorSelect(note);
 
         // Set partecipanti (elenco chiuso a ogni apertura)
         this.editParticipantsList = this.getParticipantIds(note);
@@ -3761,7 +4357,7 @@ class BacheaCalendar {
                 const lastReadTimestamp = this.getLastRead(eventId);
                 this.currentChat = { eventId, messages: snapshot.val(), lastReadTimestamp };
                 messagesContainer.innerHTML = '';
-                this.renderChatInto(messagesContainer, snapshot.val(), lastReadTimestamp, this.editParticipantsList);
+                this.renderChatInto(messagesContainer, snapshot.val(), lastReadTimestamp, this.editParticipantsList, true, eventId);
 
                 // Aggiorna i badge quando i messaggi cambiano
                 if (this.editingNote) {
@@ -3778,7 +4374,7 @@ class BacheaCalendar {
     // Disegna i messaggi di una chat (eventi e proposte): gruppi per mittente e separatore "Nuovi messaggi"
     // participantIds: se indicato (chat degli eventi), chi non è tra i partecipanti è scritto in grigio.
     // Il grigio non è nella tavolozza degli utenti, quindi non si confonde con nessuno.
-    renderChatInto(messagesContainer, messages, lastReadTimestamp, participantIds = null, scrollToBottom = true) {
+    renderChatInto(messagesContainer, messages, lastReadTimestamp, participantIds = null, scrollToBottom = true, chatId = null) {
         const messageIds = Object.keys(messages).sort((a, b) => messages[a].timestamp - messages[b].timestamp);
 
         // Accorpa messaggi consecutivi dello stesso utente
@@ -3797,11 +4393,13 @@ class BacheaCalendar {
                     deviceId: msg.deviceId,
                     name: msg.name,
                     texts: [msg.text],
+                    ids: [msgId],
                     timestamp: msg.timestamp
                 };
             } else {
                 // Stesso utente, aggiungi il testo al gruppo
                 currentGroup.texts.push(msg.text);
+                currentGroup.ids.push(msgId);
             }
         });
 
@@ -3862,7 +4460,26 @@ class BacheaCalendar {
                 color: ${color.text};
                 border-radius: ${isYou ? '18px 18px 4px 18px' : '18px 18px 18px 4px'};
             `;
-            bubbleEl.textContent = group.texts.join('\n');
+            if (this.isAdmin && chatId) {
+                // Amministratore: ogni messaggio ha il suo cestino per cancellarlo
+                group.texts.forEach((text, i) => {
+                    const row = document.createElement('div');
+                    row.style.cssText = 'display: flex; gap: 6px; align-items: flex-start; justify-content: space-between;';
+                    const textEl = document.createElement('span');
+                    textEl.textContent = text;
+                    const delBtn = document.createElement('button');
+                    delBtn.type = 'button';
+                    delBtn.textContent = '🗑️';
+                    delBtn.title = 'Cancella questo messaggio (amministratore)';
+                    delBtn.style.cssText = 'background: none; border: none; cursor: pointer; padding: 0; font-size: 0.8rem; opacity: 0.7;';
+                    delBtn.addEventListener('click', () => this.adminDeleteMessage(chatId, group.ids[i], text));
+                    row.appendChild(textEl);
+                    row.appendChild(delBtn);
+                    bubbleEl.appendChild(row);
+                });
+            } else {
+                bubbleEl.textContent = group.texts.join('\n');
+            }
 
             const nameEl = document.createElement('div');
             nameEl.style.cssText = `font-size: 0.75rem; font-weight: 600; color: ${hasLeft ? '#9e9e9e' : color.bg}; ${isYou ? 'text-align: right;' : 'text-align: left;'}`;
@@ -3933,6 +4550,7 @@ class BacheaCalendar {
     }
 
     closeEditModal() {
+        this.clearFieldErrors(); // gli avvisi sui campi non restano per la prossima apertura
         // Marca la chat come letta quando chiudi il modal (dopo aver letto i messaggi)
         if (this.editingNote && this.getEditingEvent()) {
             this.markChatAsRead(this.editingNote.id);
@@ -3991,6 +4609,7 @@ class BacheaCalendar {
                 text: messageText,
                 timestamp: new Date().getTime()
             });
+            this.recordStat('messagesSent');
 
             // Pulisci l'input
             document.getElementById('chatMessageInput').value = '';
@@ -4007,27 +4626,34 @@ class BacheaCalendar {
         dateInput.min = this.getTomorrowKey();
     }
 
-    saveEditedNote() {
+    async saveEditedNote() {
         const current = this.getEditingEvent();
         if (!current || !this.canEditEvent(current)) return;
 
         const title = document.getElementById('editTitle').value.trim();
-        if (!title) {
-            this.showErrorPopup('Il titolo non può essere vuoto');
-            return;
-        }
-
-        // Cambio data: validato prima di toccare l'evento
         const dateKey = current.date;
         const newDateKey = document.getElementById('editDate').value || dateKey;
         const isMoving = newDateKey !== dateKey;
-        if (isMoving && !this.isFutureDateKey(newDateKey)) {
-            this.showErrorPopup('Puoi spostare un evento solo da domani in poi');
-            return;
-        }
 
-        const fee = this.readFeeInput('edit');
-        if (!fee.ok) return;
+        // Controllo di tutti i campi (in modifica, un campo facoltativo sbagliato resta com'era)
+        const required = [];
+        const optional = [];
+        if (!title) required.push({ id: 'editTitle', label: 'Nome evento', message: 'è vuoto: scrivi come si chiama l\'evento' });
+        if (isMoving && !this.isFutureDateKey(newDateKey)) required.push({ id: 'editDate', label: 'Data', message: 'un evento si sposta solo da domani in poi' });
+        const fee = this.checkFee(document.getElementById('editFee').value);
+        if (fee.error) optional.push({ id: 'editFee', label: 'Quota', message: fee.error, without: 'cambiare la quota (resta quella di prima)' });
+        const link = this.checkLink(document.getElementById('editLink').value);
+        if (link.error) optional.push({
+            id: 'editLink', anchor: 'editLinkInputContainer', label: 'Link', message: link.error, without: 'cambiare il link (resta quello di prima)',
+            show: () => {
+                document.getElementById('editLinkContainer').style.display = 'none';
+                document.getElementById('editLinkInputContainer').style.display = 'flex';
+            }
+        });
+        const pendingImage = this.pendingImageUrlProblem('editImageUrl', 'editImageUrlInputContainer', 'editImagePanel', 'cambiare l\'immagine');
+        if (pendingImage) optional.push(pendingImage);
+        if (!await this.checkFormFields(required, optional, 'salvare')) return;
+        document.getElementById('editImageUrl').value = '';
 
         // Solo i campi del modal: partecipanti, immagine e creatore restano come sono su Firebase
         const fields = {
@@ -4035,9 +4661,9 @@ class BacheaCalendar {
             time: document.getElementById('editTime').value.trim(),
             location: document.getElementById('editLocation').value.trim(),
             notes: document.getElementById('editNotes').value.trim(),
-            fee: fee.value, // 0 = Gratis
+            fee: fee.error ? (current.fee || 0) : fee.value, // 0 = Gratis
             color: this.selectedColor,
-            link: document.getElementById('editLink').value.trim()
+            link: link.error ? (current.link || '') : link.value
         };
         if (isMoving) fields.date = newDateKey;
 
@@ -4300,6 +4926,7 @@ class BacheaCalendar {
     }
 
     closeProposalModal() {
+        this.clearFieldErrors(); // gli avvisi sui campi non restano per la prossima apertura
         const modal = document.getElementById('proposalModal');
         modal.classList.remove('active');
         modal.style.display = 'none';
@@ -4362,7 +4989,7 @@ class BacheaCalendar {
 
             if (this.openProposalId !== proposalId) return;
             messagesContainer.innerHTML = '';
-            this.renderChatInto(messagesContainer, snapshot.val(), this.getLastRead(proposalId));
+            this.renderChatInto(messagesContainer, snapshot.val(), this.getLastRead(proposalId), null, true, proposalId);
         });
     }
 
@@ -4381,6 +5008,7 @@ class BacheaCalendar {
                 text: text,
                 timestamp: new Date().getTime()
             });
+            this.recordStat('messagesSent');
             input.value = '';
         } catch (error) {
             this.notifyWriteError('Invio del messaggio', error);
@@ -4433,7 +5061,7 @@ class BacheaCalendar {
     // le date si propongono e si votano dal dettaglio
     openProposalEdit() {
         const proposal = this.proposals[this.openProposalId];
-        if (!proposal || !this.isProposalCreator(proposal)) return;
+        if (!proposal || !this.canManageProposal(proposal)) return;
         const proposalId = proposal.id;
 
         this.closeProposalChat();
@@ -4472,10 +5100,10 @@ class BacheaCalendar {
         document.getElementById('proposalTitle').focus();
     }
 
-    saveProposalEdit(title, fee, color) {
+    saveProposalEdit(title, fee, color, link) {
         const proposalId = this.editingProposalId;
         const proposal = this.proposals[proposalId];
-        if (!proposal || !this.isProposalCreator(proposal)) return;
+        if (!proposal || !this.canManageProposal(proposal)) return;
 
         // Solo i campi del form: date, voti e creatore non si toccano
         const fields = {
@@ -4483,7 +5111,7 @@ class BacheaCalendar {
             location: document.getElementById('proposalLocation').value.trim(),
             notes: document.getElementById('proposalNotes').value.trim(),
             fee: fee,
-            link: this.currentProposalLink || '',
+            link: link !== undefined ? link : (this.currentProposalLink || ''),
             color: color
         };
 
@@ -4510,27 +5138,48 @@ class BacheaCalendar {
             });
     }
 
-    createProposal(e) {
+    async createProposal(e) {
         e.preventDefault();
         const title = document.getElementById('proposalTitle').value.trim();
-        if (!title) return;
+        const editing = this.proposals[this.editingProposalId] || null;
+
+        // Controllo di tutti i campi
+        const required = [];
+        const optional = [];
+        if (!title) required.push({ id: 'proposalTitle', label: 'Nome evento', message: 'è vuoto: scrivi come si chiama l\'evento' });
+        const fee = this.checkFee(document.getElementById('proposalFee').value);
+        if (fee.error) optional.push({ id: 'proposalFee', label: 'Quota', message: fee.error,
+            without: editing ? 'cambiare la quota (resta quella di prima)' : 'quota (sarà Gratis)' });
+        const linkTyping = document.getElementById('proposalLinkInputContainer').style.display === 'flex';
+        const link = this.checkLink(linkTyping ? document.getElementById('proposalLink').value : this.currentProposalLink);
+        if (link.error) optional.push({
+            id: 'proposalLink', anchor: 'proposalLinkInputContainer', label: 'Link', message: link.error,
+            without: editing ? 'cambiare il link (resta quello di prima)' : 'link',
+            show: () => {
+                document.getElementById('proposalLinkContainer').style.display = 'none';
+                document.getElementById('proposalLinkInputContainer').style.display = 'flex';
+            }
+        });
+        let firstDate = editing ? '' : document.getElementById('proposalFirstDate').value;
+        if (firstDate && !this.isFutureDateKey(firstDate)) {
+            optional.push({ id: 'proposalFirstDate', label: 'Prima data', message: 'si possono proporre date solo da domani in poi',
+                without: 'la prima data (si può proporre dopo)' });
+        }
+        const pendingImage = this.pendingImageUrlProblem('proposalImageUrl', 'proposalImageUrlInputContainer', 'proposalImagePanel',
+            editing ? 'cambiare l\'immagine' : 'l\'immagine di quell\'indirizzo');
+        if (pendingImage) optional.push(pendingImage);
+        if (!await this.checkFormFields(required, optional, editing ? 'salvare' : 'creare la proposta')) return;
+        document.getElementById('proposalImageUrl').value = '';
+        if (firstDate && !this.isFutureDateKey(firstDate)) firstDate = '';
 
         if (this.editingProposalId) {
-            const editFee = this.readFeeInput('proposal');
-            if (!editFee.ok) return;
             const editColor = document.querySelector('input[name="proposalColor"]:checked');
-            this.saveProposalEdit(title, editFee.value, editColor ? editColor.dataset.color : 'color-neutral');
+            this.saveProposalEdit(title, fee.error ? (editing && editing.fee) || 0 : fee.value,
+                editColor ? editColor.dataset.color : 'color-neutral',
+                link.error ? (editing && editing.link) || '' : link.value);
             return;
         }
 
-        const firstDate = document.getElementById('proposalFirstDate').value;
-        if (firstDate && !this.isFutureDateKey(firstDate)) {
-            this.showErrorPopup('Puoi proporre date solo da domani in poi');
-            return;
-        }
-
-        const fee = this.readFeeInput('proposal');
-        if (!fee.ok) return;
         const checkedColor = document.querySelector('input[name="proposalColor"]:checked');
 
         const id = 'evt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -4540,8 +5189,8 @@ class BacheaCalendar {
             time: firstDate ? '' : document.getElementById('proposalTime').value.trim(),
             location: document.getElementById('proposalLocation').value.trim(),
             notes: document.getElementById('proposalNotes').value.trim(),
-            fee: fee.value,
-            link: this.currentProposalLink || '',
+            fee: fee.error ? 0 : fee.value,
+            link: link.error ? '' : link.value,
             color: checkedColor ? checkedColor.dataset.color : 'color-neutral',
             creatorId: this.userId,
             creatorName: (this.userName || '').slice(0, 10), // regola: al massimo 10 caratteri (i nomi vecchi possono essere più lunghi)
@@ -4560,6 +5209,7 @@ class BacheaCalendar {
         imageSaved
             .then(() => database.ref(`proposals/${id}`).set(proposal))
             .then(() => {
+                this.recordStat('proposalsCreated');
                 this.proposalImageData = null;
                 this.openProposalView(id);
                 this.showSuccessPopup('Proposta creata! Ora tutti possono votare le date.');
@@ -4611,7 +5261,7 @@ class BacheaCalendar {
         details.push(`👤 Proposta da: ${this.escapeHtml(proposal.creatorName || 'Anonimo')}`);
         document.getElementById('proposalDetails').innerHTML = details.map(d => `<div style="margin-bottom: 4px;">${d}</div>`).join('');
 
-        const isCreator = this.isProposalCreator(proposal);
+        const isCreator = this.canManageProposal(proposal);
         document.getElementById('proposalDeleteBtn').style.display = isCreator ? 'block' : 'none';
         document.getElementById('proposalEditBtn').style.display = isCreator ? 'block' : 'none';
 
@@ -4628,7 +5278,7 @@ class BacheaCalendar {
         const fixableKeys = this.getFixableProposalOptions(proposal).map(option => option.key);
         const voterKey = this.getVoterKey();
         // "Fissa questa data": solo per il creatore e solo sulle date ammesse (vedi getFixableProposalOptions)
-        const canFix = this.isProposalCreator(proposal) && !proposal.fixedDate;
+        const canFix = this.canManageProposal(proposal) && !proposal.fixedDate;
 
         options.forEach(option => {
             const isBest = topKeys.includes(option.key); // ⭐ su tutte le più votate (pari merito compresi)
@@ -4723,7 +5373,7 @@ class BacheaCalendar {
     async fixProposalDate(optionKey) {
         const proposalId = this.openProposalId;
         const proposal = this.proposals[proposalId];
-        if (!proposal || !this.isProposalCreator(proposal)) return;
+        if (!proposal || !this.canManageProposal(proposal)) return;
         if (!this.getFixableProposalOptions(proposal).some(option => option.key === optionKey)) {
             this.showErrorPopup('Si può fissare solo una delle date più votate (tra quelle votate da chi ha creato la proposta, se ce ne sono)');
             return;
@@ -4787,7 +5437,7 @@ class BacheaCalendar {
     async deleteProposal() {
         const proposalId = this.openProposalId;
         const proposal = this.proposals[proposalId];
-        if (!proposal || !this.isProposalCreator(proposal)) return;
+        if (!proposal || !this.canManageProposal(proposal)) return;
 
         const confirmed = await this.showConfirmDialog(`Eliminare la proposta "${proposal.title}"?`);
         if (!confirmed) return;

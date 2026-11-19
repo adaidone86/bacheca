@@ -1,0 +1,40 @@
+🆕 Versione 0.5.0
+
+✨ NOVITÀ
+
+   📣 Avvisi per tutti
+      • A volte in cima alla Bacheca comparirà una striscia gialla
+        con un avviso importante per tutto il gruppo
+
+   🛡️ Bacheca più sicura
+      • C'è un amministratore che può sistemare eventi, proposte
+        e messaggi sbagliati o fuori luogo
+      • Chi non fa parte del gruppo può essere bloccato
+
+   📊 Statistiche
+      • La Bacheca conta quanti eventi, proposte e messaggi
+        vengono creati, per capire come migliorarla
+      • Non registra quanto tempo la usi né cosa guardi
+      • Trovi tutti i dettagli in 📖 Modo d'uso, alla voce PRIVACY
+
+   ⚙️ Menu riorganizzato
+      • 👤 Utente è la prima voce: dentro puoi anche cambiare il nome
+      • 🎨 Visualizzazione: scegli Calendario o Lista
+        e quali categorie vedere
+      • 📖 Modo d'uso: la guida della Bacheca
+      • ℹ️ Info: le novità dell'ultima versione,
+        con le due precedenti da aprire con la freccetta
+
+   📝 Moduli più chiari
+      • Se un campo non va bene la Bacheca ti dice quale e perché,
+        e prima di salvare senza un campo te lo chiede
+
+🔧 CORREZIONI
+
+   🔗 Link che sparivano
+      • Un link scritto ma non confermato con ✅ si perdeva:
+        ora viene salvato con l'evento
+
+   👀 Persone "sempre collegate"
+      • A volte qualcuno sembrava collegato anche quando
+        non aveva la Bacheca aperta. Ora non succede più

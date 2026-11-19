@@ -1,9 +1,9 @@
 {
   "rules": {
     "users": {
-      ".read": "auth != null",
+      ".read": "(auth != null) && !root.child('blocked/' + auth.uid).exists()",
       "$uid": {
-        ".write": "auth != null && auth.uid === $uid",
+        ".write": "(auth != null && (auth.uid === $uid || root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists()",
         ".validate": "newData.hasChildren(['username', 'name'])",
         "username": {
           ".validate": "newData.isString() && newData.val().matches(/^[a-z0-9._-]{3,20}$/)"
@@ -14,10 +14,10 @@
       }
     },
     "events": {
-      ".read": "auth != null",
+      ".read": "(auth != null) && !root.child('blocked/' + auth.uid).exists()",
       "$eventId": {
-        ".write": "auth != null && (data.exists() ? data.child('creatorId').val() === auth.uid : newData.child('creatorId').val() === auth.uid)",
-        ".validate": "newData.hasChildren(['id', 'date', 'title']) && newData.child('id').val() === $eventId && (!data.exists() || newData.child('creatorId').val() === data.child('creatorId').val())",
+        ".write": "((auth != null && (data.exists() ? data.child('creatorId').val() === auth.uid : newData.child('creatorId').val() === auth.uid)) || (auth != null && root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists()",
+        ".validate": "newData.hasChildren(['id', 'date', 'title']) && newData.child('id').val() === $eventId && (!data.exists() || newData.child('creatorId').val() === data.child('creatorId').val() || root.child('roles/' + auth.uid).val() === 'admin')",
         "date": {
           ".validate": "newData.isString() && newData.val().matches(/^\\d{4}-\\d{2}-\\d{2}$/)"
         },
@@ -26,7 +26,7 @@
         },
         "participants": {
           "$uid": {
-            ".write": "auth != null && auth.uid === $uid",
+            ".write": "(auth != null && (auth.uid === $uid || root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists()",
             ".validate": "newData.val() === true"
           }
         },
@@ -66,19 +66,19 @@
       }
     },
     "eventImages": {
-      ".read": "auth != null",
+      ".read": "(auth != null) && !root.child('blocked/' + auth.uid).exists()",
       "$eventId": {
-        ".write": "auth != null && (root.child('events/' + $eventId).exists() ? root.child('events/' + $eventId + '/creatorId').val() === auth.uid : (root.child('proposals/' + $eventId).exists() ? root.child('proposals/' + $eventId + '/creatorId').val() === auth.uid : true))",
+        ".write": "((auth != null && (root.child('events/' + $eventId).exists() ? root.child('events/' + $eventId + '/creatorId').val() === auth.uid : (root.child('proposals/' + $eventId).exists() ? root.child('proposals/' + $eventId + '/creatorId').val() === auth.uid : true))) || (auth != null && root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists()",
         ".validate": "newData.isString() && newData.val().beginsWith('data:image/') && newData.val().length < 100000"
       }
     },
     "eventChats": {
-      ".read": "auth != null",
+      ".read": "(auth != null) && !root.child('blocked/' + auth.uid).exists()",
       "$chatId": {
-        ".write": "auth != null && !newData.exists() && !newData.parent().parent().child('events/' + $chatId).exists() && !newData.parent().parent().child('proposals/' + $chatId).exists() && (root.child('events/' + $chatId).exists() ? root.child('events/' + $chatId + '/creatorId').val() === auth.uid : (root.child('proposals/' + $chatId).exists() ? root.child('proposals/' + $chatId + '/creatorId').val() === auth.uid : true))",
+        ".write": "(auth != null && !newData.exists() && !newData.parent().parent().child('events/' + $chatId).exists() && !newData.parent().parent().child('proposals/' + $chatId).exists() && (root.child('events/' + $chatId).exists() ? root.child('events/' + $chatId + '/creatorId').val() === auth.uid || root.child('roles/' + auth.uid).val() === 'admin' : (root.child('proposals/' + $chatId).exists() ? root.child('proposals/' + $chatId + '/creatorId').val() === auth.uid || root.child('roles/' + auth.uid).val() === 'admin' : true))) && !root.child('blocked/' + auth.uid).exists()",
         "messages": {
           "$messageId": {
-            ".write": "auth != null && !data.exists() && newData.exists() && (root.child('events/' + $chatId).exists() ? root.child('events/' + $chatId + '/participants/' + auth.uid).val() === true : root.child('proposals/' + $chatId).exists())",
+            ".write": "((auth != null && !data.exists() && newData.exists() && (root.child('events/' + $chatId).exists() ? root.child('events/' + $chatId + '/participants/' + auth.uid).val() === true : root.child('proposals/' + $chatId).exists())) || (auth != null && !newData.exists() && root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists()",
             ".validate": "newData.hasChildren(['deviceId', 'name', 'text', 'timestamp']) && newData.child('deviceId').val() === auth.uid && newData.child('text').isString() && newData.child('text').val().length <= 300"
           }
         }
@@ -86,20 +86,20 @@
     },
     "chatReadStatus": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid",
+        ".read": "(auth != null && auth.uid === $uid) && !root.child('blocked/' + auth.uid).exists()",
+        ".write": "(auth != null && auth.uid === $uid) && !root.child('blocked/' + auth.uid).exists()",
         "$chatId": {
           ".validate": "newData.hasChildren(['lastReadTimestamp']) && newData.child('lastReadTimestamp').isNumber()"
         }
       }
     },
     "proposals": {
-      ".read": "auth != null",
+      ".read": "(auth != null) && !root.child('blocked/' + auth.uid).exists()",
       "$proposalId": {
-        ".write": "auth != null && (data.exists() ? (!newData.exists() && data.child('creatorId').val() === auth.uid) : newData.child('creatorId').val() === auth.uid)",
+        ".write": "(auth != null && (data.exists() ? (!newData.exists() && (data.child('creatorId').val() === auth.uid || root.child('roles/' + auth.uid).val() === 'admin')) : newData.child('creatorId').val() === auth.uid)) && !root.child('blocked/' + auth.uid).exists()",
         "dateOptions": {
           "$optionKey": {
-            ".write": "auth != null && !data.exists() && newData.exists() && newData.child('addedById').val() === auth.uid && root.child('proposals/' + $proposalId).exists()",
+            ".write": "(auth != null && !data.exists() && newData.exists() && newData.child('addedById').val() === auth.uid && root.child('proposals/' + $proposalId).exists()) && !root.child('blocked/' + auth.uid).exists()",
             ".validate": "$optionKey.matches(/^\\d{4}-\\d{2}-\\d{2}(_\\d{4})?$/) && newData.hasChildren(['addedById', 'createdAt']) && newData.child('addedBy').isString() && newData.child('addedBy').val().length <= 40 && newData.child('createdAt').isNumber()",
             "$other": {
               ".validate": "$other === 'addedBy' || $other === 'addedById' || $other === 'createdAt'"
@@ -110,7 +110,7 @@
           "$optionKey": {
             ".validate": "$optionKey.matches(/^\\d{4}-\\d{2}-\\d{2}(_\\d{4})?$/)",
             "$voter": {
-              ".write": "auth != null && auth.uid === $voter",
+              ".write": "(auth != null && auth.uid === $voter) && !root.child('blocked/' + auth.uid).exists()",
               ".validate": "newData.child('deviceId').val() === $voter && newData.child('name').isString() && newData.child('name').val().length <= 40"
             }
           }
@@ -121,35 +121,35 @@
         },
         "title": {
           ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100",
-          ".write": "auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid"
+          ".write": "((auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid) || (auth != null && root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists()"
         },
         "time": {
           ".validate": "newData.isString() && newData.val().length <= 30",
-          ".write": "auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid"
+          ".write": "((auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid) || (auth != null && root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists()"
         },
         "location": {
           ".validate": "newData.isString() && newData.val().length <= 200",
-          ".write": "auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid"
+          ".write": "((auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid) || (auth != null && root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists()"
         },
         "notes": {
           ".validate": "newData.isString() && newData.val().length <= 500",
-          ".write": "auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid"
+          ".write": "((auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid) || (auth != null && root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists()"
         },
         "link": {
           ".validate": "newData.isString() && newData.val().length <= 500",
-          ".write": "auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid"
+          ".write": "((auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid) || (auth != null && root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists()"
         },
         "color": {
           ".validate": "newData.isString() && newData.val().matches(/^color-[a-z]{2,20}$/)",
-          ".write": "auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid"
+          ".write": "((auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid) || (auth != null && root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists()"
         },
         "fee": {
           ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 999",
-          ".write": "auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid"
+          ".write": "((auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid) || (auth != null && root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists()"
         },
         "imageVersion": {
           ".validate": "newData.isNumber()",
-          ".write": "auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid"
+          ".write": "((auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid) || (auth != null && root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists()"
         },
         "createdAt": {
           ".validate": "newData.isNumber()"
@@ -162,7 +162,7 @@
         },
         "fixedDate": {
           ".validate": "newData.isString() && newData.val().length <= 20",
-          ".write": "auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid"
+          ".write": "((auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid) || (auth != null && root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists()"
         },
         "$other": {
           ".validate": false
@@ -170,11 +170,92 @@
       }
     },
     "presence": {
-      ".read": "auth != null",
+      ".read": "(auth != null) && !root.child('blocked/' + auth.uid).exists()",
       "$uid": {
-        ".write": "auth != null && auth.uid === $uid",
+        ".write": "(auth != null && auth.uid === $uid) && !root.child('blocked/' + auth.uid).exists()",
         "$connectionId": {
-          ".validate": "!newData.exists() || newData.hasChildren(['active']) && newData.child('active').isBoolean()"
+          ".validate": "!newData.exists() || newData.hasChildren(['active', 'at']) && newData.child('active').isBoolean() && newData.child('at').isNumber()"
+        }
+      }
+    },
+    "roles": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('roles/' + auth.uid).val() === 'admin')"
+      }
+    },
+    "blocked": {
+      ".read": "auth != null && root.child('roles/' + auth.uid).val() === 'admin'",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "(auth != null && root.child('roles/' + auth.uid).val() === 'admin' && $uid !== auth.uid) && !root.child('blocked/' + auth.uid).exists()",
+        ".validate": "newData.val() === true"
+      }
+    },
+    "settings": {
+      ".read": "auth != null && !root.child('blocked/' + auth.uid).exists()",
+      ".write": "(auth != null && root.child('roles/' + auth.uid).val() === 'admin') && !root.child('blocked/' + auth.uid).exists()",
+      "announcement": {
+        "text": {
+          ".validate": "newData.isString() && newData.val().length <= 200"
+        },
+        "updatedAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      },
+      "title": {
+        "line1": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "line2": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "line3": {
+          ".validate": "newData.isString() && newData.val().length <= 100"
+        },
+        "$other": {
+          ".validate": false
+        }
+      },
+      "$other": {
+        ".validate": false
+      }
+    },
+    "stats": {
+      ".read": "auth != null && root.child('roles/' + auth.uid).val() === 'admin'",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid && !root.child('blocked/' + auth.uid).exists()",
+        "eventsCreated": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+        "proposalsCreated": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+        "messagesSent": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+        "joins": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+        "opens": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+        "lastActiveAt": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+        "firstSeenAt": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+        "days": {
+          "$day": {
+            ".validate": "$day.matches(/^\\d{4}-\\d{2}-\\d{2}$/) && newData.val() === true"
+          }
+        },
+        "$other": {
+          ".validate": false
         }
       }
     }

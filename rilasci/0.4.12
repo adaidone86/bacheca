@@ -1,0 +1,15 @@
+🆕 Versione 0.4.12
+
+✨ NOVITÀ
+
+   ✋ Limiti di lunghezza
+      • Titoli, note e messaggi hanno una lunghezza massima
+      • Se la raggiungi, un piccolo avviso in basso te lo dice
+
+   📝 Registrazione più chiara
+      • Mentre scrivi ti dice subito cosa va bene e cosa no
+      • Il nome può avere al massimo 10 caratteri
+
+   🗳️ Date delle proposte
+      • Una data proposta non si può più cancellare
+      • Con più date a pari voti si può fissare quella che si preferisce

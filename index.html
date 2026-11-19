@@ -25,6 +25,8 @@
 <body>
     <!-- Striscia arancione in cima, solo con ENV = 'TEST' (config.js) -->
     <div id="testBadge" class="test-banner" style="display: none;">🧪 AMBIENTE DI TEST</div>
+    <!-- Avviso a tutti scritto dall'amministratore (settings/announcement) -->
+    <div id="announcementBanner" class="announcement-banner"></div>
     <div id="errorContainer" class="error-container" style="display: none;">
         <div class="error-message">
             <h1>⚠️ Errore di configurazione</h1>
@@ -64,11 +66,11 @@
                     <button id="menuBtn" style="background: transparent; border: 2px solid rgba(255, 255, 255, 0.8); color: white; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 1.2rem; transition: all 0.3s;">⚙️</button>
                     <button id="installBtn" style="display: none; background: #4CAF50; padding: 8px 16px; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.9rem;">⬇️ Installa app</button>
                     <div id="menuDropdown" style="display: none; position: absolute; top: 100%; right: 0; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); min-width: 200px; z-index: 1000; margin-top: 5px;">
-                        <button id="editNameBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">👤 Cambia il tuo nome</button>
-                        <button id="changeModalBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">📋 Cambia Modalità</button>
+                        <button id="userProfileBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #2196f3; font-weight: 600; border-bottom: 1px solid #eee; transition: background 0.2s;">👤 Utente</button>
                         <button id="settingsBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">🎨 Visualizzazione</button>
+                        <button id="guideBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">📖 Modo d'uso</button>
                         <button id="infoBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">ℹ️ Info</button>
-                        <button id="userProfileBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #2196f3; transition: background 0.2s;">👤 Utente</button>
+                        <button id="adminBtn" style="display: none; width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #c62828; border-bottom: 1px solid #eee; transition: background 0.2s;">🛠️ Amministrazione</button>
                     </div>
                 </div>
                 <button id="viewToggleBtn" class="view-toggle" style="display: none;">📋 Lista</button>
@@ -220,6 +222,34 @@
     <!-- Avvisi non invasivi (showToast): in basso al centro, spariscono da soli -->
     <style>
         #toastBox { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 20000; display: flex; flex-direction: column; gap: 8px; width: min(92vw, 460px); pointer-events: none; }
+        /* Campi che non vanno bene (0.5.0): bordo rosso e spiegazione sotto */
+        .field-error { border-color: #e53935 !important; background: #fff5f5 !important; }
+        .field-error-msg { display: block; background: #fff; color: #c62828; border-left: 3px solid #e53935; border-radius: 6px; padding: 4px 8px; margin: 4px 0 8px; font-size: 0.8rem; font-weight: 600; text-align: left; line-height: 1.3; }
+        /* Visualizzazione: Calendario / Lista */
+        .view-choice { display: flex; gap: 8px; }
+        .view-choice-btn { flex: 1; padding: 10px; border: 2px solid #667eea; background: white; color: #667eea; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.95rem; }
+        .view-choice-btn.active { background: #667eea; color: white; }
+        /* Info: rilasci precedenti apribili */
+        .release-old { margin-top: 12px; border-top: 1px solid #eee; padding-top: 8px; }
+        .release-old.release-latest { margin-top: 0; border-top: none; padding-top: 0; }
+        .release-latest summary { font-size: 1.05rem; }
+        .release-old summary { cursor: pointer; font-weight: 600; color: #667eea; list-style: none; }
+        .release-old summary::-webkit-details-marker { display: none; }
+        .release-old summary::before { content: '▸ '; }
+        .release-old[open] summary::before { content: '▾ '; }
+        .release-old div { white-space: pre-wrap; margin-top: 6px; }
+        /* Amministrazione (0.5.0) */
+        .announcement-banner { display: none; background: #fff3cd; color: #5d4500; border-bottom: 2px solid #ffb300; padding: 8px 14px; text-align: center; font-weight: 600; font-size: 0.95rem; white-space: pre-wrap; }
+        .admin-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+        .admin-tab { flex: 1; padding: 8px; border: 2px solid #667eea; background: white; color: #667eea; border-radius: 8px; cursor: pointer; font-weight: 600; }
+        .admin-tab.active { background: #667eea; color: white; }
+        .admin-user { background: #f7f7fb; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+        .admin-action { padding: 6px 10px; border: none; border-radius: 6px; background: #667eea; color: white; cursor: pointer; font-size: 0.85rem; }
+        .admin-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-bottom: 8px; }
+        .admin-cards div { background: #f7f7fb; border-radius: 8px; padding: 8px; text-align: center; }
+        .admin-cards b { display: block; font-size: 1.4rem; color: #667eea; }
+        .admin-cards span { font-size: 0.75rem; color: #666; }
+        #adminContent h4 { margin: 14px 0 6px; color: #333; }
         .toast { pointer-events: auto; cursor: pointer; padding: 10px 14px; border-radius: 10px; font-size: 0.9rem; line-height: 1.35; color: #fff; background: #333; box-shadow: 0 4px 14px rgba(0,0,0,0.25); border-left: 5px solid #ff9800; animation: toast-in 0.2s ease-out; }
         .toast-info { border-left-color: #64b5f6; }
         @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -263,7 +293,7 @@
                     </div>
                 </div>
             </div>
-            <form id="noteForm">
+            <form id="noteForm" novalidate>
                 <!-- Tab: Evento -->
                 <div id="evento-tab" class="modal-tab-content active edit-compact">
                     <div class="form-group">
@@ -367,8 +397,16 @@
     <!-- Settings Modal -->
     <div class="settings-modal" id="settingsModal">
         <div class="settings-content">
-            <div class="settings-header">👁️ Visualizza</div>
-            <p class="settings-subtitle">Filtra eventi per colore</p>
+            <div class="settings-header">🎨 Visualizzazione</div>
+
+            <div class="settings-input-group">
+                <label>🗂️ Come vuoi vedere gli eventi</label>
+                <div class="view-choice">
+                    <button type="button" class="view-choice-btn" data-view="calendar">📅 Calendario</button>
+                    <button type="button" class="view-choice-btn" data-view="list">📋 Lista</button>
+                </div>
+            </div>
+            <p class="settings-subtitle">Mostra solo le categorie che ti interessano</p>
 
             <div class="settings-input-group">
                 <label>🎨 Categorie di Eventi</label>
@@ -417,7 +455,7 @@
     <!-- Info Modal -->
     <div class="info-modal" id="infoModal">
         <div class="info-content">
-            <div class="info-header">ℹ️ Informazioni</div>
+            <div class="info-header" id="infoHeader">ℹ️ Info</div>
             <div class="info-body" id="infoBody"></div>
             <div class="info-buttons">
                 <button type="button" class="btn-info-close" id="closeInfoBtn">Chiudi</button>
@@ -500,7 +538,7 @@
             </div>
 
             <!-- Creazione -->
-            <form id="proposalCreateForm" class="edit-compact">
+            <form id="proposalCreateForm" class="edit-compact" novalidate>
                 <div class="form-group">
                     <div id="proposalLinkContainer" class="edit-row">
                         <button type="button" id="proposalLinkOpenBtn" style="flex: 1; min-width: 0; height: 40px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: white; background: #2196F3;">🌐 Vai sul sito</button>
@@ -671,6 +709,10 @@
                     <button type="button" id="editImageToggleBtn" class="cover-toggle-btn" style="font-size: 0.95rem; font-weight: 600; margin-bottom: 6px;">✏️ Modifica immagine</button>
                 </div>
                 <div class="modal-header" style="color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">👤 Proposta da: <span id="creatorNameDisplay">-</span></div>
+                <div id="editCreatorGroup" style="display: none; margin: 6px 0 10px;">
+                    <label for="editCreatorSelect" style="color: white; font-size: 0.85rem; text-shadow: 0 1px 2px rgba(0,0,0,0.3);">🛠️ Cambia creatore:</label>
+                    <select id="editCreatorSelect" style="margin-left: 6px; padding: 4px 8px; border-radius: 6px; border: none;"></select>
+                </div>
                 <div id="editImagePanel" style="display: none; margin-top: 12px;">
                     <div style="display: flex; gap: 8px; margin-bottom: 8px;">
                         <button type="button" id="editImageUploadBtn" style="flex: 1; padding: 8px; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; color: white; background: rgba(255,255,255,0.25); backdrop-filter: blur(4px); display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 50px; justify-content: center;">📤<br>Carica Img</button>
@@ -688,7 +730,7 @@
                     <button class="modal-tab" id="editParticipantsTabBtn" data-tab="edit-participants-tab" style="background: rgba(255,255,255,0.7); color: #333;">👥 Partecipanti</button>
                 </div>
             </div>
-            <form id="editForm">
+            <form id="editForm" novalidate>
                 <!-- Tab: Evento -->
                 <div id="edit-evento-tab" class="modal-tab-content active edit-compact">
                     <div class="form-group">
@@ -817,7 +859,7 @@
     </div>
 
     <!-- Popup personalizzato -->
-    <div id="customPopup" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 10001; align-items: center; justify-content: center;">
+    <div id="customPopup" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 10060; align-items: center; justify-content: center;">
         <div style="background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); text-align: center; max-width: 400px; animation: slideIn 0.3s ease;">
             <div id="popupIcon" style="font-size: 48px; margin-bottom: 15px;"></div>
             <p id="popupMessage" style="font-size: 1rem; color: #333; margin-bottom: 20px;"></p>
@@ -826,7 +868,7 @@
     </div>
 
     <!-- Modal di conferma -->
-    <div id="confirmModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 5001; align-items: center; justify-content: center;">
+    <div id="confirmModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 10050; align-items: center; justify-content: center;">
         <div style="background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); text-align: center; max-width: 400px; animation: slideIn 0.3s ease;">
             <p id="confirmMessage" style="font-size: 1rem; color: #333; margin-bottom: 25px; font-weight: 500;"></p>
             <div style="display: flex; gap: 12px; justify-content: center;">
@@ -870,6 +912,25 @@
         </div>
     </div>
 
+    <!-- Amministrazione: solo per chi ha roles/{uid} = "admin" (impostato dalla console di Firebase) -->
+    <div id="adminModal" style="display: none; position: fixed; inset: 0; background: #f4f5fb; z-index: 10001; flex-direction: column; align-items: stretch; overflow: hidden;">
+        <div style="width: 100%; max-width: 900px; height: 100%; margin: 0 auto; display: flex; flex-direction: column; background: white; padding: 16px; box-sizing: border-box; box-shadow: 0 0 24px rgba(0, 0, 0, 0.08);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h2 style="margin: 0; color: #333; font-size: 1.3rem;">🛠️ Amministrazione</h2>
+                <div style="display: flex; gap: 6px;">
+                    <button id="adminRefreshBtn" class="admin-action" title="Ricarica i dati">🔄</button>
+                    <button id="adminCloseBtn" class="admin-action" style="background: #999;">← Indietro</button>
+                </div>
+            </div>
+            <div class="admin-tabs">
+                <button type="button" class="admin-tab active" data-tab="users">👥 Utenti</button>
+                <button type="button" class="admin-tab" data-tab="stats">📊 Statistiche</button>
+                <button type="button" class="admin-tab" data-tab="app">⚙️ App</button>
+            </div>
+            <div id="adminContent" style="overflow-y: auto; flex: 1;"></div>
+        </div>
+    </div>
+
     <!-- User Profile Modal -->
     <div id="userProfileModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 10001; align-items: center; justify-content: center;">
         <div class="modal-content" style="max-width: 400px; background: white; border-radius: 12px; padding: 30px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);">
@@ -879,11 +940,21 @@
             <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 0.95rem;">
                 <div style="margin-bottom: 12px;">
                     <strong style="color: #666;">Nome:</strong>
-                    <p id="userProfileName" style="margin: 5px 0 0 0; color: #333;"></p>
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 5px;">
+                        <p id="userProfileName" style="margin: 0; color: #333;"></p>
+                        <button type="button" id="userProfileNameBtn" style="padding: 6px 10px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem;">✏️ Cambia nome</button>
+                    </div>
                 </div>
                 <div style="margin-bottom: 12px;">
                     <strong style="color: #666;">Username:</strong>
                     <p id="userProfileUsername" style="margin: 5px 0 0 0; color: #333; font-family: monospace;"></p>
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <strong style="color: #666;">Password:</strong>
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 5px;">
+                        <p style="margin: 0; color: #333; font-family: monospace; letter-spacing: 2px;">********</p>
+                        <button type="button" id="userProfilePasswordBtn" style="padding: 6px 10px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem;">🔑 Cambia password</button>
+                    </div>
                 </div>
                 <div style="margin-bottom: 0;">
                     <strong style="color: #666;">Dispositivo:</strong>
@@ -891,7 +962,6 @@
                 </div>
             </div>
             <div style="display: flex; gap: 10px;">
-                <button id="userProfilePasswordBtn" style="flex: 1; padding: 12px; background: #ff9800; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">🔑 Password</button>
                 <button id="userProfileLogoutBtn" style="flex: 1; padding: 12px; background: #f44336; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">🚪 Esci</button>
                 <button id="userProfileCloseBtn" style="flex: 1; padding: 12px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">Chiudi</button>
             </div>

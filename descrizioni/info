@@ -1,84 +1,128 @@
-🎯 Come usare la Bacheca:
+🎯 Come usare la Bacheca
 
-‼️ LIMITAZIONI IMPORTANTI ‼️
+1️⃣ IL TUO ACCOUNT
+   • Registrati una volta con username, nome e password:
+     poi entri con username e password da qualsiasi dispositivo
+   • Lo username si scrive in minuscolo, senza spazi né accenti
+   • Il nome è quello che vedono gli altri (al massimo 10 caratteri)
+   • Da ⚙️ → 👤 Utente puoi:
+      - cambiare il nome (✏️ Cambia nome)
+      - cambiare la password (🔑 Cambia password)
+      - uscire dall'account su questo dispositivo (🚪 Esci)
 
-   ❌ GIORNI PASSATI (prima di oggi)
-      • Non è possibile aggiungere eventi
-      • Non è possibile modificare gli eventi
-      • Non è possibile eliminare gli eventi
-      • I giorni appaiono grigi e non sono cliccabili
+2️⃣ CALENDARIO E LISTA
+   • Calendario: gli eventi sono post-it colorati sui giorni
+      - usa "Mese successivo →" e "← Mese precedente" per spostarti
+      - "Oggi" ti riporta al mese corrente
+   • Lista: tutti gli eventi in ordine di data, più comoda sul telefono
+   • Per passare dall'una all'altra usa il pulsante 📋 Lista / 📅 Calendario
+     oppure ⚙️ → 🎨 Visualizzazione
 
-   ⚠️ GIORNO ODIERNO (oggi)
-      • Non è possibile aggiungere nuovi eventi
-      • È possibile modificare gli eventi esistenti
-      • È possibile eliminare gli eventi esistenti
-      • Il giorno appare con sfondo grigio ma gli eventi rimangono colorati
+   ‼️ GIORNI PASSATI E OGGI
+      • I giorni passati sono grigi: i loro eventi si vedono ma non si aprono
+      • Gli eventi di oggi si aprono, ma non se ne aggiungono di nuovi
+      • Si creano e si spostano eventi solo da domani in poi
+      • Gli eventi dei mesi passati si cancellano da soli
 
-1️⃣ AGGIUNGERE UN EVENTO
-   • Clicca su un giorno del calendario (da domani in poi)
-   • Si aprirà un modal con 3 sezioni: Evento, Partecipanti, Dettagli
-   • Completa i campi e clicca "Aggiungi"
+3️⃣ CREARE UN EVENTO
+   • Nel calendario tocca un giorno (da domani in poi)
+   • Nella lista tocca "➕ Aggiungi evento" e scegli il giorno
+   • Compila i campi:
+      - Nome evento e Data: obbligatori
+      - Ora, Luogo, Categoria, 💶 Quota (vuota = Gratis) e Note: facoltativi
+   • Immagine: tocca "✏️ Modifica immagine"
+      - "Carica Img" per scegliere una foto, poi ritagliala e premi "✅ Salva Crop"
+      - "URL Img" per usare l'indirizzo di un'immagine, poi premi ✅
+   • Link: tocca "🔗 Aggiungi link", scrivi l'indirizzo del sito e premi ✅
+     (es. https://www.sito.it, tutto attaccato senza spazi)
+   • Premi "Aggiungi" per creare l'evento
 
-📋 LE 3 SEZIONI DEL MODAL
+   ✋ SE UN CAMPO NON VA BENE
+      • Il campo diventa rosso e sotto trovi cosa correggere
+      • Se manca un campo obbligatorio, l'evento non si salva
+      • Se è sbagliato un campo facoltativo (link, quota, immagine)
+        la Bacheca ti chiede se salvare senza quel campo o correggerlo
 
-   🔹 SEZIONE "EVENTO" (Obbligatoria)
-      • Nome evento: il titolo dell'evento (OBBLIGATORIO)
-      • Ora: l'orario dell'evento (OBBLIGATORIO)
-      • Luogo: dove si svolge l'evento (OBBLIGATORIO)
-      • Note: descrizione o dettagli aggiuntivi (OBBLIGATORIO)
+4️⃣ APRIRE, MODIFICARE ED ELIMINARE UN EVENTO
+   • Tocca un evento per aprirlo: scheda 📌 Evento con tutti i dettagli
+   • "🌐 Vai sul sito" apre il link dell'evento, se c'è
+   • Solo chi ha creato l'evento può modificarlo e premere "Salva",
+     cambiare immagine e link, oppure eliminarlo con "Elimina"
+   • Gli altri vedono l'evento in sola lettura, ma possono partecipare
+   • Spostare un evento: cambia la Data e premi "Salva", oppure
+     nel calendario trascinalo su un altro giorno (da domani in poi)
 
-   🔹 SEZIONE "PARTECIPANTI" (Opzionale)
-      • Spunta "👥 Aggiungi partecipanti" per abilitare questa sezione
-      • Inserisci i nomi dei partecipanti nel campo
-      • Clicca il tasto "Salva" accanto al campo per aggiungerli
-      • Usa il tasto "🗑️ Elimina" per rimuovere un partecipante
-      • I partecipanti verranno mostrati nella lista eventi
+5️⃣ PARTECIPARE E CHAT
+   • Apri l'evento e vai sulla scheda 👥 Partecipanti
+   • "Voglio partecipare": entri nell'elenco dei partecipanti
+   • "Non posso più": ti togli dall'elenco
+   • Sotto c'è la chat dell'evento: ci scrivono solo i partecipanti
+      - ognuno ha il suo colore
+      - chi non partecipa più resta in grigio
+      - i messaggi possono avere al massimo 300 caratteri
+   • 💬 con un numero = messaggi che non hai ancora letto
 
-   🔹 SEZIONE "DETTAGLI" (Opzionale)
-      • Colore: seleziona il colore/categoria dell'evento (colore neutro di default)
-      • Link: inserisci un link utile per l'evento
-      • Immagine: aggiungi un'immagine per l'evento
+6️⃣ EVENTI DA FISSARE (senza data)
+   • Quando non sapete ancora il giorno, crea una proposta:
+     tocca "➕ Evento senza data" nel riquadro 🗳️ Da fissare
+   • Compila come un evento normale (la prima data è facoltativa)
+     e premi "Crea proposta"
+   • Il riquadro 🗳️ Da fissare è sopra il calendario e, nella lista,
+     sotto "➕ Aggiungi evento"
+   • Tutti possono proporre altre date (con l'ora, se serve) con "➕ Proponi"
+   • Vota le date in cui ci sei con "👍 Ci sono"
+     (tocca "✓ Ci sono (togli)" per togliere il voto)
+   • ⭐ indica la data più votata
+   • Chi ha creato la proposta tocca "📅 Fissa questa data":
+     l'evento va nel calendario e chi ha votato quella data diventa partecipante
+   • Le date proposte non si possono cancellare
+   • Ogni proposta ha la sua chat, aperta a tutti
+   • Chi l'ha creata può modificarla (✏️ Modifica) o eliminarla
 
-2️⃣ VISUALIZZARE GLI EVENTI
-   • Vedrai i nomi degli eventi come post-it colorati sui giorni
-   • Clicca su un post-it per vedere tutti i dettagli
+7️⃣ NOTIFICHE
+   • La campanella 🔔 in alto mostra:
+      - 💬 i messaggi da leggere
+      - 🔔 le novità: nuovi eventi e proposte, chi si iscrive ai tuoi eventi,
+        eventi spostati, cambiati o annullati, nuove date e date fissate
+   • Tocca una riga per aprire l'evento o la proposta
+   • In "⚙️ Impostazioni notifiche" scegli quali novità ricevere
+   • "📲 Attiva notifiche del telefono": le ricevi anche quando la Bacheca
+     è aperta ma non sei sulla sua pagina (non quando è chiusa del tutto)
 
-3️⃣ MODIFICARE UN EVENTO
-   • Clicca su un evento
-   • Modifica i dati nelle 3 sezioni che desideri
-   • Clicca "Salva"
+8️⃣ CHI È COLLEGATO
+   • Gli amici che hanno la Bacheca aperta compaiono come omini colorati
+     vicino al titolo: salutano se la stanno usando,
+     sono fermi e sbiaditi se è aperta in background
+   • Tocca un omino (o passaci sopra col mouse) per vedere il nome
 
-4️⃣ ELIMINARE UN EVENTO
-   • Clicca su un evento
-   • Clicca il tasto "Elimina"
-   • Conferma l'eliminazione
+9️⃣ VISUALIZZAZIONE E CATEGORIE
+   • ⚙️ → 🎨 Visualizzazione:
+      - scegli 📅 Calendario o 📋 Lista
+      - scegli quali categorie vedere: le altre spariscono
+   • Categorie e colori:
+      ⚪ Senza categoria (Viola)
+      🍽️ Cena (Giallo)
+      👥 Discoteca (Rosa)
+      ⛹️ Sport (Verde)
+      🎮 Cinema (Blu)
+      🎵 Concerti (Verde acqua)
+      🎭 Teatro (Rosso)
+      🏞️ Escursioni (Arancione)
+   • Ogni tanto in cima può comparire una striscia gialla
+     con un avviso importante per tutto il gruppo
 
-5️⃣ NAVIGAZIONE
-   • Usa i pulsanti per andare al mese precedente/successivo
-   • Clicca "Oggi" per tornare al mese corrente
+🔟 NOVITÀ
+   • ⚙️ → ℹ️ Info mostra cosa c'è di nuovo nell'ultima versione
+     e nelle due precedenti (tocca la freccetta per aprirle)
 
-6️⃣ FILTRARE PER CATEGORIA
-   • Clicca il pulsante "⚙️ Impostazioni"
-   • Seleziona/deseleziona le categorie che vuoi vedere
-   • Vedrai solo gli eventi delle categorie scelte
-
-7️⃣ CAMBIARE VISTA
-   • Clicca "📋 Lista" per passare alla visualizzazione in lista
-   • Clicca di nuovo per tornare al calendario
-
-8️⃣ CATEGORIE COLORI
-   ⚪ Senza categoria (Viola)
-   🍽️  Cena (Giallo)
-   👥 Discoteca (Rosa)
-   ⛹️  Sport (Verde)
-   🎮 Cinema (Blu)
-   🎵 Concerti (Verde acqua)
-   🎭 Teatro (Rosso)
-   🏞️  Escursioni (Arancione)
-
-9️⃣ INSTALLARE L'APP
+📲 INSTALLARE L'APP
    • Android e PC (Chrome, Edge): premi "⬇️ Installa app" in alto
      (se non lo vedi, l'app è già installata)
    • iPhone: apri il sito con Safari, tocca Condividi
      (il quadrato con la freccia) e "Aggiungi alla schermata Home"
    • Gli aggiornamenti arrivano da soli, non serve reinstallare
+
+🔒 PRIVACY
+   • Per migliorare la Bacheca l'app conta quanti eventi, proposte,
+     messaggi e iscrizioni fai, quante volte la apri e l'ultimo accesso
+   • Non registra quanto tempo la usi né cosa guardi
