@@ -576,6 +576,7 @@ class BacheaCalendar {
         } catch (e) {
             console.warn('Errore setup listener:', e.message);
         }
+        this.setupNotificationListeners();
         this.detectDevice();
         this.loadVersion();
         this.loadTitle();
@@ -2651,6 +2652,7 @@ class BacheaCalendar {
             this.eventsListener = (snapshot) => {
                 this.events = snapshot.val() || {};
                 this.rebuildNotesIndex();
+                this.scheduleNotificationCheck();
 
                 if (firstLoad) {
                     firstLoad = false;
@@ -2681,7 +2683,10 @@ class BacheaCalendar {
             // Listener globale per i messaggi di TUTTI gli eventi: scarica tutto all'avvio, poi solo
             // i messaggi nuovi. I messaggi restano in memoria e i badge si calcolano da qui
             database.ref('eventChats').on('value', (snapshot) => {
+                const previousChats = this.chatMessagesLoaded ? this.chatMessages : null;
                 this.chatMessages = snapshot.val() || {};
+                this.chatMessagesLoaded = true;
+                this.checkNewChatMessages(previousChats);
                 this.updateAllBadges();
             });
         });
@@ -2710,6 +2715,369 @@ class BacheaCalendar {
     getLastRead(chatId) {
         const status = this.readStatus[chatId];
         return (status && status.lastReadTimestamp) || 0;
+    }
+
+    // ===== Notifiche (livello 1: campanella nell'app; livello 2: notifiche del telefono) =====
+    // Le novità si calcolano confrontando lo stato attuale di eventi e proposte con l'ultimo visto,
+    // salvato su questo dispositivo (localStorage, per utente). Così all'apertura compaiono anche le
+    // novità successe mentre l'app era chiusa. Niente letture o scritture in più su Firebase.
+    // Le notifiche del telefono partono solo con l'app aperta o in background (niente push ad app chiusa).
+
+    notificationKey(name) {
+        return `bacheca_${name}_${this.userId}`;
+    }
+
+    readLocal(name, fallback) {
+        try {
+            const value = localStorage.getItem(this.notificationKey(name));
+            return value ? JSON.parse(value) : fallback;
+        } catch (e) {
+            return fallback;
+        }
+    }
+
+    writeLocal(name, value) {
+        try {
+            localStorage.setItem(this.notificationKey(name), JSON.stringify(value));
+        } catch (e) {
+            // Spazio pieno o storage non disponibile: le notifiche restano solo per questa sessione
+        }
+    }
+
+    getNotificationPrefs() {
+        return Object.assign({
+            newEvents: true,     // nuovo evento o nuova proposta di altri
+            joins: true,         // qualcuno si iscrive a un mio evento
+            changes: true,       // un evento a cui partecipo è spostato, modificato o annullato
+            proposals: true,     // novità nelle proposte che ho creato o votato
+            chat: true,          // nuovi messaggi nelle mie chat (solo notifica del telefono: in app ci sono i badge)
+            phone: false         // notifiche del telefono attive
+        }, this.readLocal('notificationPrefs', {}));
+    }
+
+    setNotificationPref(name, value) {
+        const prefs = this.getNotificationPrefs();
+        prefs[name] = value;
+        this.writeLocal('notificationPrefs', prefs);
+    }
+
+    // Fotografia compatta di ciò che serve per capire cosa è cambiato
+    buildNotificationSnapshot() {
+        const events = {};
+        Object.values(this.events).forEach(event => {
+            if (!event || !event.id) return;
+            events[event.id] = {
+                t: event.title || '', d: event.date || '', h: event.time || '', l: event.location || '',
+                c: event.creatorId || '', p: this.getParticipantIds(event)
+            };
+        });
+        const proposals = {};
+        Object.values(this.proposals || {}).forEach(proposal => {
+            if (!proposal || !proposal.id) return;
+            proposals[proposal.id] = {
+                t: proposal.title || '', c: proposal.creatorId || '',
+                o: Object.keys(proposal.dateOptions || {}),
+                v: this.hasVotedProposal(proposal)
+            };
+        });
+        return { events, proposals };
+    }
+
+    // Chiamato dai listener di eventi e proposte: aspetta che si calmino e poi confronta
+    scheduleNotificationCheck() {
+        if (!this.proposalsLoaded) return;
+        clearTimeout(this.notificationTimer);
+        this.notificationTimer = setTimeout(() => this.checkNotifications(), 400);
+    }
+
+    checkNotifications() {
+        const previous = this.readLocal('notificationSnapshot', null);
+        const current = this.buildNotificationSnapshot();
+        this.writeLocal('notificationSnapshot', current);
+        if (!previous) {
+            this.renderNotificationBell(); // Prima volta su questo dispositivo: nessuna notifica arretrata
+            return;
+        }
+
+        const prefs = this.getNotificationPrefs();
+        const me = this.userId;
+        const today = this.getDateKey(new Date());
+        const found = [];
+        const add = (type, item) => { if (prefs[type]) found.push(Object.assign({ type }, item)); };
+
+        // --- Eventi ---
+        Object.entries(current.events).forEach(([id, now]) => {
+            const before = previous.events[id];
+            if (!before) {
+                const fromProposal = previous.proposals[id];
+                if (fromProposal) {
+                    // Proposta fissata: interessa chi l'ha votata o creata
+                    if ((fromProposal.v || fromProposal.c === me) && now.c !== me) {
+                        add('proposals', { eventId: id, title: `📅 Data fissata: ${now.t}`, body: `${this.formatDateKey(now.d)}${now.h ? ' · ' + now.h : ''}` });
+                    }
+                } else if (now.c !== me && now.d >= today) {
+                    add('newEvents', { eventId: id, title: `🆕 Nuovo evento: ${now.t}`, body: `${this.formatDateKey(now.d)}${now.l ? ' · ' + now.l : ''} · da ${this.getParticipantName(now.c)}` });
+                }
+                return;
+            }
+            // Iscrizioni ai miei eventi
+            if (now.c === me) {
+                now.p.filter(uid => uid !== me && !before.p.includes(uid)).forEach(uid => {
+                    add('joins', { eventId: id, title: `🙋 ${this.getParticipantName(uid)} partecipa`, body: now.t });
+                });
+                return;
+            }
+            // Modifiche agli eventi a cui partecipo (le fa solo il creatore)
+            if (now.p.includes(me)) {
+                if (now.d !== before.d) {
+                    add('changes', { eventId: id, title: `📅 Evento spostato: ${now.t}`, body: `Ora è ${this.formatDateKey(now.d)}${now.h ? ' · ' + now.h : ''}` });
+                } else if (now.h !== before.h || now.l !== before.l || now.t !== before.t) {
+                    const what = [now.t !== before.t && 'nome', now.h !== before.h && 'ora', now.l !== before.l && 'luogo'].filter(Boolean).join(', ');
+                    add('changes', { eventId: id, title: `✏️ Evento modificato: ${now.t}`, body: `Cambiato: ${what}` });
+                }
+            }
+        });
+        Object.entries(previous.events).forEach(([id, before]) => {
+            // Annullato: ero iscritto, non l'ho eliminato io, e non è la pulizia dei mesi passati
+            if (!current.events[id] && before.p.includes(me) && before.c !== me && before.d >= today) {
+                add('changes', { title: `❌ Evento annullato: ${before.t}`, body: this.formatDateKey(before.d) });
+            }
+        });
+
+        // --- Proposte ---
+        Object.entries(current.proposals).forEach(([id, now]) => {
+            const before = previous.proposals[id];
+            if (!before) {
+                if (now.c !== me) add('newEvents', { proposalId: id, title: `🗳️ Nuova proposta: ${now.t}`, body: `da ${this.getParticipantName(now.c)}: vota le date` });
+                return;
+            }
+            if (now.v || now.c === me) {
+                const proposal = this.proposals[id];
+                now.o.filter(key => !before.o.includes(key)).forEach(key => {
+                    const option = proposal && proposal.dateOptions && proposal.dateOptions[key];
+                    if (option && (option.addedById === me || (!option.addedById && option.addedBy === this.userName))) return;
+                    add('proposals', { proposalId: id, title: `🗳️ Nuova data per ${now.t}`, body: this.formatProposalOption(key) });
+                });
+            }
+        });
+        Object.entries(previous.proposals).forEach(([id, before]) => {
+            if (!current.proposals[id] && !current.events[id] && (before.v) && before.c !== me) {
+                add('proposals', { title: `❌ Proposta eliminata: ${before.t}`, body: '' });
+            }
+        });
+
+        if (found.length > 0) this.addNotifications(found);
+        this.renderNotificationBell();
+    }
+
+    addNotifications(items) {
+        const list = this.readLocal('notifications', []);
+        const now = Date.now();
+        items.forEach((item, index) => {
+            list.unshift(Object.assign({ id: `${now}_${index}`, at: now, read: false }, item));
+            this.showPhoneNotification(item.title, item.body, item);
+        });
+        this.writeLocal('notifications', list.slice(0, 50)); // Si tengono le ultime 50
+    }
+
+    // Chat: notifica del telefono per i messaggi nuovi delle mie chat (in app bastano i badge)
+    checkNewChatMessages(previousChats) {
+        if (!previousChats || !this.getNotificationPrefs().chat) return;
+        Object.entries(this.chatMessages).forEach(([chatId, chat]) => {
+            const before = (previousChats[chatId] && previousChats[chatId].messages) || {};
+            const event = this.events[chatId];
+            const proposal = this.proposals && this.proposals[chatId];
+            const mine = event
+                ? this.getParticipantIds(event).includes(this.userId)
+                : !!proposal && (this.hasVotedProposal(proposal) || this.isProposalCreator(proposal));
+            if (!mine) return;
+            Object.entries((chat && chat.messages) || {}).forEach(([messageId, message]) => {
+                if (before[messageId] || !message || message.deviceId === this.userId) return;
+                const where = event ? event.title : proposal.title;
+                this.showPhoneNotification(`💬 ${message.name} · ${where}`, message.text, event ? { eventId: chatId } : { proposalId: chatId }, `chat-${chatId}`);
+            });
+        });
+    }
+
+    // Notifica del sistema, solo se attivata e solo se l'app non è in primo piano
+    showPhoneNotification(title, body, target = {}, tag) {
+        if (!this.getNotificationPrefs().phone || !('Notification' in window) || Notification.permission !== 'granted') return;
+        if (document.visibilityState === 'visible') return;
+        const options = {
+            body: body || '',
+            icon: 'icons/icon-192.png?v=2',
+            badge: 'icons/icon-192.png?v=2',
+            tag: tag || undefined,
+            data: { eventId: target.eventId || null, proposalId: target.proposalId || null }
+        };
+        // Su Android le notifiche si mostrano solo tramite il service worker
+        if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+            navigator.serviceWorker.ready
+                .then(registration => registration.showNotification(title, options))
+                .catch(() => { try { new Notification(title, options); } catch (e) { /* non supportate */ } });
+        } else {
+            try { new Notification(title, options); } catch (e) { /* non supportate */ }
+        }
+    }
+
+    async enablePhoneNotifications() {
+        if (!('Notification' in window)) {
+            const iOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+            this.showErrorPopup(iOS
+                ? 'Su iPhone le notifiche funzionano solo con l\'app installata: Safari → Condividi → Aggiungi alla schermata Home, poi apri l\'app da lì.'
+                : 'Questo browser non supporta le notifiche.');
+            return false;
+        }
+        const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+        if (permission !== 'granted') {
+            this.showErrorPopup('Notifiche bloccate: abilitale dalle impostazioni del browser per questo sito.');
+            this.setNotificationPref('phone', false);
+            return false;
+        }
+        this.setNotificationPref('phone', true);
+        return true;
+    }
+
+    // Numero sulla campanella: notifiche non lette + chat con messaggi non letti
+    getUnreadChats() {
+        const chats = [];
+        Object.values(this.events).forEach(event => {
+            if (event && this.getParticipantIds(event).includes(this.userId)) {
+                const count = this.countUnreadMessages(event.id);
+                if (count > 0) chats.push({ eventId: event.id, title: event.title, count });
+            }
+        });
+        Object.values(this.proposals || {}).forEach(proposal => {
+            if (proposal && proposal.id && (this.hasVotedProposal(proposal) || this.isProposalCreator(proposal))) {
+                const count = this.countUnreadMessages(proposal.id);
+                if (count > 0) chats.push({ proposalId: proposal.id, title: proposal.title, count });
+            }
+        });
+        return chats;
+    }
+
+    renderNotificationBell() {
+        const badge = document.getElementById('notificationBadge');
+        if (!badge || !this.userId) return;
+        const unread = this.readLocal('notifications', []).filter(n => !n.read).length + this.getUnreadChats().length;
+        badge.textContent = unread > 99 ? '99+' : String(unread);
+        badge.style.display = unread > 0 ? 'flex' : 'none';
+        const modal = document.getElementById('notificationsModal');
+        if (modal && modal.style.display === 'flex') this.renderNotificationsPanel();
+    }
+
+    openNotificationsPanel() {
+        const menuDropdown = document.getElementById('menuDropdown');
+        if (menuDropdown) menuDropdown.style.display = 'none';
+        this.renderNotificationsPanel();
+        document.getElementById('notificationsModal').style.display = 'flex';
+    }
+
+    closeNotificationsPanel() {
+        document.getElementById('notificationsModal').style.display = 'none';
+        // Aprendo il pannello le notifiche contano come lette
+        const list = this.readLocal('notifications', []).map(n => Object.assign(n, { read: true }));
+        this.writeLocal('notifications', list);
+        this.renderNotificationBell();
+    }
+
+    renderNotificationsPanel() {
+        const listEl = document.getElementById('notificationsList');
+        const list = this.readLocal('notifications', []);
+        const chats = this.getUnreadChats();
+        const timeAgo = (at) => {
+            const minutes = Math.round((Date.now() - at) / 60000);
+            if (minutes < 1) return 'adesso';
+            if (minutes < 60) return `${minutes} min fa`;
+            const hours = Math.round(minutes / 60);
+            if (hours < 24) return `${hours} h fa`;
+            return new Date(at).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
+        };
+        const row = (item, text, sub, unread) => `
+            <button type="button" class="notification-row" data-event-id="${item.eventId || ''}" data-proposal-id="${item.proposalId || ''}"
+                style="width: 100%; text-align: left; display: block; padding: 10px 12px; margin-bottom: 6px; border-radius: 8px; cursor: pointer;
+                       border: 1px solid ${unread ? '#667eea' : '#eee'}; background: ${unread ? '#eef0fd' : '#fff'}; color: #333;">
+                <div style="font-weight: 600; font-size: 0.95rem;">${this.escapeHtml(text)}</div>
+                ${sub ? `<div style="font-size: 0.85rem; color: #666; margin-top: 2px;">${this.escapeHtml(sub)}</div>` : ''}
+            </button>`;
+
+        let html = '';
+        if (chats.length > 0) {
+            html += '<div style="font-weight: 600; color: #667eea; margin: 4px 0 8px;">💬 Messaggi da leggere</div>';
+            html += chats.map(chat => row(chat, `${chat.title}`, `${chat.count} ${chat.count === 1 ? 'messaggio nuovo' : 'messaggi nuovi'}`, true)).join('');
+        }
+        html += '<div style="font-weight: 600; color: #667eea; margin: 12px 0 8px;">🔔 Novità</div>';
+        html += list.length === 0
+            ? '<div style="color: #999; text-align: center; padding: 16px;">Nessuna novità per ora</div>'
+            : list.map(n => row(n, n.title, [n.body, timeAgo(n.at)].filter(Boolean).join(' · '), !n.read)).join('');
+        listEl.innerHTML = html;
+
+        // Tocco su una riga: apre l'evento o la proposta, se esiste ancora
+        listEl.querySelectorAll('.notification-row').forEach(btn => {
+            btn.addEventListener('click', () => this.openNotificationTarget(btn.dataset.eventId, btn.dataset.proposalId));
+        });
+
+        // Impostazioni
+        const prefs = this.getNotificationPrefs();
+        document.querySelectorAll('.notification-pref').forEach(box => {
+            box.checked = !!prefs[box.dataset.pref];
+        });
+        const phoneOn = prefs.phone && 'Notification' in window && Notification.permission === 'granted';
+        const phoneBtn = document.getElementById('notificationsPhoneBtn');
+        phoneBtn.textContent = phoneOn ? '🔕 Disattiva notifiche del telefono' : '📲 Attiva notifiche del telefono';
+        phoneBtn.style.background = phoneOn ? '#9e9e9e' : '#4CAF50';
+    }
+
+    openNotificationTarget(eventId, proposalId) {
+        if (eventId && this.events[eventId]) {
+            this.closeNotificationsPanel();
+            this.openEditModal(eventId);
+            if (this.countUnreadMessages(eventId) > 0) {
+                // Messaggi nuovi: si apre direttamente la scheda con la chat
+                const tab = document.getElementById('editParticipantsTabBtn');
+                if (tab) tab.click();
+            }
+        } else if (proposalId && this.proposals[proposalId]) {
+            this.closeNotificationsPanel();
+            this.showProposalModal();
+            this.openProposalView(proposalId);
+        } else if (eventId || proposalId) {
+            this.showErrorPopup('Non esiste più');
+        }
+    }
+
+    setupNotificationListeners() {
+        document.getElementById('notificationsBtn').addEventListener('click', () => this.openNotificationsPanel());
+        document.getElementById('notificationsCloseBtn').addEventListener('click', () => this.closeNotificationsPanel());
+        document.getElementById('notificationsModal').addEventListener('click', (e) => {
+            if (e.target.id === 'notificationsModal') this.closeNotificationsPanel();
+        });
+        document.getElementById('notificationsClearBtn').addEventListener('click', () => {
+            this.writeLocal('notifications', []);
+            this.renderNotificationsPanel();
+            this.renderNotificationBell();
+        });
+        document.querySelectorAll('.notification-pref').forEach(box => {
+            box.addEventListener('change', () => this.setNotificationPref(box.dataset.pref, box.checked));
+        });
+        document.getElementById('notificationsPhoneBtn').addEventListener('click', async () => {
+            const prefs = this.getNotificationPrefs();
+            const phoneOn = prefs.phone && 'Notification' in window && Notification.permission === 'granted';
+            if (phoneOn) {
+                this.setNotificationPref('phone', false);
+            } else if (await this.enablePhoneNotifications()) {
+                this.showSuccessPopup('Notifiche attive: arrivano quando l\'app è aperta o in background');
+            }
+            this.renderNotificationsPanel();
+        });
+        // Tocco su una notifica del telefono: il service worker riporta qui evento o proposta
+        if (navigator.serviceWorker) {
+            navigator.serviceWorker.addEventListener('message', (e) => {
+                if (e.data && e.data.type === 'open-notification') {
+                    this.openNotificationTarget(e.data.eventId, e.data.proposalId);
+                }
+            });
+        }
     }
 
     rebuildNotesIndex() {
@@ -2817,6 +3185,8 @@ class BacheaCalendar {
         if (this.editingNote) {
             this.updateChatButtonBadge(this.editingNote.id);
         }
+
+        this.renderNotificationBell();
     }
 
     // Messaggi non letti: tutto in memoria (messaggi dal listener globale, letture dal proprio nodo)
@@ -3409,7 +3779,9 @@ class BacheaCalendar {
     listenProposals() {
         database.ref('proposals').on('value', (snapshot) => {
             this.proposals = snapshot.val() || {};
+            this.proposalsLoaded = true;
             this.renderProposals();
+            this.scheduleNotificationCheck();
 
             if (this.openProposalId) {
                 if (this.proposals[this.openProposalId] && this.proposals[this.openProposalId].id) {
@@ -3830,7 +4202,7 @@ class BacheaCalendar {
         // Chi crea non vota in automatico: magari non può esserci
         if (firstDate) {
             const firstKey = this.proposalOptionKey(firstDate, document.getElementById('proposalTime').value);
-            proposal.dateOptions = { [firstKey]: { addedBy: this.userName || '', createdAt: Date.now() } };
+            proposal.dateOptions = { [firstKey]: { addedBy: this.userName || '', addedById: this.userId, createdAt: Date.now() } };
         }
 
         const image = this.proposalImageData;
@@ -3991,7 +4363,7 @@ class BacheaCalendar {
 
         // Chi propone una data la vota anche (può sempre togliere il voto)
         database.ref(`proposals/${proposalId}`).update({
-            [`dateOptions/${optionKey}`]: { addedBy: this.userName || '', createdAt: Date.now() },
+            [`dateOptions/${optionKey}`]: { addedBy: this.userName || '', addedById: this.userId, createdAt: Date.now() },
             [`votes/${optionKey}/${this.getVoterKey()}`]: { name: this.userName, deviceId: this.userId }
         }).then(() => {
             input.value = '';

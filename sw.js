@@ -8,7 +8,7 @@
 //
 // Cambiando CACHE_NAME le copie vecchie vengono cancellate all'attivazione.
 
-const CACHE_NAME = 'bacheca-v4';
+const CACHE_NAME = 'bacheca-v5';
 
 // File salvati all'installazione, così l'app si apre anche offline.
 // Percorsi relativi alla posizione di sw.js: funziona in qualsiasi cartella.
@@ -23,8 +23,11 @@ const APP_FILES = [
   './descrizioni/versione',
   './descrizioni/titolo',
   './descrizioni/info',
-  './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-192.png?v=2',
+  './icons/icon-512.png?v=2',
+  './icons/icon-maskable-512.png?v=2',
+  './icons/apple-touch-icon.png?v=2',
+  './icons/icon.svg?v=2'
 ];
 
 self.addEventListener('install', event => {
@@ -67,5 +70,21 @@ self.addEventListener('fetch', event => {
           cached || (request.mode === 'navigate' ? caches.match('./index.html') : Response.error())
         )
       )
+  );
+});
+
+// Tocco su una notifica: porta in primo piano l'app (o la apre) e le dice cosa aprire
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const target = Object.assign({ type: 'open-notification' }, event.notification.data || {});
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
+      const client = clients.find(c => c.url.includes(self.registration.scope));
+      if (client) {
+        client.postMessage(target);
+        return client.focus();
+      }
+      return self.clients.openWindow(self.registration.scope);
+    })
   );
 });
