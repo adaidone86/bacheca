@@ -1,0 +1,25 @@
+🆕 Versione 0.6.0
+
+✨ NOVITÀ
+
+   🔐 Bacheca solo per il gruppo
+      • Chi si registra deve essere approvato prima di poter
+        vedere e usare la Bacheca: nel frattempo vede una
+        pagina di attesa, che si apre da sola appena approvato
+
+   🖼️ Immagini da qualsiasi sito
+      • Con "URL Img" ora puoi usare l'indirizzo di un'immagine
+        di quasi tutti i siti, anche quelli che prima
+        la bloccavano
+      • Se l'indirizzo è di una pagina e non di un'immagine,
+        la Bacheca ti spiega come copiare quello giusto
+
+🔧 CORREZIONI
+
+   🛏️ Omini che uscivano e rientravano
+      • Chi ha la Bacheca aperta ma non la sta usando resta
+        a letto, invece di uscire e rientrare dalla porta
+
+   👤 Due account nello stesso browser
+      • Se in un'altra scheda entri con un altro account,
+        la pagina si aggiorna da sola invece di bloccarsi
