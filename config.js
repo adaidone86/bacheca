@@ -10,6 +10,15 @@ const APP_CONFIG = {
     // SCEGLI QUI: 'TEST' | 'PROD'
     ENV: 'PROD',
 
+    // Email all'amministratore quando qualcuno si registra (EmailJS, piano gratuito).
+    // Le chiavi sono pubbliche per natura (sono nel browser); il destinatario è fisso nel modello su emailjs.com.
+    // Se sono vuote l'invio viene saltato.
+    emailjs: {
+        serviceId: 'service_o01oenc',
+        templateId: 'template_qkf3atc',
+        publicKey: 'UcLx8kJljvW95cUF1'
+    },
+
     databases: {
         TEST: {
             name: '🧪 TEST - bacheca-test',

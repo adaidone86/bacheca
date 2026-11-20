@@ -96,7 +96,8 @@ class BacheaCalendar {
         this.proposals = {}; // Eventi da fissare (senza data): proposals/{id}
         this.openProposalId = null; // Proposta aperta nel modal
         this.PRESENCE_BEAT_MS = 60000; // battito della presenza: ogni minuto
-        this.PRESENCE_STALE_MS = 3 * 60000; // senza battito da 3 minuti l'omino sparisce
+        this.PRESENCE_STALE_MS = 3 * 60000; // in primo piano: senza battito da 3 minuti l'omino sparisce
+        this.PRESENCE_STALE_IDLE_MS = 15 * 60000; // in background (dorme): fino a 15 minuti
         this.BUBBLE_MS = 8000; // la nuvoletta dell'omino resta 8 secondi
         this.AVATAR_ASLEEP_MSG = '😴 Il tuo omino sta dormendo: non può parlare. Si sveglia quando entra qualcun altro.';
         this.setupCustomPopup();
@@ -272,6 +273,35 @@ class BacheaCalendar {
         return `${username}@bacheca.local`;
     }
 
+    // Nuovo iscritto: email all'amministratore tramite EmailJS (chiavi in config.js → emailjs).
+    // Il destinatario e il testo stanno nel modello su emailjs.com, non qui. Se l'invio non riesce
+    // la registrazione va avanti lo stesso: l'iscritto si vede comunque nella pagina Amministrazione.
+    notifyAdminNewUser(username, name) {
+        const cfg = (typeof APP_CONFIG !== 'undefined' && APP_CONFIG.emailjs) || {};
+        if (!cfg.serviceId || !cfg.templateId || !cfg.publicKey) return; // non configurato
+        const env = (APP_CONFIG.getConfig() || {}).name || APP_CONFIG.ENV;
+        const device = this.getDeviceInfo ? this.getDeviceInfo() : {};
+        fetch('https://api.emailjs.com/api/v1.0/email/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                service_id: cfg.serviceId,
+                template_id: cfg.templateId,
+                user_id: cfg.publicKey,
+                template_params: {
+                    nome: name,
+                    username: username,
+                    data: new Date().toLocaleString('it-IT', { dateStyle: 'full', timeStyle: 'short' }),
+                    ambiente: env,
+                    dispositivo: device.browser ? `${device.browser} (${device.deviceType})` : navigator.userAgent,
+                    indirizzo: location.origin + location.pathname
+                }
+            })
+        }).then(response => {
+            if (!response.ok) return response.text().then(t => console.warn('EmailJS: email non inviata', response.status, t));
+        }).catch(error => console.warn('EmailJS: email non inviata', error));
+    }
+
     authErrorMessage(error) {
         const messages = {
             'auth/invalid-credential': 'Username o password errati',
@@ -315,9 +345,48 @@ class BacheaCalendar {
             await this.promptForLogin(blockedMessage);
         }
 
-        // Se la sessione finisce (logout da un'altra scheda) ricarico: torna la schermata di login
+        // Se la sessione finisce (logout da un'altra scheda) ricarico: torna la schermata di login.
+        // Se in un'altra scheda dello stesso browser si entra con un ALTRO account, l'accesso cambia anche qui:
+        // ricarico, altrimenti questa scheda continuerebbe come il vecchio utente senza poter scrivere (omino bloccato a letto)
         auth.onAuthStateChanged(u => {
-            if (!u && this.userId) location.reload();
+            if (!this.userId) return;
+            if (!u || u.uid !== this.userId) location.reload();
+        });
+
+        // Iscritto non ancora approvato: vede solo la schermata di attesa, il resto della Bacheca non parte
+        if (!this.isApproved) await this.showPendingScreen(); // non finisce: all'approvazione la pagina si ricarica
+    }
+
+    // ===== Approvazione dei nuovi iscritti (0.6.0) =====
+    // approved/{uid} = true lo scrive l'amministratore. Con le regole vecchie (senza "approved") la lettura
+    // viene rifiutata: in quel caso si considera approvato, così l'app nuova funziona anche prima delle regole nuove
+    async loadApproval() {
+        if (this.isAdmin) return true;
+        try {
+            const snapshot = await database.ref(`approved/${this.userId}`).once('value');
+            return snapshot.val() === true;
+        } catch (e) {
+            return true;
+        }
+    }
+
+    showPendingScreen() {
+        return new Promise(() => {
+            document.getElementById('loadingScreen') && (document.getElementById('loadingScreen').style.display = 'none');
+            document.getElementById('pendingName').textContent = this.userName || this.username || '';
+            document.getElementById('pendingModal').style.display = 'flex';
+            document.getElementById('pendingLogoutBtn').onclick = async () => {
+                this.userId = null; // evita il doppio reload
+                await firebase.auth().signOut();
+                location.reload();
+            };
+            // Appena l'amministratore approva (o blocca) si ricarica e si entra (o compare il messaggio di blocco)
+            database.ref(`approved/${this.userId}`).on('value', snapshot => {
+                if (snapshot.val() === true) location.reload();
+            }, () => {});
+            database.ref(`blocked/${this.userId}`).on('value', snapshot => {
+                if (snapshot.exists()) location.reload();
+            }, () => {});
         });
     }
 
@@ -349,6 +418,7 @@ class BacheaCalendar {
         }
         this.userNames[this.userId] = this.userName;
         await this.loadRole();
+        this.isApproved = await this.loadApproval();
     }
 
     promptForLogin(initialError = '') {
@@ -504,6 +574,7 @@ class BacheaCalendar {
                         createdAt: Date.now()
                     });
                     createdUser = null; // profilo salvato: l'account è completo
+                    this.notifyAdminNewUser(username, name); // email all'amministratore (non blocca la registrazione)
                     await finish(cred.user);
                 } catch (error) {
                     // Account creato ma profilo non salvato (es. regole Firebase): lo annullo,
@@ -1859,24 +1930,79 @@ class BacheaCalendar {
         }
     }
 
-    loadImageFromUrl(url, type) {
-        fetch(url, { mode: 'cors' })
-            .then(response => {
-                if (!response.ok) throw new Error('Errore nel caricamento');
-                return response.blob();
-            })
-            .then(blob => {
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    this.currentCropType = type;
-                    this.openCropperModal(event.target.result);
-                };
-                reader.readAsDataURL(blob);
-                document.getElementById({ event: 'eventImageUrl', edit: 'editImageUrl', proposal: 'proposalImageUrl' }[type]).value = '';
-            })
-            .catch(error => {
-                this.showErrorPopup('Non riesco a caricare l\'immagine da questo indirizzo: forse non è un\'immagine, oppure il sito non permette di usarla.\nProva a salvarla sul telefono o sul PC e caricala con "Carica Img".');
-            });
+    // Immagine da un indirizzo (0.6.0).
+    // Il browser permette di leggere un'immagine di un altro sito solo se quel sito lo consente (CORS):
+    // quasi nessuno lo fa. Quindi: 1) prova diretta; 2) se il sito blocca, passa da wsrv.nl, un servizio
+    // gratuito che scarica l'immagine e la restituisce con il permesso (e già rimpicciolita).
+    // Poi ritaglio e salvataggio su Firebase come per "Carica Img": l'immagine originale non resta da nessuna parte.
+    imageProxyUrl(url) {
+        return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=1600&h=1600&fit=inside&we`;
+    }
+
+    async fetchImageBlob(url) {
+        let response;
+        try {
+            response = await fetch(url, { mode: 'cors', credentials: 'omit' });
+        } catch (e) {
+            throw { kind: 'blocked' }; // sito che non dà il permesso, oppure rete assente
+        }
+        if (!response.ok) {
+            // wsrv.nl spiega il motivo in JSON ("Invalid or unsupported image format", "unresolvable (DNS)"...)
+            const detail = await response.json().then(j => String((j && j.message) || '')).catch(() => '');
+            throw { kind: 'http', status: response.status, detail };
+        }
+        const blob = await response.blob();
+        if (!blob.type.startsWith('image/')) throw { kind: 'notImage', contentType: blob.type };
+        return blob;
+    }
+
+    async loadImageFromUrl(url, type) {
+        // Stesso controllo dei link: spazi in mezzo, punto nel nome del sito, https:// aggiunto se manca
+        const check = this.checkLink(url);
+        const target = check.value;
+        const pageMessage = 'Questo indirizzo è di una pagina, non di un\'immagine.\n' +
+            'Apri l\'immagine, tienila premuta (o tasto destro) e scegli "Copia indirizzo immagine", poi incollalo qui.';
+        if (check.error || !target) {
+            this.showErrorPopup(`Indirizzo dell'immagine non valido: ${check.error || 'è vuoto'}.`);
+            return;
+        }
+        if (!navigator.onLine) {
+            this.showErrorPopup('Sei senza connessione: riprova quando torna la rete.');
+            return;
+        }
+        this.showToast('🖼️ Carico l\'immagine…', 'info');
+        let blob = null;
+        try {
+            blob = await this.fetchImageBlob(target);
+        } catch (direct) {
+            if (direct.kind === 'notImage') {
+                this.showErrorPopup(pageMessage);
+                return;
+            }
+            try {
+                blob = await this.fetchImageBlob(this.imageProxyUrl(target)); // il sito blocca: si passa da wsrv.nl
+            } catch (proxied) {
+                console.warn('Immagine da indirizzo non caricata', { direct, proxied });
+                const detail = (proxied.detail || '').toLowerCase();
+                if (proxied.kind === 'notImage' || detail.includes('image format')) {
+                    this.showErrorPopup(pageMessage);
+                } else if (detail.includes('unresolvable') || detail.includes('dns')) {
+                    this.showErrorPopup('Questo sito non esiste: controlla di aver copiato bene l\'indirizzo.');
+                } else if (detail.includes('returned error') || (proxied.kind === 'http' && proxied.status >= 400 && proxied.status < 500)) {
+                    this.showErrorPopup('L\'immagine non si trova più a questo indirizzo, oppure il sito non la lascia scaricare.\nSalvala sul telefono o sul PC e caricala con "Carica Img".');
+                } else {
+                    this.showErrorPopup('Non riesco a scaricare l\'immagine in questo momento. Riprova tra poco, oppure salvala sul telefono o sul PC e caricala con "Carica Img".');
+                }
+                return;
+            }
+        }
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            this.currentCropType = type;
+            this.openCropperModal(event.target.result);
+        };
+        reader.readAsDataURL(blob);
+        document.getElementById({ event: 'eventImageUrl', edit: 'editImageUrl', proposal: 'proposalImageUrl' }[type]).value = '';
     }
 
     renderEventLink(link) {
@@ -3553,9 +3679,13 @@ class BacheaCalendar {
 
     // Una connessione conta solo se ha l'ultimo battito ("at") e se è recente:
     // le voci fantasma non ce l'hanno, quelle di un'app chiusa o sospesa smettono di aggiornarlo
+    // Chi è in primo piano manda il battito ogni minuto: senza battito da 3 minuti sparisce.
+    // Chi è in background (dorme) può avere il battito rallentato o fermo (il browser rallenta o congela le schede
+    // nascoste): resta a letto fino a 15 minuti, invece di uscire e rientrare dalla porta di continuo
     getLiveConnections(connections) {
         const now = Date.now() + (this.serverTimeOffset || 0);
-        return Object.values(connections || {}).filter(c => c && typeof c.at === 'number' && now - c.at < this.PRESENCE_STALE_MS);
+        return Object.values(connections || {}).filter(c => c && typeof c.at === 'number' &&
+            now - c.at < (c.active ? this.PRESENCE_STALE_MS : this.PRESENCE_STALE_IDLE_MS));
     }
 
     stopPresence() {
@@ -4169,12 +4299,13 @@ class BacheaCalendar {
     }
 
     async loadAdminData() {
-        const [users, stats, blocked, presence, roles] = await Promise.all(
-            ['users', 'stats', 'blocked', 'presence', 'roles'].map(path =>
-                database.ref(path).once('value').then(s => s.val() || {}).catch(() => ({}))));
+        const [users, stats, blocked, presence, roles, approved] = await Promise.all(
+            ['users', 'stats', 'blocked', 'presence', 'roles', 'approved'].map(path =>
+                database.ref(path).once('value').then(s => s.val() || {}).catch(() => (path === 'approved' ? null : {}))));
         // Con le regole vecchie "roles" non si legge tutto insieme: almeno io risulto amministratore
         if (this.isAdmin && !roles[this.userId]) roles[this.userId] = 'admin';
-        this.adminData = { users, stats, blocked, presence, roles };
+        // approved = null: regole vecchie senza approvazione, quindi nessuno risulta "in attesa"
+        this.adminData = { users, stats, blocked, presence, roles, approved };
     }
 
     showAdminTab(tab) {
@@ -4198,18 +4329,27 @@ class BacheaCalendar {
     renderAdminPanel() {
         const content = document.getElementById('adminContent');
         if (!content || !this.adminData) return;
-        const { users, stats, blocked, presence, roles = {} } = this.adminData;
+        const { users, stats, blocked, presence, roles = {}, approved = null } = this.adminData;
         const esc = (t) => this.escapeHtml(t);
 
         if (this.adminTab === 'users') {
-            // Prima gli amministratori, poi tutti gli altri; dentro ogni gruppo per ultimo accesso
+            // In cima chi aspetta l'approvazione, poi gli amministratori, poi tutti gli altri; dentro ogni gruppo per ultimo accesso
             const isAdminUid = (uid) => roles[uid] === 'admin';
+            const isPending = (uid) => approved !== null && !isAdminUid(uid) && approved[uid] !== true && !blocked[uid];
+            const group = (uid) => isPending(uid) ? 2 : (isAdminUid(uid) ? 1 : 0);
             const rows = Object.entries(users)
                 .map(([uid, user]) => ({ uid, user, s: stats[uid] || {} }))
-                .sort((a, b) => (isAdminUid(b.uid) - isAdminUid(a.uid)) || ((b.s.lastActiveAt || 0) - (a.s.lastActiveAt || 0)));
+                .sort((a, b) => (group(b.uid) - group(a.uid)) || ((b.s.lastActiveAt || 0) - (a.s.lastActiveAt || 0)));
             const last30 = new Date(); last30.setDate(last30.getDate() - 30);
             const from = this.getDateKey(last30);
-            content.innerHTML = rows.map(({ uid, user, s }) => {
+            const pendingCount = rows.filter(r => isPending(r.uid)).length;
+            const pendingHeader = pendingCount ? `
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; background:#fff8e1; border:1px solid #ffcc80; border-radius:8px; padding:8px 10px; margin-bottom:10px;">
+                    <span style="font-size:0.9rem;">⏳ <b>${pendingCount}</b> ${pendingCount === 1 ? 'iscritto aspetta' : 'iscritti aspettano'} l'approvazione</span>
+                    <button type="button" class="admin-action" data-action="approveAll" data-uid="" style="background:#2e7d32;">✅ Approva tutti</button>
+                </div>` : '';
+            content.innerHTML = pendingHeader + rows.map(({ uid, user, s }) => {
+                const pending = isPending(uid);
                 const online = this.getLiveConnections(presence[uid]).length > 0;
                 const isBlocked = !!blocked[uid];
                 const days30 = Object.keys(s.days || {}).filter(d => d >= from).length;
@@ -4220,12 +4360,13 @@ class BacheaCalendar {
                             <strong>${esc(user.name || '?')}${uid === this.userId ? ' (tu)' : ''}${isAdminUid(uid) ? ' <span style="font-size:0.75rem; font-weight:600; color:#c62828; background:#ffebee; border-radius:6px; padding:1px 6px;">🛠️ Amministratore</span>' : ''}</strong>
                             <span style="font-size:0.8rem; color:${online ? '#2e7d32' : '#888'};">${online ? '● collegato' : esc(this.formatAgo(s.lastActiveAt))}</span>
                         </div>
-                        <div style="font-size:0.8rem; color:#666;">@${esc(user.username || '?')} · registrato il ${esc(registered)}${isBlocked ? ' · <b style="color:#c62828">BLOCCATO</b>' : ''}</div>
+                        <div style="font-size:0.8rem; color:#666;">@${esc(user.username || '?')} · registrato il ${esc(registered)}${isBlocked ? ' · <b style="color:#c62828">BLOCCATO</b>' : ''}${pending ? ' · <b style="color:#e65100">⏳ IN ATTESA</b>' : ''}</div>
                         <div style="font-size:0.8rem; color:#444; margin:4px 0;">
                             📅 ${s.eventsCreated || 0} eventi · 🗳️ ${s.proposalsCreated || 0} proposte · 💬 ${s.messagesSent || 0} messaggi · 🙋 ${s.joins || 0} iscrizioni · 📲 ${s.opens || 0} aperture · 🗓️ ${days30} giorni attivi (30 g)
                         </div>
                         ${uid === this.userId ? '' : `
-                        <div style="display:flex; gap:6px;">
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            ${pending ? `<button type="button" class="admin-action" data-action="approve" data-uid="${esc(uid)}" style="background:#2e7d32;">✅ Approva</button>` : ''}
                             <button type="button" class="admin-action" data-action="rename" data-uid="${esc(uid)}">✏️ Rinomina</button>
                             <button type="button" class="admin-action" data-action="${isBlocked ? 'unblock' : 'block'}" data-uid="${esc(uid)}">${isBlocked ? '✅ Sblocca' : '⛔ Blocca'}</button>
                         </div>`}
@@ -4344,6 +4485,22 @@ class BacheaCalendar {
         } else if (action === 'unblock') {
             await database.ref(`blocked/${uid}`).remove().then(() => this.showToast(`${name} è sbloccato`, 'info'))
                 .catch(error => this.notifyWriteError('Sblocco utente', error));
+        } else if (action === 'approve') {
+            await database.ref(`approved/${uid}`).set(true).then(() => this.showToast(`✅ ${name} è approvato: può entrare nella Bacheca`, 'info'))
+                .catch(error => this.notifyWriteError('Approvazione utente', error));
+        } else if (action === 'approveAll') {
+            // Tutti quelli in attesa (non bloccati, non admin): serve anche subito dopo aver pubblicato le regole,
+            // quando chi era già registrato risulta "in attesa"
+            const { users = {}, approved = {}, blocked = {}, roles = {} } = this.adminData;
+            const pending = Object.keys(users).filter(id => approved && approved[id] !== true && !blocked[id] && roles[id] !== 'admin');
+            if (!pending.length) return;
+            const names = pending.map(id => (users[id] && users[id].name) || '?').join(', ');
+            const ok = await this.showConfirmDialog(`Approvare ${pending.length} ${pending.length === 1 ? 'iscritto' : 'iscritti'}?\n${names}\n\nPotranno vedere e usare tutta la Bacheca.`, '✅ Approva tutti', '#2e7d32');
+            if (!ok) return;
+            const updates = {};
+            pending.forEach(id => { updates[`approved/${id}`] = true; });
+            await database.ref().update(updates).then(() => this.showToast(`✅ Approvati: ${names}`, 'info'))
+                .catch(error => this.notifyWriteError('Approvazione utenti', error));
         }
         await this.loadAdminData();
         this.renderAdminPanel();

@@ -60,15 +60,33 @@ def signin(username, password):
     assert st == 200, f'Login amministratore fallito: {st}'
     return {'uid': r['localId'], 'token': r['idToken'], 'username': username}
 
+if not (os.environ.get('BACHECA_ADMIN_USER') and os.environ.get('BACHECA_ADMIN_PASS')):
+    # Dalla 0.6.0 i nuovi iscritti devono essere approvati: senza un amministratore gli utenti di prova non vedono niente
+    sys.exit('Servono BACHECA_ADMIN_USER e BACHECA_ADMIN_PASS (account TEST con ruolo admin): '
+             'gli utenti di prova vanno approvati per poter fare le prove.')
+ADM = signin(os.environ['BACHECA_ADMIN_USER'], os.environ['BACHECA_ADMIN_PASS'])
 A = signup('a'); B = signup('b')
-ADM = None
-if os.environ.get('BACHECA_ADMIN_USER') and os.environ.get('BACHECA_ADMIN_PASS'):
-    ADM = signin(os.environ['BACHECA_ADMIN_USER'], os.environ['BACHECA_ADMIN_PASS'])
 now = int(time.time() * 1000)
 try:
-    # Profili
+    # Profili (anche chi è in attesa di approvazione crea e legge il proprio)
     check('A crea il proprio profilo', 'permesso', A, 'PUT', f'users/{A["uid"]}', {'username': A['username'][:20], 'name': 'ProvaA', 'createdAt': now})
     check('B crea il proprio profilo', 'permesso', B, 'PUT', f'users/{B["uid"]}', {'username': B['username'][:20], 'name': 'ProvaB', 'createdAt': now})
+
+    # Approvazione (0.6.0): chi è in attesa non vede niente finché un admin non lo approva
+    check('In attesa: A legge il proprio profilo', 'permesso', A, 'GET', f'users/{A["uid"]}')
+    check('In attesa: A legge la propria approvazione', 'permesso', A, 'GET', f'approved/{A["uid"]}')
+    check('In attesa: A legge gli eventi', 'bloccato', A, 'GET', 'events')
+    check('In attesa: A legge gli utenti', 'bloccato', A, 'GET', 'users')
+    check('In attesa: A legge le chat', 'bloccato', A, 'GET', 'eventChats')
+    check('In attesa: A legge chi è collegato', 'bloccato', A, 'GET', 'presence')
+    check('In attesa: A segna la propria presenza', 'bloccato', A, 'PUT', f'presence/{A["uid"]}/c1', {'active': True, 'at': now})
+    check('In attesa: A si approva da solo', 'bloccato', A, 'PUT', f'approved/{A["uid"]}', True)
+    check('In attesa: A legge tutte le approvazioni', 'bloccato', A, 'GET', 'approved')
+    check('Admin approva A e B', 'permesso', ADM, 'PATCH', '', {f'approved/{A["uid"]}': True, f'approved/{B["uid"]}': True})
+    check('Approvazione con valore diverso da true', 'bloccato', ADM, 'PUT', f'approved/{A["uid"]}', 'si')
+    check('Admin legge tutte le approvazioni', 'permesso', ADM, 'GET', 'approved')
+    check('Approvato: A legge gli eventi', 'permesso', A, 'GET', 'events')
+    check('B toglie l\'approvazione ad A', 'bloccato', B, 'DELETE', f'approved/{A["uid"]}')
     check('Nome di 11 caratteri', 'bloccato', B, 'PUT', f'users/{B["uid"]}/name', 'X' * 11)
     check('Nome di 10 caratteri', 'permesso', B, 'PUT', f'users/{B["uid"]}/name', 'X' * 10)
     check('B cambia il nome di A', 'bloccato', B, 'PUT', f'users/{A["uid"]}/name', 'hacker')
@@ -264,6 +282,7 @@ finally:
     for path in [f'events/{eid}', f'proposals/{pid}', f'eventChats/{eid}', f'eventChats/{pid}', f'eventImages/{eid}', f'events/{fid}', f'proposals/{fid}', f'eventChats/{fid}']:
         st, val = db(A, 'GET', path)
         if val is not None: left.append(path)
+    db(ADM, 'PATCH', '', {f'approved/{A["uid"]}': None, f'approved/{B["uid"]}': None})  # per ultime, dopo i controlli
     for u in (A, B):
         http('POST', f'https://identitytoolkit.googleapis.com/v1/accounts:delete?key={API_KEY}', {'idToken': u['token']})
 
