@@ -1,6 +1,6 @@
 // Service Worker della Bacheca
 //
-// Strategia: PRIMA LA RETE per i file dell'app (HTML, JS, CSS, config, descrizioni):
+// Strategia: PRIMA LA RETE per i file dell'app (HTML, JS, CSS, config, versione, testi):
 // se c'è connessione si usa sempre la versione nuova (così gli aggiornamenti arrivano subito)
 // e se ne salva una copia; senza connessione si usa l'ultima copia salvata.
 // Le richieste verso altri domini (Firebase, gstatic, cdnjs) non vengono toccate:
@@ -8,7 +8,7 @@
 //
 // Cambiando CACHE_NAME le copie vecchie vengono cancellate all'attivazione.
 
-const CACHE_NAME = 'bacheca-v5';
+const CACHE_NAME = 'bacheca-v6';
 
 // File salvati all'installazione, così l'app si apre anche offline.
 // Percorsi relativi alla posizione di sw.js: funziona in qualsiasi cartella.
@@ -20,9 +20,9 @@ const APP_FILES = [
   './css/style-desktop.css',
   './css/style-mobile.css',
   './manifest.json',
-  './descrizioni/versione',
-  './descrizioni/titolo',
-  './descrizioni/info',
+  './versione',
+  './testi/titolo',
+  './testi/info',
   './icons/icon-192.png?v=2',
   './icons/icon-512.png?v=2',
   './icons/icon-maskable-512.png?v=2',

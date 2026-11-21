@@ -2,7 +2,7 @@
 // Si ricarica solo DOPO aver cancellato tutte le cache e chiesto al service worker di aggiornarsi
 // (prima la ricarica partiva mentre la cancellazione era ancora in corso)
 let APP_FILE_VERSION = 'unknown';
-fetch('./descrizioni/versione', { cache: 'no-store' })
+fetch('./versione', { cache: 'no-store' })
     .then(r => r.text())
     .then(async text => {
         APP_FILE_VERSION = text.trim();
@@ -132,6 +132,7 @@ class BacheaCalendar {
     // Salvataggio rifiutato: avviso breve con cosa non è riuscito e, se è un limite o un permesso, l'invito a segnalarlo
     notifyWriteError(action, error) {
         console.error(`Errore: ${action}`, error);
+        this.logError(`${action}: ${(error && (error.code || error.message)) || error}`, 'salvataggio');
         const code = String((error && (error.code || error.message)) || '').toUpperCase();
         if (code.includes('PERMISSION_DENIED')) {
             this.showToast(`⚠️ ${action}: non consentito (superato un limite o permesso mancante). Se ti sembra un errore, scrivi all'amministratore.`);
@@ -258,7 +259,79 @@ class BacheaCalendar {
             deviceType = 'Tablet';
         }
 
-        return { browser, deviceType };
+        // Sistema operativo
+        let os = 'Altro';
+        if (/android/.test(ua)) os = 'Android';
+        else if (/iphone|ipad|ipod/.test(ua) || (ua.indexOf('macintosh') > -1 && navigator.maxTouchPoints > 1)) os = 'iOS';
+        else if (/windows/.test(ua)) os = 'Windows';
+        else if (/mac os/.test(ua)) os = 'macOS';
+        else if (/linux|cros/.test(ua)) os = 'Linux';
+
+        // Aperta come app installata o nel browser
+        const installed = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+        return { browser, deviceType, os, installed };
+    }
+
+    // Schermo: dimensioni della finestra e densità (es. "390×844 · 3x")
+    describeScreen() {
+        return `${window.innerWidth}×${window.innerHeight} · ${Math.round((window.devicePixelRatio || 1) * 10) / 10}x`.slice(0, 40);
+    }
+
+    // Lingua e fuso orario (es. "it-IT · Europe/Rome")
+    describeLanguage() {
+        let tz = '';
+        try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { /* vecchi browser */ }
+        return `${navigator.language || '?'}${tz ? ' · ' + tz : ''}`.slice(0, 60);
+    }
+
+    // ===== 🐞 Registro degli errori (0.6.1) =====
+    // errors/{uid}/{id}: {msg, where, at, version, device, screen, lang, online}. Solo il testo dell'errore e il punto
+    // del codice, mai contenuti (messaggi, eventi, password). Al massimo 20 per utente; li legge solo l'amministratore
+    setupErrorLog() {
+        this.errorLogCount = 0;
+        this.errorLogRecent = {};
+        window.addEventListener('error', (e) => {
+            const where = e.filename ? `${String(e.filename).split('/').pop()}:${e.lineno || 0}:${e.colno || 0}` : '';
+            this.logError((e.error && e.error.message) || e.message || 'Errore sconosciuto', where);
+        });
+        window.addEventListener('unhandledrejection', (e) => {
+            const reason = e.reason || {};
+            this.logError(`Promessa rifiutata: ${reason.message || reason.code || reason}`, (reason.stack || '').split('\n')[1] || '');
+        });
+    }
+
+    logError(message, where = '') {
+        if (!this.userId || typeof database === 'undefined' || !database) return;
+        const msg = String(message || '').slice(0, 300);
+        const now = Date.now();
+        if (this.errorLogRecent[msg] && now - this.errorLogRecent[msg] < 60000) return; // stesso errore: una volta al minuto
+        if (this.errorLogCount >= 10) return; // al massimo 10 per apertura dell'app
+        this.errorLogRecent[msg] = now;
+        this.errorLogCount++;
+        const entry = {
+            msg, where: String(where || '').trim().slice(0, 200), at: now,
+            version: String(typeof APP_FILE_VERSION !== 'undefined' ? APP_FILE_VERSION : '').slice(0, 20),
+            device: this.describeDevice(), screen: this.describeScreen(), lang: this.describeLanguage(),
+            online: navigator.onLine !== false
+        };
+        const ref = database.ref(`errors/${this.userId}`);
+        ref.push(entry).then(() => ref.once('value')).then(snapshot => {
+            // Tengo solo gli ultimi 20
+            const keys = Object.keys(snapshot.val() || {}).sort();
+            if (keys.length > 20) {
+                const updates = {};
+                keys.slice(0, keys.length - 20).forEach(k => { updates[k] = null; });
+                return ref.update(updates);
+            }
+        }).catch(() => { /* regole vecchie senza "errors": niente registro */ });
+    }
+
+    // Ultimo dispositivo usato, salvato nelle statistiche: lo vede l'amministratore (aiuta a capire i problemi)
+    describeDevice() {
+        const d = this.getDeviceInfo();
+        const type = { Mobile: 'telefono', Tablet: 'tablet', Desktop: 'PC' }[d.deviceType] || d.deviceType;
+        return `${d.browser} · ${d.os} · ${type}${d.installed ? ' · app installata' : ''}`.slice(0, 120);
     }
 
     normalizeUsername(raw) {
@@ -316,7 +389,8 @@ class BacheaCalendar {
             'auth/operation-not-allowed': 'Login non abilitato su Firebase (Authentication → Email/Password)',
             'auth/configuration-not-found': 'Authentication non attivata su questo progetto Firebase (Authentication → Inizia → Email/Password)',
             'auth/requires-recent-login': 'Per sicurezza esci, rientra e riprova',
-            'app/blocked': 'Questo account è stato bloccato dall\'amministratore.'
+            'app/blocked': 'Questo account è stato bloccato dall\'amministratore.',
+            'app/name-taken': 'Questo nome è già usato da un altro utente: scegline un altro'
         };
         return messages[error && error.code] || `Errore: ${(error && error.message) || error}`;
     }
@@ -354,7 +428,94 @@ class BacheaCalendar {
         });
 
         // Iscritto non ancora approvato: vede solo la schermata di attesa, il resto della Bacheca non parte
+        if (this.showWelcomeVideo) {
+            this.showWelcomeVideo = false;
+            await this.playVideo(); // la guida: finisce con "Salta" o "Fine"
+        }
         if (!this.isApproved) await this.showPendingScreen(); // non finisce: all'approvazione la pagina si ricarica
+    }
+
+    // ===== 📘 Guida "come funziona" a schede (0.6.1) =====
+    // Immagini in immagini/guida/01.jpg ... e scritte qui sotto (una per immagine, nello stesso ordine).
+    // Per cambiare la guida: sostituire le immagini e/o modificare le scritte.
+    getGuideSlides() {
+        return [
+            'Benvenuto! Ecco come funziona la Bacheca',
+            'Registrati con username, nome e password',
+            'Aspetta di essere approvato: poi la Bacheca si apre da sola',
+            'In alto vedi chi è collegato: ogni omino ha il suo nome',
+            'Nella Lista trovi tutti gli eventi in ordine di data',
+            'Oppure guardali nel Calendario',
+            'Crea un evento: nome, data, ora, luogo, categoria e quota',
+            'Tocca un evento per vedere tutti i dettagli',
+            'In Partecipanti ti iscrivi e chatti con gli altri',
+            'Non sapete ancora il giorno? Proponete le date…',
+            '…e votate quelle in cui ci siete con "Ci sono"',
+            'La campanella ti avvisa delle novità',
+            'Gli omini si salutano e possono parlare',
+            'Dal menu, Omino: fai dire qualcosa al tuo omino',
+            'Chi esce va via da una porta. Se sei solo, il tuo omino dorme',
+            "Nel menu trovi Utente, Omino, Visualizzazione, Modo d'uso, Info e News",
+            'In News trovi le novità di ogni versione',
+            'Tutto qui! Rivedi questa guida quando vuoi da ⚙️ → ℹ️ Info'
+        ].map((text, i) => ({ img: `immagini/guida/${String(i + 1).padStart(2, '0')}.jpg`, text }));
+    }
+
+    // Apre la guida dalla prima scheda. Promessa risolta quando si chiude (Salta o Fine)
+    playVideo() {
+        return new Promise(resolve => {
+            const slides = this.getGuideSlides();
+            const modal = document.getElementById('videoModal');
+            const img = document.getElementById('guideImg');
+            const text = document.getElementById('guideText');
+            const count = document.getElementById('guideCount');
+            const prev = document.getElementById('guidePrevBtn');
+            const next = document.getElementById('guideNextBtn');
+            const loading = document.getElementById('loadingScreen');
+            if (loading) loading.style.display = 'none';
+            let index = 0;
+            const show = () => {
+                const slide = slides[index];
+                img.src = slide.img;
+                img.alt = slide.text;
+                text.textContent = slide.text;
+                count.textContent = `${index + 1} / ${slides.length}`;
+                prev.style.visibility = index === 0 ? 'hidden' : 'visible';
+                next.textContent = index === slides.length - 1 ? 'Fine ✓' : 'Avanti ▶';
+                if (slides[index + 1]) new Image().src = slides[index + 1].img; // la prossima è già pronta
+            };
+            const go = (step) => {
+                if (index + step >= slides.length) return close();
+                index = Math.max(0, index + step);
+                show();
+            };
+            const close = () => {
+                modal.style.display = 'none';
+                document.removeEventListener('keydown', onKey);
+                modal.ontouchstart = modal.ontouchend = null;
+                resolve();
+            };
+            const onKey = (e) => {
+                if (e.key === 'Escape') close();
+                else if (e.key === 'ArrowRight') go(1);
+                else if (e.key === 'ArrowLeft') go(-1);
+            };
+            // Sul telefono: scorrere col dito verso sinistra = avanti, verso destra = indietro
+            let touchX = null;
+            modal.ontouchstart = (e) => { touchX = e.touches[0].clientX; };
+            modal.ontouchend = (e) => {
+                if (touchX === null) return;
+                const dx = e.changedTouches[0].clientX - touchX;
+                touchX = null;
+                if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1);
+            };
+            document.getElementById('videoSkipBtn').onclick = close;
+            prev.onclick = () => go(-1);
+            next.onclick = () => go(1);
+            document.addEventListener('keydown', onKey);
+            show();
+            modal.style.display = 'flex';
+        });
     }
 
     // ===== Approvazione dei nuovi iscritti (0.6.0) =====
@@ -410,15 +571,65 @@ class BacheaCalendar {
             // Account senza profilo (registrazione interrotta): lo ricreo dallo username
             this.username = (user.email || '').split('@')[0];
             this.userName = this.username.slice(0, 10);
-            await database.ref(`users/${user.uid}`).set({
-                username: this.username,
-                name: this.userName,
-                createdAt: Date.now()
-            });
+            const check = await this.readNameOwner(this.userName);
+            const profileWrite = { [`users/${user.uid}`]: { username: this.username, name: this.userName, createdAt: Date.now() } };
+            if (check.ok && !check.owner) profileWrite[`names/${this.nameKey(this.userName)}`] = user.uid;
+            await database.ref().update(profileWrite);
         }
         this.userNames[this.userId] = this.userName;
         await this.loadRole();
         this.isApproved = await this.loadApproval();
+        this.ensureMyNameReserved(); // chi era registrato prima dei nomi unici: prenota il suo nome
+    }
+
+    // ===== Nomi unici (0.6.1) =====
+    // names/{chiave} = uid. La chiave ignora maiuscole, spazi e apostrofo tipografico: "To'Nino", "to nino" e
+    // "To’Nino" sono lo stesso nome. DEVE coincidere con la funzione delle regole (firebase/database.rules.json)
+    nameKey(name) {
+        return String(name || '').toLowerCase()
+            .split(' ').join('').split(' ').join('').split('​').join('')
+            .split('’').join('\'')
+            .replace(/[.$#\[\]\/]/g, '_');
+    }
+
+    // Cambia il nome di un utente (sé stesso, o un altro se admin) prenotando il nuovo e liberando il vecchio.
+    // { taken: true } se il nome è già di un altro
+    // Chi possiede un nome: { ok: true, owner } oppure { ok: false } se l'elenco non si può leggere (regole vecchie)
+    async readNameOwner(name) {
+        return database.ref(`names/${this.nameKey(name)}`).once('value')
+            .then(s => ({ ok: true, owner: s.val() }))
+            .catch(() => ({ ok: false }));
+    }
+
+    async claimName(uid, newName, oldName) {
+        const key = this.nameKey(newName);
+        const check = await this.readNameOwner(newName);
+        if (!check.ok) { // regole vecchie: come prima, solo il nome
+            await database.ref(`users/${uid}/name`).set(newName);
+            return { ok: true };
+        }
+        if (check.owner && check.owner !== uid) return { taken: true };
+        const updates = { [`users/${uid}/name`]: newName, [`names/${key}`]: uid };
+        const oldKey = oldName ? this.nameKey(oldName) : null;
+        if (oldKey && oldKey !== key) {
+            const oldOwner = (await database.ref(`names/${oldKey}`).once('value').catch(() => null));
+            if (oldOwner && oldOwner.val() === uid) updates[`names/${oldKey}`] = null;
+        }
+        await database.ref().update(updates);
+        return { ok: true };
+    }
+
+    // All'accesso: se il mio nome non è ancora nell'elenco lo prenoto; se è già di un altro avviso (nome doppio)
+    async ensureMyNameReserved() {
+        if (!this.userId || !this.userName) return;
+        try {
+            const ref = database.ref(`names/${this.nameKey(this.userName)}`);
+            const owner = (await ref.once('value')).val();
+            if (!owner) await ref.set(this.userId);
+            else if (owner !== this.userId) {
+                setTimeout(() => this.showToast('⚠️ Il tuo nome è usato anche da un altro utente: cambialo da ⚙️ → 👤 Utente → ✏️ Cambia nome', 'warning'), 4000);
+            }
+        } catch (e) { /* regole vecchie senza "names": niente da fare */ }
     }
 
     promptForLogin(initialError = '') {
@@ -433,6 +644,14 @@ class BacheaCalendar {
                 errorEl.textContent = message;
                 errorEl.style.display = message ? 'block' : 'none';
             };
+            // Campo da correggere cerchiato di rosso (sparisce appena ci si scrive dentro)
+            const markField = (id) => {
+                const input = document.getElementById(id);
+                if (!input) return;
+                input.classList.add('field-error');
+                input.addEventListener('input', () => input.classList.remove('field-error'), { once: true });
+            };
+            const clearMarks = (form) => form.querySelectorAll('.field-error').forEach(el => el.classList.remove('field-error'));
 
             const setBusy = (form, busy) => {
                 form.querySelectorAll('button, input').forEach(el => el.disabled = busy);
@@ -443,6 +662,8 @@ class BacheaCalendar {
                 loginForm.style.display = tabName === 'login' ? 'block' : 'none';
                 registerForm.style.display = tabName === 'register' ? 'block' : 'none';
                 showError('');
+                clearMarks(loginForm);
+                clearMarks(registerForm);
                 const firstInput = (tabName === 'login' ? loginForm : registerForm).querySelector('input');
                 if (firstInput) firstInput.focus();
             };
@@ -462,7 +683,10 @@ class BacheaCalendar {
                 e.preventDefault();
                 const username = this.normalizeUsername(document.getElementById('loginUsername').value);
                 const password = document.getElementById('loginPassword').value;
+                clearMarks(loginForm);
                 if (!username || !password) {
+                    if (!username) markField('loginUsername');
+                    if (!password) markField('loginPassword');
                     showError('Inserisci username e password');
                     return;
                 }
@@ -473,6 +697,11 @@ class BacheaCalendar {
                     const cred = await firebase.auth().signInWithEmailAndPassword(this.usernameToEmail(username), password);
                     await finish(cred.user);
                 } catch (error) {
+                    // Credenziali sbagliate: non si sa quale dei due campi, quindi si segnano entrambi
+                    if (/credential|password|user-not-found|invalid-email/.test(String(error && error.code))) {
+                        markField('loginUsername');
+                        markField('loginPassword');
+                    }
                     showError(this.authErrorMessage(error));
                 } finally {
                     setBusy(loginForm, false);
@@ -534,6 +763,7 @@ class BacheaCalendar {
                 else if (confirm !== password) setHint('registerPasswordConfirmHint', 'error', 'Le due password non coincidono.');
                 else setHint('registerPasswordConfirmHint', 'ok', '✓ Le password coincidono.');
             };
+            document.getElementById('registerGuideBtn').onclick = () => this.playVideo(); // la guida, anche prima di registrarsi
             usernameInput.oninput = () => { cleanUsernameInput(); checkRegisterFields(); };
             [nameInput, passwordInput, confirmInput].forEach(input => { input.oninput = checkRegisterFields; });
             checkRegisterFields();
@@ -545,20 +775,17 @@ class BacheaCalendar {
                 const password = document.getElementById('registerPassword').value;
                 const confirm = document.getElementById('registerPasswordConfirm').value;
 
-                if (!this.isValidUsername(username)) {
-                    showError('Username: da 3 a 20 caratteri tra lettere, numeri, punto, trattino e _');
-                    return;
-                }
-                if (!name) {
-                    showError('Scrivi il nome con cui ti vedranno gli altri (fino a 10 caratteri)');
-                    return;
-                }
-                if (password.length < 6) {
-                    showError('Password troppo corta: almeno 6 caratteri');
-                    return;
-                }
-                if (password !== confirm) {
-                    showError('Le due password non coincidono');
+                clearMarks(registerForm);
+                // Ogni campo sbagliato viene cerchiato di rosso; il messaggio in alto dice il primo da sistemare
+                const problems = [];
+                if (!this.isValidUsername(username)) problems.push(['registerUsername', 'Username: da 3 a 20 caratteri tra lettere, numeri, punto, trattino e _']);
+                if (!name) problems.push(['registerName', 'Scrivi il nome con cui ti vedranno gli altri (fino a 10 caratteri)']);
+                if (password.length < 6) problems.push(['registerPassword', 'Password troppo corta: almeno 6 caratteri']);
+                if (password !== confirm) problems.push(['registerPasswordConfirm', 'Le due password non coincidono']);
+                if (problems.length) {
+                    problems.forEach(([id]) => markField(id));
+                    showError(problems[0][1]);
+                    document.getElementById(problems[0][0]).focus();
                     return;
                 }
 
@@ -568,13 +795,22 @@ class BacheaCalendar {
                 try {
                     const cred = await firebase.auth().createUserWithEmailAndPassword(this.usernameToEmail(username), password);
                     createdUser = cred.user;
-                    await database.ref(`users/${cred.user.uid}`).set({
-                        username: username,
-                        name: name,
-                        createdAt: Date.now()
-                    });
+                    // Il nome deve essere libero (nomi unici, controllati anche dalle regole): se è già di un altro,
+                    // l'account appena creato si annulla e si chiede un altro nome
+                    const check = await this.readNameOwner(name);
+                    if (check.ok && check.owner && check.owner !== cred.user.uid) {
+                        const taken = new Error('Nome già usato');
+                        taken.code = 'app/name-taken';
+                        throw taken;
+                    }
+                    // Profilo e prenotazione del nome nella stessa scrittura (le regole li vogliono insieme);
+                    // con le regole vecchie (elenco non leggibile) solo il profilo, come prima
+                    const profileWrite = { [`users/${cred.user.uid}`]: { username: username, name: name, createdAt: Date.now() } };
+                    if (check.ok) profileWrite[`names/${this.nameKey(name)}`] = cred.user.uid;
+                    await database.ref().update(profileWrite);
                     createdUser = null; // profilo salvato: l'account è completo
                     this.notifyAdminNewUser(username, name); // email all'amministratore (non blocca la registrazione)
+                    this.showWelcomeVideo = true; // appena registrato: il video "come funziona" (si può saltare)
                     await finish(cred.user);
                 } catch (error) {
                     // Account creato ma profilo non salvato (es. regole Firebase): lo annullo,
@@ -583,6 +819,18 @@ class BacheaCalendar {
                         await createdUser.delete().catch(e => console.error('Errore annullamento account:', e));
                     }
                     console.error('Errore registrazione:', error);
+                    // Il campo che ha causato l'errore viene cerchiato di rosso
+                    const code = String(error && error.code);
+                    const field = code === 'app/name-taken' ? 'registerName'
+                        : (code === 'auth/email-already-in-use' || code === 'auth/invalid-email') ? 'registerUsername'
+                        : code === 'auth/weak-password' ? 'registerPassword' : null;
+                    if (field) {
+                        markField(field);
+                        document.getElementById(field).focus();
+                        // Anche il suggerimento sotto il campo diventa rosso (non deve restare il "✓" verde)
+                        if (code === 'app/name-taken') setHint('registerNameHint', 'error', 'Questo nome è già usato da un altro utente: scegline un altro.');
+                        if (code === 'auth/email-already-in-use') setHint('registerUsernameHint', 'error', 'Questo username è già usato: scegline un altro.');
+                    }
                     showError(this.authErrorMessage(error));
                 } finally {
                     setBusy(registerForm, false);
@@ -696,8 +944,17 @@ class BacheaCalendar {
                 this.showErrorPopup('Il nome non può essere vuoto');
                 return;
             }
+            this.clearFieldErrors();
+            if (newName.length > 10) {
+                this.markFieldError({ id: 'nameInput', label: 'Nome', message: 'al massimo 10 caratteri' });
+                return;
+            }
             try {
-                await database.ref(`users/${this.userId}/name`).set(newName);
+                const result = await this.claimName(this.userId, newName, this.userName);
+                if (result.taken) {
+                    this.markFieldError({ id: 'nameInput', label: 'Nome', message: 'questo nome è già usato da un altro utente: scegline un altro' });
+                    return;
+                }
                 this.userName = newName;
                 this.userNames[this.userId] = newName;
                 this.displayWelcomeMessage();
@@ -782,6 +1039,7 @@ class BacheaCalendar {
         this.setupAdminListeners();
         this.setupAvatarListeners();
         this.setupScrollLock();
+        this.setupErrorLog();
         this.listenSettings();
         this.recordAppOpen();
         this.detectDevice();
@@ -804,7 +1062,7 @@ class BacheaCalendar {
     }
 
     loadVersion() {
-        fetch('./descrizioni/versione')
+        fetch('./versione')
             .then(response => response.text())
             .then(version => {
                 const versionText = version.trim();
@@ -823,7 +1081,7 @@ class BacheaCalendar {
     }
 
     loadTitle() {
-        fetch('./descrizioni/titolo')
+        fetch('./testi/titolo')
             .then(response => response.text())
             .then(content => {
                 if (this.settingsTitleOverridden) return; // c'è il titolo impostato dall'amministratore
@@ -1122,7 +1380,9 @@ class BacheaCalendar {
 
         // Info
         const infoBtn = document.getElementById('infoBtn');
-        if (infoBtn) infoBtn.addEventListener('click', () => { this.closeMenu(); this.openInfo(); });
+        if (infoBtn) infoBtn.addEventListener('click', () => { this.closeMenu(); this.playVideo(); });
+        const newsBtn = document.getElementById('newsBtn');
+        if (newsBtn) newsBtn.addEventListener('click', () => { this.closeMenu(); this.openInfo(); });
         const guideBtn = document.getElementById('guideBtn');
         if (guideBtn) guideBtn.addEventListener('click', () => { this.closeMenu(); this.openGuide(); });
         const closeInfoBtn = document.getElementById('closeInfoBtn');
@@ -1570,6 +1830,7 @@ class BacheaCalendar {
 
             dayEl.innerHTML = `
                 <div class="day-number">${dayObj.day}</div>
+                ${visibleNotes.length > 0 ? `<div class="day-count">${visibleNotes.length}</div>` : ''}
                 <div class="notes-container" id="notes-${dateKey}">
                     ${visibleNotes.length === 0 ? '<div class="empty-state">✨</div>' : ''}
                 </div>
@@ -1632,12 +1893,23 @@ class BacheaCalendar {
 
             // Aggiungi listener di click solo se il giorno non è passato e è del mese corrente
             const canAddEvents = !isDisabledDay && dayObj.isCurrentMonth;
+            // Sul telefono le caselle mostrano solo il numero di eventi: il tocco apre la finestra del giorno
+            if (visibleNotes.length > 0) {
+                dayEl.addEventListener('click', () => {
+                    if (this.suppressNextClick || !this.isPhoneLayout()) return;
+                    this.openDayModal(dayObj.date, dateKey, canAddEvents);
+                });
+            }
             if (canAddEvents) {
                 dayEl.addEventListener('click', () => {
                     if (this.suppressNextClick) return;
+                    if (visibleNotes.length > 0 && this.isPhoneLayout()) return; // ci pensa la finestra del giorno
                     this.openModal(dayObj.date);
                 });
                 dayEl.style.cursor = 'pointer';
+            } else if (visibleNotes.length > 0) {
+                dayEl.style.cursor = 'pointer';
+                dayEl.querySelector('.add-note-btn').style.display = 'none';
             } else {
                 dayEl.style.cursor = 'default';
                 // Nascondi il pulsante + per giorni disabilitati o giorni di altri mesi
@@ -1648,6 +1920,65 @@ class BacheaCalendar {
         });
 
         this.renderProposals();
+    }
+
+    // Telefono: stesso limite del foglio di stile (style-mobile.css fino a 768px)
+    isPhoneLayout() {
+        return window.matchMedia('(max-width: 768px)').matches;
+    }
+
+    // ===== 📅 Finestra del giorno (telefono, 0.6.1) =====
+    // Elenco degli eventi del giorno in ordine di orario: un tocco apre l'evento (non nei giorni passati),
+    // "➕ Aggiungi evento" se nel giorno si possono ancora creare eventi
+    openDayModal(date, dateKey, canAddEvents) {
+        const modal = document.getElementById('dayModal');
+        const list = document.getElementById('dayModalList');
+        const addBtn = document.getElementById('dayModalAddBtn');
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const isPastDay = date < today;
+
+        const title = date.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+        document.getElementById('dayModalTitle').textContent = `📅 ${title.charAt(0).toUpperCase()}${title.slice(1)}`;
+
+        const notes = this.sortByTime((this.notes[dateKey] || []).filter(note => this.isColorVisible(note.color)));
+        list.innerHTML = '';
+        notes.forEach(note => {
+            const item = document.createElement('div');
+            item.className = `day-modal-item note ${note.color}`;
+            if (isPastDay) item.classList.add('past-event');
+            item.innerHTML = `
+                <span class="day-modal-time">${this.escapeHtml(note.time || '—')}</span>
+                <span class="day-modal-title">${this.escapeHtml(note.title)}</span>
+                <span class="note-badge" style="background: #f44336; color: white; border-radius: 50%; min-width: 20px; height: 20px; display: none; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: bold;"></span>`;
+            if (!isPastDay) {
+                item.addEventListener('click', () => {
+                    this.closeDayModal();
+                    this.openEditModal(note.id);
+                });
+            }
+            list.appendChild(item);
+            this.updateNoteBadge(item, note.id);
+        });
+        if (isPastDay) {
+            const hint = document.createElement('p');
+            hint.className = 'day-modal-hint';
+            hint.textContent = 'Giorno passato: gli eventi non si aprono più';
+            list.appendChild(hint);
+        }
+
+        addBtn.style.display = canAddEvents ? '' : 'none';
+        addBtn.onclick = () => {
+            this.closeDayModal();
+            this.openModal(date);
+        };
+        document.getElementById('dayModalCloseBtn').onclick = () => this.closeDayModal();
+        modal.onclick = (e) => { if (e.target === modal) this.closeDayModal(); };
+        modal.style.display = 'flex';
+    }
+
+    closeDayModal() {
+        document.getElementById('dayModal').style.display = 'none';
     }
 
     openModal(date) {
@@ -3009,13 +3340,13 @@ class BacheaCalendar {
         document.getElementById('settingsModal').classList.remove('active');
     }
 
-    // 📖 Modo d'uso: la guida (descrizioni/info)
+    // 📖 Modo d'uso: la guida (testi/info)
     openGuide() {
         document.getElementById('infoHeader').textContent = '📖 Modo d\'uso';
         const body = document.getElementById('infoBody');
         body.textContent = 'Caricamento…';
         document.getElementById('infoModal').classList.add('active');
-        fetch('./descrizioni/info', { cache: 'no-store' })
+        fetch('./testi/info', { cache: 'no-store' })
             .then(response => response.text())
             .then(content => this.renderGuideSections(body, content))
             .catch(() => { body.textContent = 'Errore nel caricamento della guida.'; });
@@ -3075,7 +3406,7 @@ class BacheaCalendar {
     // ℹ️ Info: cosa c'è di nuovo nell'ultima versione, e le due precedenti da aprire con la freccetta.
     // L'elenco delle versioni è in rilasci/elenco (dalla più nuova), il testo in rilasci/<versione>
     async openInfo() {
-        document.getElementById('infoHeader').textContent = 'ℹ️ Informazione';
+        document.getElementById('infoHeader').textContent = '📰 News';
         const body = document.getElementById('infoBody');
         body.textContent = 'Caricamento…';
         document.getElementById('infoModal').classList.add('active');
@@ -3084,7 +3415,7 @@ class BacheaCalendar {
             return r.text();
         });
         try {
-            const current = (await get('./descrizioni/versione')).trim();
+            const current = (await get('./versione')).trim();
             const all = (await get('./rilasci/elenco')).split('\n').map(v => v.trim()).filter(Boolean);
             const index = all.indexOf(current);
             const versions = (index >= 0 ? all.slice(index) : [current, ...all]).slice(0, 3);
@@ -3114,9 +3445,6 @@ class BacheaCalendar {
         // Popola le informazioni nel modal
         document.getElementById('userProfileName').textContent = this.userName || 'Non impostato';
         document.getElementById('userProfileUsername').textContent = this.username || '';
-
-        const deviceInfo = this.getDeviceInfo();
-        document.getElementById('userProfileDevice').textContent = `${deviceInfo.browser} (${deviceInfo.deviceType})`;
 
         // Mostra il modal
         const modal = document.getElementById('userProfileModal');
@@ -3917,7 +4245,7 @@ class BacheaCalendar {
     setupScrollLock() {
         const ids = ['authModal', 'namePromptModal', 'passwordModal', 'modal', 'settingsModal', 'infoModal', 'gifModal',
             'selectDayModal', 'proposalModal', 'editModal', 'customPopup', 'confirmModal', 'notificationsModal',
-            'adminModal', 'avatarModal', 'userProfileModal', 'cropperModal'];
+            'adminModal', 'avatarModal', 'userProfileModal', 'cropperModal', 'videoModal', 'pendingModal', 'dayModal'];
         const overlays = ids.map(id => document.getElementById(id)).filter(Boolean);
         let scheduled = false;
         const update = () => {
@@ -4209,7 +4537,17 @@ class BacheaCalendar {
             lastActiveAt: firebase.database.ServerValue.TIMESTAMP,
             [`days/${today}`]: true
         }).catch(() => {});
+        // Ultimo dispositivo usato: scrittura a parte, così con le regole vecchie (che non lo conoscono)
+        // le altre statistiche si salvano lo stesso
+        database.ref(`stats/${this.userId}/device`).set(this.describeDevice()).catch(() => {});
+        database.ref(`stats/${this.userId}/screen`).set(this.describeScreen()).catch(() => {});
+        database.ref(`stats/${this.userId}/lang`).set(this.describeLanguage()).catch(() => {});
         database.ref(`stats/${this.userId}/firstSeenAt`).transaction(current => current || Date.now()).catch(() => {});
+        // Versione dell'app che sta usando (letta dal file, come il piè di pagina)
+        fetch('./versione', { cache: 'no-store' }).then(r => r.text()).then(v => {
+            const version = v.trim();
+            if (/^\d+\.\d+\.\d+$/.test(version)) database.ref(`stats/${this.userId}/appVersion`).set(version).catch(() => {});
+        }).catch(() => {});
     }
 
     // Avviso a tutti (striscia in alto) e titoli modificabili dall'admin
@@ -4299,13 +4637,42 @@ class BacheaCalendar {
     }
 
     async loadAdminData() {
-        const [users, stats, blocked, presence, roles, approved] = await Promise.all(
-            ['users', 'stats', 'blocked', 'presence', 'roles', 'approved'].map(path =>
+        const [users, stats, blocked, presence, roles, approved, errors] = await Promise.all(
+            ['users', 'stats', 'blocked', 'presence', 'roles', 'approved', 'errors'].map(path =>
                 database.ref(path).once('value').then(s => s.val() || {}).catch(() => (path === 'approved' ? null : {}))));
         // Con le regole vecchie "roles" non si legge tutto insieme: almeno io risulto amministratore
         if (this.isAdmin && !roles[this.userId]) roles[this.userId] = 'admin';
         // approved = null: regole vecchie senza approvazione, quindi nessuno risulta "in attesa"
-        this.adminData = { users, stats, blocked, presence, roles, approved };
+        this.adminData = { users, stats, blocked, presence, roles, approved, errors };
+        await this.reserveAllNames(users);
+    }
+
+    // Nomi unici: prenota nell'elenco il nome di chi non l'ha ancora (registrati prima dei nomi unici)
+    // e segna i nomi doppi già esistenti, da sistemare rinominando uno dei due
+    async reserveAllNames(users) {
+        const byKey = {};
+        Object.entries(users || {}).forEach(([uid, user]) => {
+            if (!user || !user.name) return;
+            const key = this.nameKey(user.name);
+            (byKey[key] = byKey[key] || []).push(uid);
+        });
+        this.adminData.duplicateNames = new Set(Object.values(byKey).filter(list => list.length > 1).flat());
+        let names;
+        try {
+            names = (await database.ref('names').once('value')).val() || {};
+        } catch (e) {
+            // "names" non si legge tutto insieme: si controlla un nome alla volta
+            names = null;
+        }
+        const updates = {};
+        for (const [key, list] of Object.entries(byKey)) {
+            const owner = names ? names[key] : (await database.ref(`names/${key}`).once('value').then(s => s.val()).catch(() => undefined));
+            if (owner === undefined && !names) continue; // regole vecchie: niente elenco
+            if (!owner && list.length === 1) updates[`names/${key}`] = list[0];
+        }
+        if (Object.keys(updates).length) {
+            await database.ref().update(updates).catch(error => console.warn('Prenotazione dei nomi non riuscita', error));
+        }
     }
 
     showAdminTab(tab) {
@@ -4360,10 +4727,11 @@ class BacheaCalendar {
                             <strong>${esc(user.name || '?')}${uid === this.userId ? ' (tu)' : ''}${isAdminUid(uid) ? ' <span style="font-size:0.75rem; font-weight:600; color:#c62828; background:#ffebee; border-radius:6px; padding:1px 6px;">🛠️ Amministratore</span>' : ''}</strong>
                             <span style="font-size:0.8rem; color:${online ? '#2e7d32' : '#888'};">${online ? '● collegato' : esc(this.formatAgo(s.lastActiveAt))}</span>
                         </div>
-                        <div style="font-size:0.8rem; color:#666;">@${esc(user.username || '?')} · registrato il ${esc(registered)}${isBlocked ? ' · <b style="color:#c62828">BLOCCATO</b>' : ''}${pending ? ' · <b style="color:#e65100">⏳ IN ATTESA</b>' : ''}</div>
+                        <div style="font-size:0.8rem; color:#666;">@${esc(user.username || '?')} · registrato il ${esc(registered)}${isBlocked ? ' · <b style="color:#c62828">BLOCCATO</b>' : ''}${pending ? ' · <b style="color:#e65100">⏳ IN ATTESA</b>' : ''}${(this.adminData.duplicateNames || new Set()).has(uid) ? ' · <b style="color:#c62828">⚠️ NOME DOPPIO</b>' : ''}</div>
                         <div style="font-size:0.8rem; color:#444; margin:4px 0;">
                             📅 ${s.eventsCreated || 0} eventi · 🗳️ ${s.proposalsCreated || 0} proposte · 💬 ${s.messagesSent || 0} messaggi · 🙋 ${s.joins || 0} iscrizioni · 📲 ${s.opens || 0} aperture · 🗓️ ${days30} giorni attivi (30 g)
                         </div>
+                        ${s.device || s.appVersion ? `<div style="font-size:0.8rem; color:#555; margin:0 0 4px;">📱 ${esc(s.device || 'dispositivo sconosciuto')}${s.appVersion ? ` · 🆚 ${esc(s.appVersion)}` : ''}${s.screen ? ` · 🖥️ ${esc(s.screen)}` : ''}${s.lang ? ` · 🌍 ${esc(s.lang)}` : ''}</div>` : ''}
                         ${uid === this.userId ? '' : `
                         <div style="display:flex; gap:6px; flex-wrap:wrap;">
                             ${pending ? `<button type="button" class="admin-action" data-action="approve" data-uid="${esc(uid)}" style="background:#2e7d32;">✅ Approva</button>` : ''}
@@ -4422,6 +4790,39 @@ class BacheaCalendar {
             return;
         }
 
+        if (this.adminTab === 'errors') {
+            // Tutti gli errori registrati, dal più recente: chi, quando, cosa, dove, con che versione e dispositivo
+            const list = [];
+            Object.entries(this.adminData.errors || {}).forEach(([uid, entries]) => {
+                Object.values(entries || {}).forEach(e => list.push(Object.assign({ uid }, e)));
+            });
+            list.sort((a, b) => (b.at || 0) - (a.at || 0));
+            content.innerHTML = (list.length ? `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <span style="font-size:0.9rem; color:#555;">🐞 ${list.length} ${list.length === 1 ? 'errore registrato' : 'errori registrati'} (al massimo 20 per utente)</span>
+                    <button type="button" class="admin-action" id="adminErrorsClear" style="background:#c62828;">🗑️ Svuota</button>
+                </div>` : '<p style="color:#888;">🎉 Nessun errore registrato.</p>') + list.map(e => `
+                <div class="admin-user" style="border-left: 5px solid #c62828;">
+                    <div style="display:flex; justify-content:space-between; gap:8px; font-size:0.85rem;">
+                        <strong>${esc((users[e.uid] && users[e.uid].name) || '?')}</strong>
+                        <span style="color:#888;">${esc(new Date(e.at).toLocaleString('it-IT'))}</span>
+                    </div>
+                    <div style="font-family: monospace; font-size:0.8rem; color:#b71c1c; margin:4px 0; word-break: break-word;">${esc(e.msg)}</div>
+                    ${e.where ? `<div style="font-size:0.75rem; color:#666;">📍 ${esc(e.where)}</div>` : ''}
+                    <div style="font-size:0.75rem; color:#666;">🆚 ${esc(e.version || '?')} · 📱 ${esc(e.device || '?')} · 🖥️ ${esc(e.screen || '?')} · 🌍 ${esc(e.lang || '?')}${e.online === false ? ' · 📶 <b>offline</b>' : ''}</div>
+                </div>`).join('');
+            const clearBtn = document.getElementById('adminErrorsClear');
+            if (clearBtn) clearBtn.addEventListener('click', async () => {
+                const ok = await this.showConfirmDialog('Svuotare il registro degli errori di tutti gli utenti?', '🗑️ Svuota');
+                if (!ok) return;
+                await database.ref('errors').remove().then(() => this.showToast('Registro degli errori svuotato', 'info'))
+                    .catch(error => this.notifyWriteError('Svuotamento errori', error));
+                await this.loadAdminData();
+                this.renderAdminPanel();
+            });
+            return;
+        }
+
         // Scheda App: avviso a tutti e titolo
         const s = this.settings || {};
         const a = s.announcement || {};
@@ -4435,7 +4836,7 @@ class BacheaCalendar {
                 <button type="button" id="adminAnnouncementClear" class="admin-action">🗑️ Togli</button>
             </div>
             <h4>🏷️ Titolo della Bacheca</h4>
-            <p style="font-size:0.8rem; color:#666; margin:0 0 6px;">Se vuoti si usa il testo del file descrizioni/titolo.</p>
+            <p style="font-size:0.8rem; color:#666; margin:0 0 6px;">Se vuoti si usa il testo del file testi/titolo.</p>
             <input id="adminTitle1" maxlength="60" placeholder="Riga 1" value="${esc(t.line1 || '')}" style="width:100%; box-sizing:border-box; padding:8px; margin-bottom:6px; border:2px solid #eee; border-radius:8px;">
             <input id="adminTitle2" maxlength="60" placeholder="Riga 2" value="${esc(t.line2 || '')}" style="width:100%; box-sizing:border-box; padding:8px; margin-bottom:6px; border:2px solid #eee; border-radius:8px;">
             <input id="adminTitle3" maxlength="100" placeholder="Sottotitolo" value="${esc(t.line3 || '')}" style="width:100%; box-sizing:border-box; padding:8px; margin-bottom:6px; border:2px solid #eee; border-radius:8px;">
@@ -4473,7 +4874,8 @@ class BacheaCalendar {
             const newName = (prompt(`Nuovo nome per ${name} (massimo 10 caratteri):`, user.name || '') || '').trim();
             if (!newName) return;
             if (newName.length > 10) return this.showToast('Il nome può avere al massimo 10 caratteri', 'info');
-            await database.ref(`users/${uid}/name`).set(newName).then(() => {
+            await this.claimName(uid, newName, user.name).then(result => {
+                if (result.taken) return this.showErrorPopup(`"${newName}" è già il nome di un altro utente: scegline un altro.`);
                 this.userNames[uid] = newName;
                 this.showToast(`Nome cambiato in "${newName}"`, 'info');
             }).catch(error => this.notifyWriteError('Rinomina utente', error));

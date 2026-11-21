@@ -10,7 +10,7 @@
           ".validate": "newData.isString() && newData.val().matches(/^[a-z0-9._-]{3,20}$/)"
         },
         "name": {
-          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 10"
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 10 && newData.parent().parent().parent().child('names/' + newData.val().toLowerCase().replace(' ', '').replace(' ', '').replace('​', '').replace('’', '\\'').replace('.', '_').replace('$', '_').replace('#', '_').replace('[', '_').replace(']', '_').replace('/', '_')).val() === $uid"
         }
       }
     },
@@ -256,6 +256,18 @@
             ".validate": "$day.matches(/^\\d{4}-\\d{2}-\\d{2}$/) && newData.val() === true"
           }
         },
+        "device": {
+          ".validate": "newData.isString() && newData.val().length <= 120"
+        },
+        "appVersion": {
+          ".validate": "newData.isString() && newData.val().matches(/^\\d+\\.\\d+\\.\\d+$/)"
+        },
+        "screen": {
+          ".validate": "newData.isString() && newData.val().length <= 40"
+        },
+        "lang": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
         "$other": {
           ".validate": false
         }
@@ -283,6 +295,52 @@
         ".read": "auth != null && auth.uid === $uid",
         ".write": "auth != null && root.child('roles/' + auth.uid).val() === 'admin' && !root.child('blocked/' + auth.uid).exists()",
         ".validate": "newData.val() === true"
+      }
+    },
+    "names": {
+      ".read": "auth != null && root.child('roles/' + auth.uid).val() === 'admin' && !root.child('blocked/' + auth.uid).exists()",
+      "$key": {
+        ".read": "auth != null && !root.child('blocked/' + auth.uid).exists()",
+        ".write": "auth != null && !root.child('blocked/' + auth.uid).exists() && ((!data.exists() && (newData.val() === auth.uid || root.child('roles/' + auth.uid).val() === 'admin')) || (!newData.exists() && (data.val() === auth.uid || root.child('roles/' + auth.uid).val() === 'admin')))",
+        ".validate": "newData.isString() && newData.parent().parent().child('users/' + newData.val() + '/name').exists() && newData.parent().parent().child('users/' + newData.val() + '/name').val().toLowerCase().replace(' ', '').replace(' ', '').replace('​', '').replace('’', '\\'').replace('.', '_').replace('$', '_').replace('#', '_').replace('[', '_').replace(']', '_').replace('/', '_') === $key"
+      }
+    },
+    "errors": {
+      ".read": "auth != null && root.child('roles/' + auth.uid).val() === 'admin' && !root.child('blocked/' + auth.uid).exists()",
+      ".write": "auth != null && root.child('roles/' + auth.uid).val() === 'admin' && !root.child('blocked/' + auth.uid).exists()",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid && !root.child('blocked/' + auth.uid).exists()",
+        "$errId": {
+          ".write": "auth != null && auth.uid === $uid && !root.child('blocked/' + auth.uid).exists() && (!newData.exists() || !data.exists())",
+          ".validate": "newData.hasChildren(['msg', 'at'])",
+          "msg": {
+            ".validate": "newData.isString() && newData.val().length <= 300"
+          },
+          "where": {
+            ".validate": "newData.isString() && newData.val().length <= 200"
+          },
+          "version": {
+            ".validate": "newData.isString() && newData.val().length <= 20"
+          },
+          "device": {
+            ".validate": "newData.isString() && newData.val().length <= 120"
+          },
+          "screen": {
+            ".validate": "newData.isString() && newData.val().length <= 40"
+          },
+          "lang": {
+            ".validate": "newData.isString() && newData.val().length <= 60"
+          },
+          "online": {
+            ".validate": "newData.isBoolean()"
+          },
+          "at": {
+            ".validate": "newData.isNumber()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
       }
     }
   }

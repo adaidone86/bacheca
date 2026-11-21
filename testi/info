@@ -7,6 +7,7 @@
      la pagina di attesa si apre da sola appena sei dentro
    • Lo username si scrive in minuscolo, senza spazi né accenti
    • Il nome è quello che vedono gli altri (al massimo 10 caratteri)
+     e deve essere diverso da quello di tutti gli altri
    • Da ⚙️ → 👤 Utente puoi:
       - cambiare il nome (✏️ Cambia nome)
       - cambiare la password (🔑 Cambia password)
@@ -14,6 +15,9 @@
 
 2️⃣ CALENDARIO E LISTA
    • Calendario: gli eventi sono post-it colorati sui giorni
+      - sul telefono nel giorno vedi solo un numerino (quanti eventi ci sono):
+        tocca il giorno per vedere i suoi eventi in ordine di orario,
+        poi tocca un evento per aprirlo o "➕ Aggiungi" per crearne uno
       - usa "Mese successivo →" e "← Mese precedente" per spostarti
       - "Oggi" ti riporta al mese corrente
    • Lista: tutti gli eventi in ordine di data, più comoda sul telefono
@@ -27,7 +31,8 @@
       • Gli eventi dei mesi passati si cancellano da soli
 
 3️⃣ CREARE UN EVENTO
-   • Nel calendario tocca un giorno (da domani in poi)
+   • Nel calendario tocca un giorno (da domani in poi);
+     sul telefono, se il giorno ha già degli eventi, tocca "➕ Aggiungi"
    • Nella lista tocca "➕ Aggiungi evento" e scegli il giorno
    • Compila i campi:
       - Nome evento e Data: obbligatori
@@ -52,7 +57,7 @@
      cambiare immagine e link, oppure eliminarlo con "Elimina"
    • Gli altri vedono l'evento in sola lettura, ma possono partecipare
    • Spostare un evento: cambia la Data e premi "Salva", oppure
-     nel calendario trascinalo su un altro giorno (da domani in poi)
+     nel calendario trascinalo su un altro giorno (da domani in poi, solo dal PC)
 
 5️⃣ PARTECIPARE E CHAT
    • Apri l'evento e vai sulla scheda 👥 Partecipanti
@@ -121,8 +126,13 @@
    • Ogni tanto in cima può comparire una striscia gialla
      con un avviso importante per tutto il gruppo
 
-🔟 NOVITÀ
-   • ⚙️ → ℹ️ Info mostra cosa c'è di nuovo nell'ultima versione
+🔟 GUIDA E NOVITÀ
+   • ⚙️ → ℹ️ Info: una guida a schede che mostra come funziona
+     la Bacheca (la vedi appena registrato, e anche prima
+     con "❓ Guida" accanto a Crea account):
+     ◀ Indietro e Avanti ▶ (o scorri col dito),
+     "Salta ⏭" per chiuderla quando vuoi
+   • ⚙️ → 📰 News: cosa c'è di nuovo nell'ultima versione
      e nelle due precedenti (tocca la freccetta per aprirle)
 
 📲 INSTALLARE L'APP
@@ -135,4 +145,8 @@
 🔒 PRIVACY
    • Per migliorare la Bacheca l'app conta quanti eventi, proposte,
      messaggi e iscrizioni fai, quante volte la apri e l'ultimo accesso
+   • Per aiutare a risolvere i problemi salva anche l'ultimo dispositivo
+     usato (browser, sistema, telefono o PC), lo schermo, la lingua
+     e la versione dell'app; se qualcosa non funziona annota l'errore
+     (solo il tipo di errore, mai messaggi, eventi o password)
    • Non registra quanto tempo la usi né cosa guardi

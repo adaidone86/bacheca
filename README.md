@@ -27,10 +27,11 @@ bacheca/
 │   └── style-mobile.css    # Stili per schermi ≤ 768px
 ├── js/
 │   └── script.js           # Tutta la logica (classe BacheaCalendar)
-├── descrizioni/            # Testi caricati a runtime
+├── versione                # Versione in formato x.x.x
+├── testi/                  # Testi caricati a runtime
 │   ├── titolo              # 3 righe: titolo, sottotitolo, slogan
-│   ├── info                # Testo del modal "Info"
-│   └── versione            # Versione in formato x.x.x
+│   └── info                # Guida "📖 Modo d'uso" (una sezione per ogni riga senza rientro)
+├── rilasci/                # Novità di ogni versione per gli utenti (ℹ️ Info) + elenco
 ├── icons/                  # Icone PWA
 ├── immagini/               # Immagini statiche
 └── backup/                 # Esportazioni JSON degli eventi (non usate dal codice)
@@ -124,7 +125,7 @@ In [config.js](config.js) imposta `ENV`:
 ⚠️ Sul branch di sviluppo lascia `TEST`; passa a `PROD` solo quando porti le modifiche su `main`.
 
 ### Versione
-Aggiorna `descrizioni/versione` (formato `x.x.x`) a ogni rilascio: al cambio di versione o di ambiente l'app svuota le cache e si ricarica. Un formato non valido nasconde il sito.
+Aggiorna `versione` (formato `x.x.x`) a ogni rilascio: al cambio di versione o di ambiente l'app svuota le cache e si ricarica. Un formato non valido nasconde il sito.
 
 ### Nuovo progetto Firebase
 1. https://console.firebase.google.com/ → **Crea un progetto**

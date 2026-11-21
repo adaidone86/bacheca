@@ -141,7 +141,7 @@ button {
 
 .weekdays {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 3px;
     margin-bottom: 8px;
 }
@@ -157,7 +157,7 @@ button {
 
 .days-grid {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 3px;
     min-height: auto;
     grid-auto-rows: auto;
@@ -167,8 +167,9 @@ button {
     background: #f9f9f9;
     border: 2px solid #eee;
     border-radius: 6px;
-    padding: 6px;
-    height: 45px !important;
+    padding: 4px;
+    height: 52px !important;
+    box-sizing: border-box;
     cursor: pointer;
     transition: all 0.3s ease;
     display: flex;
@@ -177,9 +178,76 @@ button {
     overflow: hidden;
 }
 
+/* Telefono: tutte le caselle uguali; gli eventi si vedono toccando il giorno (finestra del giorno) */
 .day.has-events {
-    height: 100px !important;
-    overflow: visible;
+    background: #eef0ff;
+    border-color: #c5cbf5;
+}
+
+.day .notes-container,
+.day .add-note-btn {
+    display: none !important;
+}
+
+.day-count {
+    align-self: center;
+    margin-top: auto;
+    margin-bottom: 2px;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 5px;
+    border-radius: 11px;
+    background: #667eea;
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+}
+
+.day.past-event .day-count,
+.day.other-month .day-count {
+    background: #999;
+}
+
+.day-modal-item.note {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    flex-wrap: nowrap;
+}
+
+.day-modal-item.note:hover {
+    transform: none;
+}
+
+.day-modal-item.past-event {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.day-modal-time {
+    flex: 0 0 auto;
+    font-weight: 700;
+    font-size: 0.85rem;
+}
+
+.day-modal-title {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+}
+
+.day-modal-hint {
+    margin: 4px 0 0;
+    color: #888;
+    font-size: 0.8rem;
+    text-align: center;
 }
 
 .day:hover {

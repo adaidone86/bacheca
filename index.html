@@ -71,6 +71,7 @@
                         <button id="settingsBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">🎨 Visualizzazione</button>
                         <button id="guideBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">📖 Modo d'uso</button>
                         <button id="infoBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">ℹ️ Info</button>
+                        <button id="newsBtn" style="width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #333; border-bottom: 1px solid #eee; transition: background 0.2s;">📰 News</button>
                         <button id="adminBtn" style="display: none; width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.95rem; color: #c62828; border-bottom: 1px solid #eee; transition: background 0.2s;">🛠️ Amministrazione</button>
                     </div>
                 </div>
@@ -135,7 +136,7 @@
             <div style="padding: 20px 30px 0 30px;">
                 <p id="authError" class="auth-error"></p>
             </div>
-            <form id="loginForm" class="auth-form" style="padding: 0 30px 20px 30px;">
+            <form id="loginForm" class="auth-form" novalidate style="padding: 0 30px 20px 30px;">
                 <div class="form-group">
                     <label for="loginUsername">Username</label>
                     <input type="text" id="loginUsername" autocomplete="username" autocapitalize="none" spellcheck="false">
@@ -149,7 +150,7 @@
                 </div>
                 <p class="hint" style="text-align: center; margin-top: 14px;">Password dimenticata? Chiedi all'amministratore di reimpostarla.</p>
             </form>
-            <form id="registerForm" class="auth-form" style="display: none; padding: 0 30px 20px 30px;">
+            <form id="registerForm" class="auth-form" novalidate style="display: none; padding: 0 30px 20px 30px;">
                 <div class="form-group">
                     <label for="registerUsername">Username</label>
                     <input type="text" id="registerUsername" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="20">
@@ -170,8 +171,9 @@
                     <input type="password" id="registerPasswordConfirm" autocomplete="new-password">
                     <p class="hint" id="registerPasswordConfirmHint">Scrivi di nuovo la stessa password.</p>
                 </div>
-                <div class="modal-buttons">
-                    <button type="submit" class="btn-save" style="background: #4CAF50 !important;">Crea account</button>
+                <div class="modal-buttons" style="display: flex; flex-direction: row !important; gap: 8px; align-items: stretch;">
+                    <button type="submit" class="btn-save" style="background: #4CAF50 !important; flex: 1; width: auto !important; min-width: 0;">Crea account</button>
+                    <button type="button" id="registerGuideBtn" title="Come funziona la Bacheca" aria-label="Come funziona la Bacheca" style="flex: 0 0 auto; width: auto !important; padding: 0 10px; background: rgba(255,255,255,0.9); color: #4a3aa8; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.8rem; white-space: nowrap;">❓ Guida</button>
                 </div>
             </form>
         </div>
@@ -181,7 +183,7 @@
     <div class="modal" id="namePromptModal" style="z-index: 10000 !important;">
         <div class="modal-content" style="max-width: 400px;">
             <div class="modal-header" style="text-align: center;">👤 Il tuo nome</div>
-            <form id="namePromptForm" style="padding: 20px 30px;">
+            <form id="namePromptForm" novalidate style="padding: 20px 30px;">
                 <div class="form-group">
                     <input type="text" id="nameInput" maxlength="10" placeholder="Es: Ely, Maria, Ugo">
                 </div>
@@ -249,7 +251,8 @@
         /* Amministrazione (0.5.0) */
         .announcement-banner { display: none; background: #fff3cd; color: #5d4500; border-bottom: 2px solid #ffb300; padding: 8px 14px; text-align: center; font-weight: 600; font-size: 0.95rem; white-space: pre-wrap; }
         .admin-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
-        .admin-tab { flex: 1; padding: 8px; border: 2px solid #667eea; background: white; color: #667eea; border-radius: 8px; cursor: pointer; font-weight: 600; }
+        .admin-tab { flex: 1 1 0; min-width: 0; padding: 8px 4px; border: 2px solid #667eea; background: white; color: #667eea; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        @media (max-width: 480px) { .admin-tabs { flex-wrap: wrap; gap: 6px; } .admin-tab { flex: 1 1 40%; font-size: 0.85rem; padding: 7px 4px; } }
         .admin-tab.active { background: #667eea; color: white; }
         .admin-user { background: #f7f7fb; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
         .admin-action { padding: 6px 10px; border: none; border-radius: 6px; background: #667eea; color: white; cursor: pointer; font-size: 0.85rem; }
@@ -909,6 +912,18 @@
         </div>
     </div>
 
+    <!-- Finestra del giorno (telefono): eventi del giorno toccato nel calendario -->
+    <div id="dayModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 1000; align-items: center; justify-content: center;">
+        <div style="width: 92%; max-width: 420px; max-height: 85vh; overflow-y: auto; background: white; border-radius: 14px; padding: 18px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2); box-sizing: border-box; animation: slideIn 0.25s ease;">
+            <h2 id="dayModalTitle" style="margin: 0 0 14px; color: #4a3aa8; font-size: 1.15rem;"></h2>
+            <div id="dayModalList" style="display: flex; flex-direction: column; gap: 8px;"></div>
+            <div style="display: flex; gap: 8px; margin-top: 16px;">
+                <button type="button" id="dayModalAddBtn" style="flex: 1; padding: 11px; background: #667eea; color: white; border: none; border-radius: 8px; font-size: 0.95rem; font-weight: 600; cursor: pointer; white-space: nowrap;">➕ Aggiungi</button>
+                <button type="button" id="dayModalCloseBtn" style="flex: 1; padding: 11px; background: #eee; color: #333; border: none; border-radius: 8px; font-size: 0.95rem; font-weight: 600; cursor: pointer;">Chiudi</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal di conferma -->
     <div id="confirmModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 10050; align-items: center; justify-content: center;">
         <div style="background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); text-align: center; max-width: 400px; animation: slideIn 0.3s ease;">
@@ -968,6 +983,7 @@
                 <button type="button" class="admin-tab active" data-tab="users">👥 Utenti</button>
                 <button type="button" class="admin-tab" data-tab="stats">📊 Statistiche</button>
                 <button type="button" class="admin-tab" data-tab="app">⚙️ App</button>
+                <button type="button" class="admin-tab" data-tab="errors">🐞 Errori</button>
             </div>
             <div id="adminContent" style="overflow-y: auto; flex: 1;"></div>
         </div>
@@ -992,6 +1008,19 @@
                 <p style="margin: 4px 0 0; font-size: 0.85rem; color: #999;">In arrivo…</p>
             </div>
             <button type="button" id="avatarCloseBtn" style="width: 100%; padding: 12px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">Chiudi</button>
+        </div>
+    </div>
+
+    <!-- 📘 Guida "come funziona" a schede: dopo la registrazione e da ⚙️ → ℹ️ Info.
+         Avanti / Indietro (anche scorrendo col dito o con le frecce), Salta per chiudere -->
+    <div id="videoModal" style="display: none; position: fixed; inset: 0; background: rgba(20, 16, 45, 0.97); z-index: 10045; flex-direction: column; align-items: center; justify-content: center; padding: 56px 12px 12px; box-sizing: border-box;">
+        <button type="button" id="videoSkipBtn" style="position: absolute; top: 10px; right: 12px; padding: 9px 16px; background: #fff; color: #333; border: none; border-radius: 22px; font-weight: bold; font-size: 0.95rem; cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.35);">Salta ⏭</button>
+        <img id="guideImg" alt="" style="max-width: 100%; max-height: calc(100% - 140px); width: auto; height: auto; border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,0.45); background: #fff;">
+        <p id="guideText" style="margin: 12px 0 10px; max-width: 420px; color: #fff; font-weight: 700; font-size: 1.05rem; line-height: 1.35; text-align: center; min-height: 2.7em;"></p>
+        <div style="display: flex; align-items: center; gap: 14px;">
+            <button type="button" id="guidePrevBtn" style="padding: 10px 16px; background: rgba(255,255,255,0.15); color: #fff; border: 2px solid rgba(255,255,255,0.6); border-radius: 22px; font-weight: bold; cursor: pointer;">◀ Indietro</button>
+            <span id="guideCount" style="color: #c9c3ee; font-size: 0.9rem; min-width: 52px; text-align: center;"></span>
+            <button type="button" id="guideNextBtn" style="padding: 10px 18px; background: #fff; color: #4a3aa8; border: none; border-radius: 22px; font-weight: bold; cursor: pointer;">Avanti ▶</button>
         </div>
     </div>
 
@@ -1024,16 +1053,12 @@
                     <strong style="color: #666;">Username:</strong>
                     <p id="userProfileUsername" style="margin: 5px 0 0 0; color: #333; font-family: monospace;"></p>
                 </div>
-                <div style="margin-bottom: 12px;">
+                <div style="margin-bottom: 0;">
                     <strong style="color: #666;">Password:</strong>
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 5px;">
                         <p style="margin: 0; color: #333; font-family: monospace; letter-spacing: 2px;">********</p>
                         <button type="button" id="userProfilePasswordBtn" style="padding: 6px 10px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem;">🔑 Cambia password</button>
                     </div>
-                </div>
-                <div style="margin-bottom: 0;">
-                    <strong style="color: #666;">Dispositivo:</strong>
-                    <p id="userProfileDevice" style="margin: 5px 0 0 0; color: #333;"></p>
                 </div>
             </div>
             <div style="display: flex; gap: 10px;">

@@ -65,12 +65,26 @@ if not (os.environ.get('BACHECA_ADMIN_USER') and os.environ.get('BACHECA_ADMIN_P
     sys.exit('Servono BACHECA_ADMIN_USER e BACHECA_ADMIN_PASS (account TEST con ruolo admin): '
              'gli utenti di prova vanno approvati per poter fare le prove.')
 ADM = signin(os.environ['BACHECA_ADMIN_USER'], os.environ['BACHECA_ADMIN_PASS'])
+
+def name_key(name):
+    # Come nameKey() in script.js e la funzione nelle regole: minuscole, senza spazi, caratteri vietati → _
+    k = name.lower().replace(' ', '').replace(' ', '').replace('​', '').replace('’', "'")
+    for ch in '.$#[]/':
+        k = k.replace(ch, '_')
+    return k
+
+USED_NAMES = set()  # chiavi di names/ usate nelle prove, da togliere alla fine
 A = signup('a'); B = signup('b')
 now = int(time.time() * 1000)
 try:
-    # Profili (anche chi è in attesa di approvazione crea e legge il proprio)
-    check('A crea il proprio profilo', 'permesso', A, 'PUT', f'users/{A["uid"]}', {'username': A['username'][:20], 'name': 'ProvaA', 'createdAt': now})
-    check('B crea il proprio profilo', 'permesso', B, 'PUT', f'users/{B["uid"]}', {'username': B['username'][:20], 'name': 'ProvaB', 'createdAt': now})
+    # Profili (anche chi è in attesa di approvazione crea e legge il proprio).
+    # Nomi unici (0.6.1): il nome va prenotato in names/{chiave} nella stessa scrittura del profilo
+    NAME_A, NAME_B = f'A{secrets.token_hex(3)}', f'B{secrets.token_hex(3)}'
+    check('A crea il profilo senza prenotare il nome', 'bloccato', A, 'PUT', f'users/{A["uid"]}', {'username': A['username'][:20], 'name': NAME_A, 'createdAt': now})
+    check('A crea il proprio profilo (con il nome)', 'permesso', A, 'PATCH', '', {
+        f'users/{A["uid"]}': {'username': A['username'][:20], 'name': NAME_A, 'createdAt': now}, f'names/{name_key(NAME_A)}': A['uid']})
+    check('B crea il proprio profilo (con il nome)', 'permesso', B, 'PATCH', '', {
+        f'users/{B["uid"]}': {'username': B['username'][:20], 'name': NAME_B, 'createdAt': now}, f'names/{name_key(NAME_B)}': B['uid']})
 
     # Approvazione (0.6.0): chi è in attesa non vede niente finché un admin non lo approva
     check('In attesa: A legge il proprio profilo', 'permesso', A, 'GET', f'users/{A["uid"]}')
@@ -87,8 +101,23 @@ try:
     check('Admin legge tutte le approvazioni', 'permesso', ADM, 'GET', 'approved')
     check('Approvato: A legge gli eventi', 'permesso', A, 'GET', 'events')
     check('B toglie l\'approvazione ad A', 'bloccato', B, 'DELETE', f'approved/{A["uid"]}')
-    check('Nome di 11 caratteri', 'bloccato', B, 'PUT', f'users/{B["uid"]}/name', 'X' * 11)
-    check('Nome di 10 caratteri', 'permesso', B, 'PUT', f'users/{B["uid"]}/name', 'X' * 10)
+    # Nomi unici
+    check('B prende il nome di A', 'bloccato', B, 'PATCH', '', {f'users/{B["uid"]}/name': NAME_A, f'names/{name_key(NAME_A)}': B['uid']})
+    check('B prende il nome di A con maiuscole e spazi', 'bloccato', B, 'PATCH', '', {
+        f'users/{B["uid"]}/name': NAME_A.upper()[:3] + ' ' + NAME_A.upper()[3:], f'names/{name_key(NAME_A)}': B['uid']})
+    check('B ruba la prenotazione del nome di A', 'bloccato', B, 'PUT', f'names/{name_key(NAME_A)}', B['uid'])
+    check('B cancella la prenotazione del nome di A', 'bloccato', B, 'DELETE', f'names/{name_key(NAME_A)}')
+    check('B prenota un nome che non è il suo', 'bloccato', B, 'PUT', f'names/{name_key("Z" + NAME_B)}', B['uid'])
+    check('B cambia nome senza prenotarlo', 'bloccato', B, 'PUT', f'users/{B["uid"]}/name', 'C' + NAME_B[1:])
+    check('B legge chi ha un nome', 'permesso', B, 'GET', f'names/{name_key(NAME_A)}')
+    check('B legge tutto l\'elenco dei nomi', 'bloccato', B, 'GET', 'names')
+    NAME_B2 = f'X{secrets.token_hex(5)[:9]}'  # 10 caratteri
+    check('Nome di 11 caratteri', 'bloccato', B, 'PATCH', '', {f'users/{B["uid"]}/name': NAME_B2 + 'Y', f'names/{name_key(NAME_B2 + "Y")}': B['uid']})
+    check('B cambia nome (10 caratteri) e libera il vecchio', 'permesso', B, 'PATCH', '', {
+        f'users/{B["uid"]}/name': NAME_B2, f'names/{name_key(NAME_B2)}': B['uid'], f'names/{name_key(NAME_B)}': None})
+    check('A prende il vecchio nome liberato da B', 'permesso', A, 'PATCH', '', {
+        f'users/{A["uid"]}/name': NAME_B, f'names/{name_key(NAME_B)}': A['uid'], f'names/{name_key(NAME_A)}': None})
+    USED_NAMES.update({name_key(NAME_A), name_key(NAME_B), name_key(NAME_B2)})
     check('B cambia il nome di A', 'bloccato', B, 'PUT', f'users/{A["uid"]}/name', 'hacker')
 
     # Eventi
@@ -203,6 +232,23 @@ try:
     check('B aggiorna le proprie statistiche', 'permesso', B, 'PATCH', f'stats/{B["uid"]}',
           {'opens': 3, 'lastActiveAt': now, 'firstSeenAt': now, 'days/2099-01-01': True, 'messagesSent': 2})
     check('Statistica negativa', 'bloccato', B, 'PUT', f'stats/{B["uid"]}/opens', -1)
+    check('B salva il suo dispositivo e la versione', 'permesso', B, 'PATCH', f'stats/{B["uid"]}', {'device': 'Chrome · Android · telefono', 'appVersion': '0.6.1'})
+    check('Dispositivo di 121 caratteri', 'bloccato', B, 'PUT', f'stats/{B["uid"]}/device', 'D' * 121)
+    check('Versione in formato sbagliato', 'bloccato', B, 'PUT', f'stats/{B["uid"]}/appVersion', 'ultima')
+    check('B salva schermo e lingua', 'permesso', B, 'PATCH', f'stats/{B["uid"]}', {'screen': '390×844 · 3x', 'lang': 'it-IT · Europe/Rome'})
+
+    # Registro degli errori (0.6.1): errors/{uid}/{id}, solo aggiunte proprie e cancellazioni; lo legge l'admin
+    err = {'msg': 'TypeError: prova', 'where': 'script.js:1:1', 'at': now, 'version': '0.6.1',
+           'device': 'Chrome · Windows · PC', 'screen': '1024×768 · 1x', 'lang': 'it-IT', 'online': True}
+    check('B registra un errore', 'permesso', B, 'PUT', f'errors/{B["uid"]}/e1', err)
+    check('B modifica un errore già registrato', 'bloccato', B, 'PUT', f'errors/{B["uid"]}/e1/msg', 'cambiato')
+    check('B registra un errore a nome di A', 'bloccato', B, 'PUT', f'errors/{A["uid"]}/e1', err)
+    check('Errore con testo di 301 caratteri', 'bloccato', B, 'PUT', f'errors/{B["uid"]}/e2', {**err, 'msg': 'x' * 301})
+    check('Errore con campo sconosciuto', 'bloccato', B, 'PUT', f'errors/{B["uid"]}/e3', {**err, 'password': 'segreta'})
+    check('B legge i propri errori', 'permesso', B, 'GET', f'errors/{B["uid"]}')
+    check('B legge gli errori di tutti', 'bloccato', B, 'GET', 'errors')
+    check('B cancella un proprio errore vecchio', 'permesso', B, 'DELETE', f'errors/{B["uid"]}/e1')
+    check('Admin legge gli errori di tutti', 'permesso', ADM, 'GET', 'errors')
     check('Statistica sconosciuta', 'bloccato', B, 'PUT', f'stats/{B["uid"]}/minutiUso', 5)
     check('Giorno in formato sbagliato', 'bloccato', B, 'PUT', f'stats/{B["uid"]}/days/oggi', True)
     check('B scrive le statistiche di A', 'bloccato', B, 'PUT', f'stats/{A["uid"]}/opens', 99)
@@ -232,7 +278,12 @@ try:
         check('Admin legge tutte le statistiche', 'permesso', ADM, 'GET', 'stats')
         check('Admin legge chi è bloccato', 'permesso', ADM, 'GET', 'blocked')
         check('Admin legge tutti i ruoli', 'permesso', ADM, 'GET', 'roles')
-        check('Admin rinomina B', 'permesso', ADM, 'PUT', f'users/{B["uid"]}/name', 'Rinominat')
+        NAME_R = f'R{secrets.token_hex(3)}'
+        USED_NAMES.add(name_key(NAME_R))
+        check('Admin rinomina B (prenotando il nome)', 'permesso', ADM, 'PATCH', '', {
+            f'users/{B["uid"]}/name': NAME_R, f'names/{name_key(NAME_R)}': B['uid'], f'names/{name_key(NAME_B2)}': None})
+        check('Admin rinomina B con il nome di A', 'bloccato', ADM, 'PATCH', '', {
+            f'users/{B["uid"]}/name': NAME_B, f'names/{name_key(NAME_B)}': B['uid']})
         check('Admin pubblica un avviso', 'permesso', ADM, 'PUT', 'settings/announcement', {'text': 'Prova avviso', 'updatedAt': now})
         check('Avviso di 201 caratteri', 'bloccato', ADM, 'PUT', 'settings/announcement', {'text': 'A' * 201, 'updatedAt': now})
         check('Admin toglie l\'avviso', 'permesso', ADM, 'DELETE', 'settings/announcement')
@@ -262,12 +313,16 @@ finally:
     # Pulizia: dati degli utenti di prova e account (prima si sblocca B, se una prova si è interrotta)
     if ADM:
         http('DELETE', f'{DB}/blocked/{B["uid"]}.json?auth={ADM["token"]}')
+    # Nomi prenotati nelle prove (li toglie l'admin, chiunque li abbia)
+    if USED_NAMES:
+        db(ADM, 'PATCH', '', {f'names/{k}': None for k in USED_NAMES})
     for u in (A, B):
         http('DELETE', f'{DB}/presence/{u["uid"]}.json?auth={u["token"]}')
         http('DELETE', f'{DB}/chatReadStatus/{u["uid"]}.json?auth={u["token"]}')
         http('DELETE', f'{DB}/users/{u["uid"]}.json?auth={u["token"]}')
         http('DELETE', f'{DB}/stats/{u["uid"]}.json?auth={u["token"]}')
         http('DELETE', f'{DB}/bubbles/{u["uid"]}.json?auth={u["token"]}')
+        http('DELETE', f'{DB}/errors/{u["uid"]}.json?auth={u["token"]}')
     # Eventi e proposte di prova ancora presenti (prova interrotta o fallita): li toglie chi li ha creati,
     # altrimenti l'admin. Senza questa pulizia restavano su TEST (titoli "TTTT…" che allargavano la pagina)
     for node in ('events', 'proposals'):

@@ -118,7 +118,7 @@ button {
 
 .weekdays {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 10px;
     margin-bottom: 15px;
 }
@@ -134,7 +134,7 @@ button {
 
 .days-grid {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 10px;
     min-height: 400px;
 }
@@ -1092,4 +1092,9 @@ button[type="button"]:hover {
     font-weight: bold;
     font-size: 0.9rem;
     letter-spacing: 1px;
+}
+
+/* Il numero di eventi nella casella serve solo sul telefono */
+.day-count {
+    display: none;
 }
