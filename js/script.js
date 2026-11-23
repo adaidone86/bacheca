@@ -72,6 +72,9 @@ if (APP_CONFIG.ENV === 'TEST') {
 }
 
 class BacheaCalendar {
+    static MAX_TRIP_DAYS = 60; // un viaggio dura al massimo 60 giorni (calendario e controlli del modulo)
+    static TRIP_IMAGE = 'immagini/viaggio.svg'; // copertina fissa dei viaggi
+
     constructor() {
         this.currentDate = new Date();
         this.selectedDate = null;
@@ -1040,6 +1043,7 @@ class BacheaCalendar {
         this.setupAvatarListeners();
         this.setupScrollLock();
         this.setupErrorLog();
+        this.setupTripListeners();
         this.listenSettings();
         this.recordAppOpen();
         this.detectDevice();
@@ -1801,9 +1805,16 @@ class BacheaCalendar {
 
         const daysGrid = document.getElementById('daysGrid');
         daysGrid.innerHTML = '';
+        // Strisce dei viaggi: per ogni riga della settimana, i pezzi di viaggio e la loro corsia (una sotto l'altra)
+        const tripRows = this.buildTripStrips(daysArray.map(d => this.getDateKey(d.date)));
 
-        daysArray.forEach(dayObj => {
+        daysArray.forEach((dayObj, dayIndex) => {
             const dayEl = document.createElement('div');
+            // Posto fisso nella griglia: le strisce dei viaggi occupano le stesse caselle, sopra ai giorni
+            const gridRow = Math.floor(dayIndex / 7);
+            dayEl.style.gridRow = String(gridRow + 1);
+            dayEl.style.gridColumn = String((dayIndex % 7) + 1);
+            dayEl.style.setProperty('--trip-lanes', String(tripRows[gridRow].lanes));
 
             // Controlla se il giorno è oggi o nel passato
             const today = new Date();
@@ -1853,6 +1864,7 @@ class BacheaCalendar {
                 sortedNotes.forEach((note) => {
                     // Mostra solo se il colore è visibile
                     if (!this.isColorVisible(note.color)) return;
+                    if (this.isTrip(note)) return; // i viaggi sono la striscia sopra ai giorni
 
                     const noteEl = document.createElement('div');
                     noteEl.className = `note ${note.color}`;
@@ -1869,7 +1881,7 @@ class BacheaCalendar {
 
                     noteEl.setAttribute('data-event-id', note.id);
                     noteEl.innerHTML = `
-                        <span class="note-text">${this.escapeHtml(note.title)}</span>
+                        <span class="note-text">${this.isTrip(note) ? '✈️ ' : ''}${this.escapeHtml(note.title)}</span>
                         <span class="note-badge" style="position: absolute; top: 2px; right: 2px; background: #f44336; color: white; border-radius: 50%; width: 20px; height: 20px; display: none; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: bold;"></span>
                     `;
 
@@ -1919,7 +1931,630 @@ class BacheaCalendar {
             daysGrid.appendChild(dayEl);
         });
 
+        tripRows.forEach((row, rowIndex) => row.segments.forEach(segment => daysGrid.appendChild(this.createTripStrip(segment, rowIndex))));
+
         this.renderProposals();
+    }
+
+    // Pezzi di viaggio per ogni riga (settimana) del calendario: {segments: [{trip, from, to, keys, lane, starts, ends}], lanes}
+    buildTripStrips(dayKeys) {
+        const trips = Object.values(this.events)
+            .filter(event => this.isTrip(event) && this.isColorVisible(event.color))
+            .sort((a, b) => a.date.localeCompare(b.date) || b.endDate.localeCompare(a.endDate) || (a.title || '').localeCompare(b.title || ''));
+        const rows = [];
+        for (let start = 0; start < dayKeys.length; start += 7) {
+            const keys = dayKeys.slice(start, start + 7);
+            const laneEnds = []; // ultima colonna occupata in ogni corsia
+            const segments = [];
+            trips.forEach(trip => {
+                const cols = keys.map((key, col) => (key >= trip.date && key <= trip.endDate ? col : -1)).filter(col => col >= 0);
+                if (!cols.length) return;
+                const from = cols[0], to = cols[cols.length - 1];
+                let lane = laneEnds.findIndex(end => end < from);
+                if (lane === -1) { lane = laneEnds.length; laneEnds.push(to); } else laneEnds[lane] = to;
+                segments.push({ trip, from, to, keys: keys.slice(from, to + 1), lane, starts: keys[from] === trip.date, ends: keys[to] === trip.endDate });
+            });
+            rows.push({ segments, lanes: Math.min(laneEnds.length, this.isPhoneLayout() ? 2 : 4) });
+        }
+        return rows;
+    }
+
+    // La striscia: dal primo all'ultimo giorno del viaggio nella riga, il nome al centro.
+    // Tocco = apre il viaggio; dal PC chi l'ha creato la trascina (il viaggio si sposta di quanti giorni si è trascinato)
+    createTripStrip(segment, rowIndex) {
+        const { trip } = segment;
+        const strip = document.createElement('div');
+        strip.className = `trip-strip ${trip.color || 'color-trip'}`;
+        if (segment.starts) strip.classList.add('starts');
+        if (segment.ends) strip.classList.add('ends');
+        const todayKey = this.getDateKey(new Date());
+        if (trip.endDate < todayKey) strip.classList.add('past');
+        strip.dataset.lane = String(segment.lane);
+        strip.style.setProperty('--lane', String(segment.lane));
+        strip.style.gridRow = String(rowIndex + 1);
+        strip.style.gridColumn = `${segment.from + 1} / ${segment.to + 2}`;
+        strip.title = `${trip.title} · ${this.formatTripRange(trip)}${this.formatTripPlaces(trip) ? ' · ' + this.formatTripPlaces(trip) : ''}`;
+        strip.innerHTML = `<span>✈️ ${this.escapeHtml(trip.title)}</span>`;
+        strip.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (this.suppressNextClick) return;
+            this.openEditModal(trip.id);
+        });
+        // Giorno sotto il puntatore quando si comincia a trascinare
+        let grabKey = segment.keys[0];
+        const remember = (x) => {
+            const rect = strip.getBoundingClientRect();
+            const index = Math.floor(((x - rect.left) / Math.max(rect.width, 1)) * segment.keys.length);
+            grabKey = segment.keys[Math.max(0, Math.min(segment.keys.length - 1, index))];
+        };
+        strip.addEventListener('mousedown', (e) => remember(e.clientX));
+        strip.addEventListener('touchstart', (e) => { if (e.touches.length === 1) remember(e.touches[0].clientX); }, { passive: true });
+        if (this.canEditEvent(trip) && this.isFutureDateKey(trip.date)) {
+            this.setupDragAndDrop(strip, () => grabKey, trip.id, null);
+        }
+        return strip;
+    }
+
+    // ===== ✈️ Viaggi (0.7.0) =====
+    // Un viaggio è un evento con type: 'trip' e endDate (ritorno, YYYY-MM-DD): compare in tutti i giorni
+    // dalla partenza al ritorno. Itinerario in itineraries/{eventId}/{tappa} = {day, time, place, note, by, at}
+    // (day = 0 il giorno della partenza: spostando il viaggio le tappe seguono). Lo scrivono partecipanti e creatore.
+    isTrip(event) {
+        return !!event && event.type === 'trip' && typeof event.endDate === 'string' && event.endDate >= (event.date || '');
+    }
+
+    // Ultimo giorno dell'evento (il ritorno per i viaggi)
+    getEventEndKey(event) {
+        return this.isTrip(event) ? event.endDate : event.date;
+    }
+
+    // Tutti i giorni in cui compare l'evento (al massimo MAX_TRIP_DAYS per i viaggi)
+    getEventDayKeys(event) {
+        if (!this.isTrip(event)) return [event.date];
+        const days = Math.min(this.daysBetweenKeys(event.date, event.endDate), BacheaCalendar.MAX_TRIP_DAYS - 1);
+        const keys = [];
+        for (let i = 0; i <= days; i++) keys.push(this.addDaysToKey(event.date, i));
+        return keys;
+    }
+
+    addDaysToKey(dateKey, days) {
+        const [year, month, day] = dateKey.split('-').map(Number);
+        return this.getDateKey(new Date(year, month - 1, day + days));
+    }
+
+    daysBetweenKeys(fromKey, toKey) {
+        const utc = key => { const [y, m, d] = key.split('-').map(Number); return Date.UTC(y, m - 1, d); };
+        return Math.round((utc(toKey) - utc(fromKey)) / 86400000);
+    }
+
+    // "Dal sab 5 dic al dom 7 dic · 3 giorni"
+    formatTripRange(event) {
+        const days = this.daysBetweenKeys(event.date, event.endDate) + 1;
+        return `Dal ${this.formatDateKey(event.date, true).toLowerCase()} al ${this.formatDateKey(event.endDate, true).toLowerCase()} · ${days} ${days === 1 ? 'giorno' : 'giorni'}`;
+    }
+
+    // Modulo "Nuovo evento": scelta 📌 Evento / ✈️ Viaggio (il riquadro bianco scivola sotto la scelta).
+    // Evento e viaggio hanno campi diversi: #eventFieldsBlock (quelli di sempre) e #tripFieldsBlock
+    setEventType(type) {
+        const trip = type === 'trip';
+        this.addEventType = type;
+        const choice = document.getElementById('eventTypeChoice');
+        choice.classList.toggle('trip', trip);
+        choice.querySelectorAll('.event-type-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.type === type));
+        document.getElementById('eventFieldsBlock').style.display = trip ? 'none' : '';
+        document.getElementById('tripFieldsBlock').style.display = trip ? '' : 'none';
+        const cover = document.getElementById('eventCoverContainerAdd');
+        const toggle = document.getElementById('addImageToggleBtn');
+        if (trip) {
+            // Copertina fissa dell'aereo; quella dell'evento (se scelta) torna tornando su 📌 Evento
+            if (cover.dataset.eventImage === undefined) cover.dataset.eventImage = cover.style.backgroundImage || 'none';
+            cover.style.backgroundImage = `url("${BacheaCalendar.TRIP_IMAGE}")`;
+            this.closeAddImagePanel();
+            toggle.textContent = '✈️ Nuovo viaggio';
+            toggle.disabled = true;
+            this.applyCategoryTheme('modal', 'color-trip');
+            this.syncEndDate('trip');
+        } else {
+            if (cover.dataset.eventImage !== undefined) {
+                cover.style.backgroundImage = cover.dataset.eventImage;
+                delete cover.dataset.eventImage;
+            }
+            toggle.textContent = '✏️ Nuovo evento';
+            toggle.disabled = false;
+            this.updateCategoryDisplay('addCategorySelect');
+        }
+    }
+
+    // Partenza e ritorno (prefix 'trip' nel nuovo, 'editTrip' nella modifica).
+    // Cambiando la partenza (shift) il ritorno si sposta degli stessi giorni, così la durata resta.
+    // Il ritorno non può essere prima della partenza: se lo è (o è vuoto) diventa il giorno dopo la partenza
+    // fixedDays (viaggio senza data con il numero di giorni): il ritorno è sempre partenza + giorni - 1
+    syncEndDate(prefix, shift = false, fixedDays = 0) {
+        const startInput = document.getElementById(`${prefix}Date`);
+        const start = startInput.value;
+        const end = document.getElementById(`${prefix}EndDate`);
+        const previous = startInput.dataset.previous;
+        if (fixedDays > 0 && start) {
+            end.value = this.addDaysToKey(start, fixedDays - 1);
+        } else if (shift && previous && start && end.value && end.value >= previous) {
+            end.value = this.addDaysToKey(end.value, this.daysBetweenKeys(previous, start));
+        }
+        startInput.dataset.previous = start;
+        end.min = start || this.getTomorrowKey();
+        if (start && (!end.value || end.value < start)) end.value = this.addDaysToKey(start, 1);
+        this.updateTripDaysHint(prefix);
+    }
+
+    // "· 3 giorni" accanto a 🛬 Ritorno
+    updateTripDaysHint(prefix) {
+        const hint = document.getElementById(`${prefix}DaysHint`);
+        if (!hint) return;
+        const start = document.getElementById(`${prefix}Date`).value;
+        const end = document.getElementById(`${prefix}EndDate`).value;
+        const days = start && end && end >= start ? this.daysBetweenKeys(start, end) + 1 : 0;
+        hint.textContent = days ? `· ${days} ${days === 1 ? 'giorno' : 'giorni'}` : '';
+    }
+
+    // Giorni decisi per il viaggio senza data (0 = da decidere): i periodi proposti partono già lunghi così
+    getTripDaysFor(prefix) {
+        if (prefix === 'proposalTripFirst') return this.checkTripDays(document.getElementById('proposalTripDays').value).value || 0;
+        if (prefix === 'proposalNewTrip') return ((this.proposals || {})[this.openProposalId] || {}).days || 0;
+        return 0;
+    }
+
+    // Numero di giorni: intero da 1 a 60 (vuoto = da decidere)
+    checkTripDays(raw) {
+        const text = String(raw === undefined || raw === null ? '' : raw).trim();
+        if (!text) return { value: 0 };
+        if (!/^\d{1,2}$/.test(text) || Number(text) < 1 || Number(text) > BacheaCalendar.MAX_TRIP_DAYS) {
+            return { error: `scrivi un numero di giorni da 1 a ${BacheaCalendar.MAX_TRIP_DAYS} (vuoto = da decidere)` };
+        }
+        return { value: Number(text) };
+    }
+
+    // "📍 Roma → 🏁 Sardegna" (o solo una delle due)
+    formatTripPlaces(item) {
+        const origin = (item.origin || '').trim();
+        const destination = (item.destination || '').trim();
+        if (origin && destination) return `${origin} → ${destination}`;
+        if (destination) return `Destinazione: ${destination}`;
+        if (origin) return `Partenza da ${origin}`;
+        return '';
+    }
+
+    // Budget a persona del viaggio: come la quota degli eventi ma fino a 99.999 € (vuoto = da definire)
+    checkCost(raw) {
+        let text = String(raw || '').replace('€', '').trim();
+        if (/^\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(text)) text = text.replace(/\./g, ''); // 1.500 = millecinquecento
+        text = text.replace(',', '.');
+        if (!text) return { value: 0 };
+        const value = Number(text);
+        if (!/^\d+(\.\d{1,2})?$/.test(text) || !isFinite(value)) {
+            return { error: 'scrivi solo un importo, es. 350 oppure 120,50 (vuoto = da definire)' };
+        }
+        if (value > 99999) return { error: 'al massimo 99.999 €' };
+        return { value: Math.round(value * 100) / 100 };
+    }
+
+    formatCost(cost) {
+        return cost ? this.formatFee(cost) : 'da definire';
+    }
+
+    // Massimo dei partecipanti: numero intero da 0 (vuoto o 0 = chiunque, nessun limite) a 999
+    checkMaxParticipants(raw) {
+        const text = String(raw === undefined || raw === null ? '' : raw).trim();
+        if (!text) return { value: 0 };
+        if (!/^\d{1,3}$/.test(text)) return { error: 'scrivi un numero intero fino a 999 (vuoto = chiunque)' };
+        return { value: Number(text) };
+    }
+
+    // Controllo dei campi del viaggio (nuovo: original = null; modifica: l'evento com'era)
+    checkTripFields(prefix, original) {
+        const value = id => document.getElementById(`${prefix}${id}`).value;
+        const required = [];
+        const optional = [];
+        const title = value('Title').trim();
+        const date = value('Date');
+        const endDate = value('EndDate');
+        if (!title) required.push({ id: `${prefix}Title`, label: 'Nome del viaggio', message: 'è vuoto: scrivi come si chiama il viaggio' });
+        if (!date) required.push({ id: `${prefix}Date`, label: 'Partenza', message: 'scegli il giorno della partenza' });
+        else if ((!original || date !== original.date) && !this.isFutureDateKey(date)) {
+            required.push({ id: `${prefix}Date`, label: 'Partenza', message: 'la partenza deve essere da domani in poi' });
+        }
+        const endId = `${prefix}EndDate`;
+        if (!endDate) required.push({ id: endId, label: 'Ritorno', message: 'scegli il giorno del ritorno' });
+        else if (date && endDate < date) required.push({ id: endId, label: 'Ritorno', message: 'il ritorno non può essere prima della partenza' });
+        else if (date && this.daysBetweenKeys(date, endDate) >= BacheaCalendar.MAX_TRIP_DAYS) {
+            required.push({ id: endId, label: 'Ritorno', message: `un viaggio può durare al massimo ${BacheaCalendar.MAX_TRIP_DAYS} giorni` });
+        }
+        const cost = this.checkCost(value('Cost'));
+        if (cost.error) optional.push({ id: `${prefix}Cost`, label: 'Budget a persona', message: cost.error, without: original ? 'cambiare il budget (resta quello di prima)' : 'budget (sarà da definire)' });
+        const max = this.checkMaxParticipants(value('Max'));
+        if (max.error) optional.push({ id: `${prefix}Max`, label: 'Max. partecipanti', message: max.error, without: original ? 'cambiare il massimo (resta quello di prima)' : 'massimo (potrà partecipare chiunque)' });
+        const fields = {
+            title, date, endDate,
+            origin: value('Origin').trim(),
+            destination: value('Destination').trim(),
+            cost: cost.error ? ((original && original.cost) || 0) : cost.value,
+            maxParticipants: max.error ? ((original && original.maxParticipants) || 0) : max.value,
+            notes: value('Needs').trim() // Esigenze specifiche
+        };
+        return { required, optional, fields };
+    }
+
+    async addTrip() {
+        const { required, optional, fields } = this.checkTripFields('trip', null);
+        if (!await this.checkFormFields(required, optional, 'creare il viaggio')) return;
+        const id = 'evt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        const trip = Object.assign({ id, type: 'trip', color: 'color-trip' }, fields, { creatorId: this.userId, createdAt: Date.now() });
+        database.ref(`events/${id}`).set(trip)
+            .then(() => { this.recordStat('eventsCreated'); this.showSuccessPopup('Viaggio aggiunto con successo!'); })
+            .catch(error => this.notifyWriteError('Creazione del viaggio', error));
+        this.closeModal();
+    }
+
+    // Modulo di modifica: campi del viaggio al posto di quelli dell'evento
+    fillEditTripFields(note) {
+        const trip = this.isTrip(note);
+        document.getElementById('editEventFieldsBlock').style.display = trip ? 'none' : '';
+        document.getElementById('editTripFieldsBlock').style.display = trip ? '' : 'none';
+        document.querySelector('#editModal .modal-tab[data-tab="edit-evento-tab"]').textContent = trip ? '✈️ Viaggio' : '📌 Evento';
+        if (!trip) return;
+        document.getElementById('editTripTitle').value = note.title || '';
+        document.getElementById('editTripOrigin').value = note.origin || '';
+        document.getElementById('editTripDestination').value = note.destination || '';
+        const dateInput = document.getElementById('editTripDate');
+        dateInput.value = note.date;
+        dateInput.min = this.getTomorrowKey();
+        document.getElementById('editTripEndDate').value = note.endDate;
+        document.getElementById('editTripCost').value = note.cost ? (Number.isInteger(note.cost) ? String(note.cost) : note.cost.toFixed(2).replace('.', ',')) : '';
+        document.getElementById('editTripMax').value = note.maxParticipants ? note.maxParticipants : '';
+        document.getElementById('editTripNeeds').value = note.notes || '';
+        this.syncEndDate('editTrip');
+    }
+
+    // Aspetto del viaggio nel modulo di modifica: colori del viaggio, niente immagine né link da cambiare
+    applyTripLook(note) {
+        if (!this.isTrip(note)) return;
+        this.applyCategoryTheme('editModal', 'color-trip');
+        document.getElementById('editImageToggleBtn').style.display = 'none';
+        this.closeEditImagePanel();
+    }
+
+    async saveEditedTrip(current) {
+        const { required, optional, fields } = this.checkTripFields('editTrip', current);
+        if (!await this.checkFormFields(required, optional, 'salvare')) return;
+        const changed = this.keepChangedFields(fields, this.editOriginal, { cost: 0, maxParticipants: 0 });
+        if (!Object.keys(changed).length) {
+            this.closeEditModal();
+            setTimeout(() => this.showSuccessPopup('Nessuna modifica da salvare'), 100);
+            return;
+        }
+        this.updateEvent(current.id, changed);
+        this.closeEditModal();
+        const message = changed.date ? `Viaggio spostato a ${this.formatDateKey(changed.date)}` : 'Viaggio modificato con successo!';
+        setTimeout(() => this.showSuccessPopup(message), 100);
+    }
+
+    // Posti del viaggio: 0 = chiunque (nessun limite)
+    isTripFull(event, participants) {
+        const max = this.isTrip(event) ? (event.maxParticipants || 0) : 0;
+        return max > 0 && participants.length >= max;
+    }
+
+    setupTripListeners() {
+        document.querySelectorAll('#eventTypeChoice .event-type-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.setEventType(btn.dataset.type));
+        });
+        ['trip', 'editTrip', 'proposalTripFirst', 'proposalNewTrip'].forEach(prefix => {
+            document.getElementById(`${prefix}Date`).addEventListener('change', () => this.syncEndDate(prefix, true, this.getTripDaysFor(prefix)));
+            document.getElementById(`${prefix}EndDate`).addEventListener('change', () => this.updateTripDaysHint(prefix));
+        });
+        // Cambiando il numero di giorni, il primo periodo (se c'è la partenza) si adegua
+        document.getElementById('proposalTripDays').addEventListener('input', () => {
+            if (document.getElementById('proposalTripFirstDate').value) this.syncEndDate('proposalTripFirst', false, this.getTripDaysFor('proposalTripFirst'));
+        });
+        // Max. partecipanti: 0 (scritto o con la freccetta sotto l'1) = nessun limite, il campo si svuota e mostra "Chiunque"
+        ['tripMax', 'editTripMax', 'proposalTripMax'].forEach(id => {
+            const input = document.getElementById(id);
+            input.addEventListener('input', () => {
+                if (input.value !== '' && Number(input.value) <= 0) input.value = '';
+            });
+        });
+        // Modifiche e cancellazioni dell'itinerario (pulsanti creati da renderItinerary)
+        document.getElementById('itineraryDays').addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-action]');
+            if (!btn) return;
+            const action = btn.dataset.action;
+            if (action === 'add') this.openItineraryForm(Number(btn.dataset.day));
+            else if (action === 'edit') this.openItineraryForm(Number(btn.dataset.day), btn.dataset.id);
+            else if (action === 'delete') this.deleteItineraryStop(btn.dataset.id);
+            else if (action === 'save') this.saveItineraryStop();
+            else if (action === 'cancel') { this.itineraryForm = null; this.renderItinerary(); }
+            else if (action === 'day-edit') this.openItineraryDayForm(Number(btn.dataset.day));
+            else if (action === 'day-save') this.saveItineraryDay();
+            else if (action === 'day-cancel') { this.itineraryDayForm = null; this.renderItinerary(); }
+        });
+        document.getElementById('itineraryDays').addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') return;
+            if (e.target.closest('.itinerary-day-form')) {
+                if (e.target.tagName === 'TEXTAREA') return; // nella nota Invio va a capo
+                e.preventDefault(); this.saveItineraryDay();
+            }
+            else if (e.target.closest('.itinerary-stop-form')) { e.preventDefault(); this.saveItineraryStop(); }
+        });
+    }
+
+    // Scheda 🗺️ Itinerario nel modulo di modifica: visibile solo per i viaggi
+    updateItineraryTab(event) {
+        const trip = this.isTrip(event);
+        const tabBtn = document.getElementById('editItineraryTabBtn');
+        tabBtn.style.display = trip ? '' : 'none';
+        if (trip) {
+            if (!this.itineraryRef || this.itineraryEventId !== event.id) this.listenItinerary(event.id);
+            else this.renderItinerary();
+        } else {
+            this.stopItinerary();
+            // Se la scheda Itinerario era aperta (il viaggio è tornato evento) torna su 📌 Evento
+            if (tabBtn.classList.contains('active')) document.querySelector('#editModal .modal-tab[data-tab="edit-evento-tab"]').click();
+        }
+    }
+
+    // Itinerario: tappe in itineraries/{eventId}/{tappa}, notte e spostamento di ogni giorno in itineraryDays/{eventId}/{giorno}
+    listenItinerary(eventId) {
+        this.stopItinerary();
+        this.itineraryEventId = eventId;
+        this.itineraryRef = database.ref(`itineraries/${eventId}`);
+        this.itineraryListener = this.itineraryRef.on('value', (snapshot) => {
+            this.itinerary = snapshot.val() || {};
+            this.renderItinerary();
+        }, (error) => {
+            console.error('Errore lettura itinerario:', error);
+            this.itinerary = {};
+            this.renderItinerary();
+        });
+        this.itineraryDaysRef = database.ref(`itineraryDays/${eventId}`);
+        this.itineraryDaysListener = this.itineraryDaysRef.on('value', (snapshot) => {
+            this.itineraryDays = snapshot.val() || {};
+            this.renderItinerary();
+        }, (error) => {
+            console.error('Errore lettura notti e spostamenti:', error);
+            this.itineraryDays = {};
+            this.renderItinerary();
+        });
+    }
+
+    stopItinerary() {
+        if (this.itineraryRef && this.itineraryListener) this.itineraryRef.off('value', this.itineraryListener);
+        if (this.itineraryDaysRef && this.itineraryDaysListener) this.itineraryDaysRef.off('value', this.itineraryDaysListener);
+        this.itineraryRef = null;
+        this.itineraryListener = null;
+        this.itineraryDaysRef = null;
+        this.itineraryDaysListener = null;
+        this.itineraryEventId = null;
+        this.itinerary = {};
+        this.itineraryDays = {};
+        this.itineraryForm = null;
+        this.itineraryDayForm = null;
+        const box = document.getElementById('itineraryDays');
+        if (box) box.innerHTML = '';
+    }
+
+    canEditItinerary(event) {
+        return !!event && (this.canEditEvent(event) || this.getParticipantIds(event).includes(this.userId));
+    }
+
+    // Tappe in ordine di orario (quelle senza ora in fondo)
+    getItineraryStops() {
+        return Object.entries(this.itinerary || {})
+            .filter(([, stop]) => stop && Number.isInteger(stop.day) && stop.place)
+            .map(([id, stop]) => Object.assign({ id }, stop))
+            .sort((a, b) => a.day - b.day || (a.time || '99:99').localeCompare(b.time || '99:99') || (a.at || 0) - (b.at || 0));
+    }
+
+    // Quello che si sta scrivendo nei moduli (tappa o notte/spostamento) resta anche se l'itinerario si ridisegna
+    captureItineraryForm() {
+        const form = document.querySelector('#itineraryDays .itinerary-stop-form');
+        if (form && this.itineraryForm) {
+            this.itineraryForm.time = form.querySelector('.itinerary-time-input').value;
+            this.itineraryForm.place = form.querySelector('.itinerary-place-input').value;
+            this.itineraryForm.note = form.querySelector('.itinerary-note-input').value;
+            this.itineraryForm.cost = form.querySelector('.itinerary-cost-input').value;
+        }
+        const dayForm = document.querySelector('#itineraryDays .itinerary-day-form');
+        if (dayForm && this.itineraryDayForm) {
+            this.itineraryDayForm.plan = dayForm.querySelector('.itinerary-plan-input').value;
+            this.itineraryDayForm.sleep = dayForm.querySelector('.itinerary-sleep-input').value;
+            this.itineraryDayForm.travel = dayForm.querySelector('.itinerary-travel-input').value;
+        }
+    }
+
+    // "20 €" / "12,50 €"
+    formatStopCost(cost) {
+        return cost ? this.formatFee(cost) : '';
+    }
+
+    renderItinerary() {
+        const box = document.getElementById('itineraryDays');
+        const event = this.getEditingEvent();
+        if (!box || !event || !this.isTrip(event)) return;
+        this.captureItineraryForm();
+        const canEdit = this.canEditItinerary(event);
+        const esc = text => this.escapeHtml(text || '');
+        const stops = this.getItineraryStops();
+        const dayInfo = this.itineraryDays || {};
+        this.ensureUserNames([...new Set(stops.map(stop => stop.by).filter(Boolean))]);
+        const tripDays = this.daysBetweenKeys(event.date, event.endDate) + 1;
+        const totalDays = Math.max(tripDays, ...stops.map(stop => stop.day + 1));
+
+        document.getElementById('itineraryHint').textContent = canEdit
+            ? '🗺️ Il viaggio giorno per giorno: cosa si fa, gli spostamenti, dove si dorme e le tappe (con il costo a persona, se c\'è).'
+            : '🗺️ Il viaggio giorno per giorno. Per scriverci partecipa al viaggio (scheda 👥 Partecipanti).';
+
+        const form = this.itineraryForm;
+        const formHtml = () => `
+            <div class="itinerary-form itinerary-stop-form">
+                <div class="itinerary-form-row">
+                    <input type="time" class="itinerary-time-input" value="${esc(form.time)}" aria-label="Ora">
+                    <input type="text" class="itinerary-place-input" maxlength="100" placeholder="📍 Dove (es. Museo, Hotel…)" value="${esc(form.place)}">
+                </div>
+                <input type="text" class="itinerary-note-input" maxlength="200" placeholder="📝 Nota (facoltativa)" value="${esc(form.note)}">
+                <input type="text" class="itinerary-cost-input" maxlength="9" inputmode="decimal" placeholder="💶 Costo a persona in € (facoltativo)" value="${esc(form.cost)}">
+                <div class="itinerary-form-msg">${esc(form.error)}</div>
+                <div class="itinerary-form-buttons">
+                    <button type="button" data-action="save" style="background: #4CAF50; color: white;">✅ ${form.id ? 'Salva' : 'Aggiungi'}</button>
+                    <button type="button" data-action="cancel" style="background: #ddd; color: #333;">Annulla</button>
+                </div>
+            </div>`;
+        const dayForm = this.itineraryDayForm;
+        const dayFormHtml = () => `
+            <div class="itinerary-form itinerary-day-form">
+                <textarea class="itinerary-plan-input" maxlength="500" rows="3" placeholder="📝 Cosa si fa (es. giro del centro, pomeriggio al mare, cena tipica)">${esc(dayForm.plan)}</textarea>
+                <input type="text" class="itinerary-travel-input" maxlength="100" placeholder="🚗 Spostamento (es. Treno Roma → Napoli, 1h10)" value="${esc(dayForm.travel)}">
+                <input type="text" class="itinerary-sleep-input" maxlength="100" placeholder="🛏️ Dove si dorme (es. Hotel Mare, Olbia)" value="${esc(dayForm.sleep)}">
+                <div class="itinerary-form-buttons">
+                    <button type="button" data-action="day-save" style="background: #4CAF50; color: white;">✅ Salva</button>
+                    <button type="button" data-action="day-cancel" style="background: #ddd; color: #333;">Annulla</button>
+                </div>
+            </div>`;
+
+        // Totale delle tappe (a persona) rispetto al budget
+        const totalCost = stops.reduce((sum, stop) => sum + (Number(stop.cost) || 0), 0);
+        let html = '';
+        if (totalCost > 0 || event.cost) {
+            const budget = Number(event.cost) || 0;
+            let line = `💶 Tappe: <strong>${esc(this.formatFee(totalCost) === 'Gratis' ? '0 €' : this.formatFee(totalCost))}</strong> a persona`;
+            let cls = '';
+            if (budget) {
+                const left = Math.round((budget - totalCost) * 100) / 100;
+                line += ` su <strong>${esc(this.formatFee(budget))}</strong> di budget`;
+                if (left >= 0) line += ` · restano ${esc(left ? this.formatFee(left) : '0 €')}`;
+                else { line += ` · <strong>superato di ${esc(this.formatFee(-left))}</strong>`; cls = ' over'; }
+            }
+            html += `<div class="itinerary-total${cls}">${line}</div>`;
+        }
+
+        for (let day = 0; day < totalDays; day++) {
+            const dayStops = stops.filter(stop => stop.day === day);
+            const afterReturn = day >= tripDays;
+            const info = dayInfo[day] || {};
+            const dayCost = dayStops.reduce((sum, stop) => sum + (Number(stop.cost) || 0), 0);
+            html += `<div class="itinerary-day${afterReturn ? ' after-return' : ''}">
+                <div class="itinerary-day-title">
+                    <span>Giorno ${day + 1} · ${esc(this.formatDateKey(this.addDaysToKey(event.date, day), true))}${afterReturn ? ' (dopo il ritorno)' : ''}</span>
+                    ${dayCost ? `<span class="itinerary-day-cost">💶 ${esc(this.formatFee(dayCost))}</span>` : ''}
+                </div>`;
+            // Notte e spostamento del giorno
+            if (dayForm && dayForm.day === day) {
+                html += dayFormHtml();
+            } else if (info.plan || info.sleep || info.travel) {
+                html += `<div class="itinerary-day-info">
+                    <div class="itinerary-body">
+                        ${info.plan ? `<div class="itinerary-plan">📝 ${esc(info.plan)}</div>` : ''}
+                        ${info.travel ? `<div>🚗 ${esc(info.travel)}</div>` : ''}
+                        ${info.sleep ? `<div>🛏️ ${esc(info.sleep)}</div>` : ''}
+                    </div>
+                    ${canEdit ? `<div class="itinerary-actions"><button type="button" data-action="day-edit" data-day="${day}" title="Modifica il programma del giorno">✏️</button></div>` : ''}
+                </div>`;
+            } else if (canEdit && !afterReturn) {
+                html += `<button type="button" class="itinerary-day-add" data-action="day-edit" data-day="${day}">📝 Programma del giorno</button>`;
+            }
+            dayStops.forEach(stop => {
+                if (form && form.id === stop.id) { html += formHtml(); return; }
+                html += `<div class="itinerary-stop">
+                    <span class="itinerary-time">${esc(stop.time) || '—'}</span>
+                    <div class="itinerary-body">
+                        <div class="itinerary-place">📍 ${esc(stop.place)}${stop.cost ? ` <span class="itinerary-stop-cost">💶 ${esc(this.formatStopCost(stop.cost))}</span>` : ''}</div>
+                        ${stop.note ? `<div class="itinerary-note">${esc(stop.note)}</div>` : ''}
+                        <div class="itinerary-by">aggiunta da ${esc(this.getParticipantName(stop.by))}</div>
+                    </div>
+                    ${canEdit ? `<div class="itinerary-actions">
+                        <button type="button" data-action="edit" data-day="${day}" data-id="${esc(stop.id)}" title="Modifica tappa">✏️</button>
+                        <button type="button" data-action="delete" data-id="${esc(stop.id)}" title="Togli tappa">🗑️</button>
+                    </div>` : ''}
+                </div>`;
+            });
+            if (!dayStops.length && !(form && !form.id && form.day === day)) html += '<div class="itinerary-empty">Nessuna tappa</div>';
+            if (form && !form.id && form.day === day) html += formHtml();
+            else if (canEdit && !afterReturn) html += `<button type="button" class="itinerary-add" data-action="add" data-day="${day}">➕ Tappa</button>`;
+            html += '</div>';
+        }
+        box.innerHTML = html;
+    }
+
+    openItineraryForm(day, stopId = null) {
+        const stop = stopId ? (this.itinerary || {})[stopId] : null;
+        if (stopId && !stop) return;
+        this.itineraryDayForm = null; // un modulo alla volta
+        this.itineraryForm = {
+            day, id: stopId, time: stop ? stop.time || '' : '', place: stop ? stop.place || '' : '', note: stop ? stop.note || '' : '',
+            cost: stop && stop.cost ? (Number.isInteger(stop.cost) ? String(stop.cost) : stop.cost.toFixed(2).replace('.', ',')) : '', error: ''
+        };
+        document.querySelectorAll('#itineraryDays .itinerary-form').forEach(el => el.remove()); // non ricopiare i moduli vecchi
+        this.renderItinerary();
+        const place = document.querySelector('#itineraryDays .itinerary-place-input');
+        if (place) place.focus();
+    }
+
+    async saveItineraryStop() {
+        const event = this.getEditingEvent();
+        const form = this.itineraryForm;
+        if (!event || !form || !this.canEditItinerary(event)) return;
+        this.captureItineraryForm();
+        const place = form.place.trim();
+        const cost = this.checkCost(form.cost);
+        if (!place || cost.error) {
+            form.error = !place ? 'Scrivi dove: è l\'unico campo obbligatorio' : `Costo: ${cost.error.replace('vuoto = da definire', 'vuoto = nessun costo')}`;
+            this.renderItinerary();
+            const input = document.querySelector(`#itineraryDays ${!place ? '.itinerary-place-input' : '.itinerary-cost-input'}`);
+            if (input) { input.classList.add('field-error'); input.focus(); }
+            return;
+        }
+        const old = form.id ? (this.itinerary || {})[form.id] : null;
+        const stop = {
+            day: form.day, time: (form.time || '').slice(0, 5), place: place.slice(0, 100), note: (form.note || '').trim().slice(0, 200),
+            by: old && old.by ? old.by : this.userId, at: Date.now()
+        };
+        if (cost.value) stop.cost = cost.value;
+        const ref = form.id ? database.ref(`itineraries/${event.id}/${form.id}`) : database.ref(`itineraries/${event.id}`).push();
+        this.itineraryForm = null;
+        this.renderItinerary();
+        await ref.set(stop).catch(error => this.notifyWriteError('Salvataggio della tappa', error));
+    }
+
+    // Programma del giorno: cosa si fa, spostamento e notte (li scrive chi può scrivere l'itinerario; tutto vuoto = si cancella)
+    openItineraryDayForm(day) {
+        const info = (this.itineraryDays || {})[day] || {};
+        this.itineraryForm = null; // un modulo alla volta
+        this.itineraryDayForm = { day, plan: info.plan || '', sleep: info.sleep || '', travel: info.travel || '' };
+        document.querySelectorAll('#itineraryDays .itinerary-form').forEach(el => el.remove());
+        this.renderItinerary();
+        const input = document.querySelector('#itineraryDays .itinerary-plan-input');
+        if (input) input.focus();
+    }
+
+    async saveItineraryDay() {
+        const event = this.getEditingEvent();
+        const form = this.itineraryDayForm;
+        if (!event || !form || !this.canEditItinerary(event)) return;
+        this.captureItineraryForm();
+        const plan = (form.plan || '').trim().slice(0, 500);
+        const sleep = (form.sleep || '').trim().slice(0, 100);
+        const travel = (form.travel || '').trim().slice(0, 100);
+        const ref = database.ref(`itineraryDays/${event.id}/${form.day}`);
+        this.itineraryDayForm = null;
+        this.renderItinerary();
+        const write = plan || sleep || travel ? ref.set({ plan, sleep, travel, by: this.userId, at: Date.now() }) : ref.remove();
+        await write.catch(error => this.notifyWriteError('Salvataggio del programma del giorno', error));
+    }
+
+    async deleteItineraryStop(stopId) {
+        const event = this.getEditingEvent();
+        if (!event || !this.canEditItinerary(event)) return;
+        const ok = await this.showConfirmDialog('Togliere questa tappa dall\'itinerario?', '🗑️ Togli');
+        if (!ok) return;
+        database.ref(`itineraries/${event.id}/${stopId}`).remove()
+            .catch(error => this.notifyWriteError('Eliminazione della tappa', error));
     }
 
     // Telefono: stesso limite del foglio di stile (style-mobile.css fino a 768px)
@@ -1943,12 +2578,21 @@ class BacheaCalendar {
 
         const notes = this.sortByTime((this.notes[dateKey] || []).filter(note => this.isColorVisible(note.color)));
         list.innerHTML = '';
-        notes.forEach(note => {
+        const hasTrips = notes.some(note => this.isTrip(note));
+        const hasEvents = notes.some(note => !this.isTrip(note));
+        notes.forEach((note, index) => {
+            // Titoli "✈️ Viaggi" ed "📌 Eventi" quando nel giorno ci sono tutti e due
+            if (hasTrips && hasEvents && (index === 0 || this.isTrip(notes[index - 1]) !== this.isTrip(note))) {
+                const heading = document.createElement('p');
+                heading.className = 'day-modal-section';
+                heading.textContent = this.isTrip(note) ? '✈️ Viaggi' : '📌 Eventi';
+                list.appendChild(heading);
+            }
             const item = document.createElement('div');
             item.className = `day-modal-item note ${note.color}`;
             if (isPastDay) item.classList.add('past-event');
             item.innerHTML = `
-                <span class="day-modal-time">${this.escapeHtml(note.time || '—')}</span>
+                <span class="day-modal-time">${this.isTrip(note) ? '✈️' : this.escapeHtml(note.time || '—')}</span>
                 <span class="day-modal-title">${this.escapeHtml(note.title)}</span>
                 <span class="note-badge" style="background: #f44336; color: white; border-radius: 50%; min-width: 20px; height: 20px; display: none; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: bold;"></span>`;
             if (!isPastDay) {
@@ -2012,6 +2656,13 @@ class BacheaCalendar {
         const dateInput = document.getElementById('eventDate');
         dateInput.value = this.getDateKey(date);
         dateInput.min = this.getTomorrowKey();
+        // Campi del viaggio vuoti, partenza = giorno scelto; si parte sempre da 📌 Evento
+        ['tripTitle', 'tripOrigin', 'tripDestination', 'tripEndDate', 'tripCost', 'tripMax', 'tripNeeds'].forEach(id => { document.getElementById(id).value = ''; });
+        const tripDateInput = document.getElementById('tripDate');
+        tripDateInput.value = this.getDateKey(date);
+        tripDateInput.min = this.getTomorrowKey();
+        delete document.getElementById('eventCoverContainerAdd').dataset.eventImage;
+        this.setEventType('event');
 
         // Seleziona il colore neutro di default
         document.querySelector('input[name="eventColor"][data-color="color-neutral"]').checked = true;
@@ -2135,9 +2786,22 @@ class BacheaCalendar {
         }
         const isParticipant = this.editParticipantsList.includes(this.userId);
         btn.style.display = isParticipant ? 'none' : 'block';
+        // Viaggi con posti limitati: "3/6" e niente iscrizioni quando sono finiti
+        const event = this.getEditingEvent();
+        const full = this.isTripFull(event, this.editParticipantsList);
+        btn.disabled = full;
+        btn.textContent = full ? '🚫 Posti esauriti' : 'Voglio partecipare';
+        btn.style.opacity = full ? '0.6' : '';
+        btn.style.cursor = full ? 'default' : 'pointer';
+        const countEl = document.getElementById('participantCountDisplay');
+        if (countEl && this.isTrip(event) && event.maxParticipants) countEl.textContent = `${this.editParticipantsList.length}/${event.maxParticipants}`;
     }
 
     addCurrentUserToParticipants() {
+        if (!this.editParticipantsList.includes(this.userId) && this.isTripFull(this.getEditingEvent(), this.editParticipantsList)) {
+            this.showErrorPopup('Posti esauriti: il viaggio ha già raggiunto il numero massimo di partecipanti');
+            return;
+        }
         if (!this.editParticipantsList.includes(this.userId)) {
             this.editParticipantsList.push(this.userId);
 
@@ -2550,7 +3214,8 @@ class BacheaCalendar {
             'color-blue': ['#42a5f5', '#1565c0'],
             'color-purple': ['#26a69a', '#00695c'], // Concerti (verde acqua)
             'color-teal': ['#b71c1c', '#7f0000'],   // Teatro (rosso sipario)
-            'color-orange': ['#fb8c00', '#e64a19']
+            'color-orange': ['#fb8c00', '#e64a19'],
+            'color-trip': ['#3f51b5', '#1a237e']    // Viaggi (0.7.0)
         };
         const [from, to] = themes[color] || themes['color-neutral'];
         const content = document.querySelector(`#${modalId} .modal-content`);
@@ -2575,6 +3240,7 @@ class BacheaCalendar {
 
     async addNote(e) {
         e.preventDefault();
+        if (this.addEventType === 'trip') return this.addTrip(); // il viaggio ha i suoi campi
         const title = document.getElementById('eventTitle').value.trim();
         const dateKey = document.getElementById('eventDate').value || (this.selectedDate ? this.getDateKey(this.selectedDate) : '');
 
@@ -2637,12 +3303,17 @@ class BacheaCalendar {
     // Elimina l'evento con chat, letture chat e immagine, in un'unica scrittura
     deleteNote(eventId) {
         if (!eventId) return Promise.resolve();
-        return database.ref().update({
+        const updates = {
             [`events/${eventId}`]: null,
             [`eventChats/${eventId}`]: null,
             [`chatReadStatus/${this.userId}/${eventId}`]: null,
             [`eventImages/${eventId}`]: null
-        }).catch(error => {
+        };
+        if (this.isTrip(this.events[eventId])) {
+            updates[`itineraries/${eventId}`] = null;
+            updates[`itineraryDays/${eventId}`] = null;
+        }
+        return database.ref().update(updates).catch(error => {
             this.notifyWriteError('Eliminazione dell\'evento', error);
         });
     }
@@ -2738,6 +3409,12 @@ class BacheaCalendar {
 
     // Mostra la copertina nel modal di modifica, se l'evento aperto è ancora lo stesso
     showEditCover(note) {
+        if (this.isTrip(note)) { // copertina fissa dei viaggi
+            const coverContainer = document.getElementById('eventCoverContainer');
+            coverContainer.style.backgroundImage = `url("${BacheaCalendar.TRIP_IMAGE}")`;
+            coverContainer.style.backgroundAttachment = 'scroll';
+            return;
+        }
         this.getEventImage(note).then(image => {
             const current = this.getEditingEvent();
             if (!current || current.id !== note.id) return;
@@ -2749,7 +3426,9 @@ class BacheaCalendar {
     }
 
     // Drag and Drop
-    setupDragAndDrop(noteEl, dateKey, eventId, dayObj) {
+    setupDragAndDrop(noteEl, dateKeyOrFn, eventId, dayObj) {
+        // dateKeyOrFn: il giorno da cui si trascina, oppure una funzione che lo calcola (striscia dei viaggi)
+        const sourceKey = () => (typeof dateKeyOrFn === 'function' ? dateKeyOrFn() : dateKeyOrFn);
         let isDragging = false;
         let dragStartX = 0;
         let dragStartY = 0;
@@ -2769,7 +3448,7 @@ class BacheaCalendar {
 
             if ((moveX > dragThreshold || moveY > dragThreshold) && !isDragging) {
                 isDragging = true;
-                this.startDrag(noteEl, dateKey, eventId, dayObj);
+                this.startDrag(noteEl, sourceKey(), eventId, dayObj);
             }
         });
 
@@ -2808,7 +3487,7 @@ class BacheaCalendar {
             longPressTimer = setTimeout(() => {
                 longPressTimer = null;
                 if (navigator.vibrate) navigator.vibrate(30);
-                this.startTouchDrag(noteEl, dateKey, eventId, touchStartX, touchStartY);
+                this.startTouchDrag(noteEl, sourceKey(), eventId, touchStartX, touchStartY);
             }, longPressDelay);
         }, { passive: true });
 
@@ -2882,7 +3561,7 @@ class BacheaCalendar {
 
             if (drop) {
                 const targetDay = findDayAt(lastX, lastY);
-                if (targetDay) this.dropEvent(targetDay, eventId);
+                if (targetDay) this.dropEvent(targetDay, eventId, sourceDateKey);
             }
         };
         const handleTouchEnd = () => finish(true);
@@ -2943,7 +3622,7 @@ class BacheaCalendar {
             });
 
             if (mouseOverDay) {
-                this.dropEvent(mouseOverDay, eventId);
+                this.dropEvent(mouseOverDay, eventId, sourceDateKey);
             }
         };
 
@@ -2951,23 +3630,25 @@ class BacheaCalendar {
         document.addEventListener('mouseup', handleMouseUp);
     }
 
-    dropEvent(targetDayEl, eventId) {
+    dropEvent(targetDayEl, eventId, sourceDateKey = null) {
         // Estrai la data dal giorno target (dall'ID del contenitore)
         const notesContainer = targetDayEl.querySelector('[id^="notes-"]');
         if (!notesContainer) return;
 
         const targetDateKey = notesContainer.id.replace('notes-', '');
 
-        if (this.moveEvent(eventId, targetDateKey)) {
-            this.showSuccessPopup('Evento spostato con successo!');
+        if (this.moveEvent(eventId, targetDateKey, sourceDateKey)) {
+            this.showSuccessPopup(this.isTrip(this.events[eventId]) ? 'Viaggio spostato con successo!' : 'Evento spostato con successo!');
         }
     }
 
     // Sposta un evento in un altro giorno (drag & drop o campo Data del modal).
     // Cambia solo il campo date: chat, immagine e partecipanti restano collegati.
-    moveEvent(eventId, targetDateKey) {
+    // Un viaggio si sposta tutto: partenza e ritorno di quanti giorni si è trascinato (da qualsiasi suo giorno)
+    moveEvent(eventId, targetDateKey, sourceDateKey = null) {
         const event = this.events[eventId];
-        if (!event || event.date === targetDateKey) {
+        const from = sourceDateKey || (event && event.date);
+        if (!event || from === targetDateKey) {
             return false; // Evento sparito o stesso giorno
         }
         if (!this.canEditEvent(event)) {
@@ -2975,19 +3656,25 @@ class BacheaCalendar {
             return false;
         }
 
+        const trip = this.isTrip(event);
+        const newStart = trip ? this.addDaysToKey(event.date, this.daysBetweenKeys(from, targetDateKey)) : targetDateKey;
         // Non puoi spostare su giorni passati o oggi
-        if (!this.isFutureDateKey(targetDateKey)) {
-            this.showErrorPopup('Non puoi spostare su giorni passati o di oggi');
+        if (!this.isFutureDateKey(newStart)) {
+            this.showErrorPopup(trip ? 'La partenza del viaggio deve essere da domani in poi' : 'Non puoi spostare su giorni passati o di oggi');
             return false;
         }
 
-        this.updateEvent(eventId, { date: targetDateKey });
+        const fields = { date: newStart };
+        if (trip) fields.endDate = this.addDaysToKey(newStart, this.daysBetweenKeys(event.date, event.endDate));
+        this.updateEvent(eventId, fields);
         return true;
     }
 
     // Ordina eventi per orario
     sortByTime(events) {
         return events.sort((a, b) => {
+            const tripOrder = (this.isTrip(b) ? 1 : 0) - (this.isTrip(a) ? 1 : 0); // i viaggi in cima al giorno
+            if (tripOrder) return tripOrder;
             const timeA = this.extractHours(a.time);
             const timeB = this.extractHours(b.time);
             return timeA - timeB;
@@ -3239,7 +3926,9 @@ class BacheaCalendar {
         // Filtra: mostra solo eventi di oggi e futuri (nasconde eventi passati)
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const futureEvents = allEvents.filter(event => event.date >= today);
+        const todayKey = this.getDateKey(today);
+        // (qui date è un oggetto Date: per i viaggi si guarda l'evento originale)
+        const futureEvents = allEvents.filter(event => event.date >= today || this.getEventEndKey(this.events[event.id]) >= todayKey);
 
         // Filtra per colore visibile
         const visibleEvents = futureEvents.filter(event => this.isColorVisible(event.color));
@@ -3277,6 +3966,7 @@ class BacheaCalendar {
 
             const eventEl = document.createElement('div');
             eventEl.className = `event-item ${event.color}`;
+            const isTripItem = this.isTrip(this.events[event.id]); // (qui date è un oggetto Date)
 
             const participantIds = this.getParticipantIds(event);
             this.ensureUserNames(participantIds);
@@ -3289,21 +3979,26 @@ class BacheaCalendar {
             eventEl.innerHTML = `
                 <div class="event-cover" style="position: relative; background-size: cover; background-position: center;">
                     <div style="position: relative; z-index: 10; padding: 16px; background: rgba(255, 255, 255, 0.95);">
-                        <div class="event-date">${dateStr.charAt(0).toUpperCase() + dateStr.slice(1)}</div>
+                        <div class="event-date">${isTripItem ? `✈️ ${this.escapeHtml(this.formatTripRange(this.events[event.id]))}` : dateStr.charAt(0).toUpperCase() + dateStr.slice(1)}</div>
                         <div class="event-title">${this.escapeHtml(event.title)}</div>
+                        ${isTripItem ? `
+                        ${this.formatTripPlaces(event) ? `<div class="event-location">📍 ${this.escapeHtml(this.formatTripPlaces(event))}</div>` : ''}
+                        <div class="event-location">💶 Budget: ${this.formatCost(event.cost)}${event.cost ? ' a persona' : ''}</div>
+                        <div class="event-location">👥 ${event.maxParticipants ? `${participantIds.length} su ${event.maxParticipants} posti` : 'Aperto a chiunque'}</div>
+                        ${event.notes ? `<div class="event-notes">🎒 ${this.escapeHtml(event.notes).replace(/\n/g, '<br>')}</div>` : ''}` : `
                         ${event.time ? `<div class="event-time">🕐 ${this.escapeHtml(event.time)}</div>` : ''}
                         ${event.location ? `<div class="event-location">📍 ${this.escapeHtml(event.location)}</div>` : ''}
                         <div class="event-location">💶 ${this.formatFee(event.fee)}</div>
-                        ${event.notes ? `<div class="event-notes">${this.escapeHtml(event.notes).replace(/\n/g, '<br>')}</div>` : ''}
+                        ${event.notes ? `<div class="event-notes">${this.escapeHtml(event.notes).replace(/\n/g, '<br>')}</div>` : ''}`}
                         ${participantsHtml}
                     </div>
                     <span class="list-event-badge" style="position: absolute; top: 10px; right: 10px; background: #f44336; color: white; border-radius: 50%; width: 24px; height: 24px; display: none; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; z-index: 11;"></span>
                 </div>
             `;
 
-            // Copertina caricata a parte (da eventImages)
-            if (event.imageVersion) {
-                this.getEventImage(event).then(image => {
+            // Copertina caricata a parte (da eventImages); i viaggi hanno quella fissa dell'aereo
+            if (isTripItem || event.imageVersion) {
+                (isTripItem ? Promise.resolve(BacheaCalendar.TRIP_IMAGE) : this.getEventImage(event)).then(image => {
                     if (!image) return;
                     const cover = eventEl.querySelector('.event-cover');
                     cover.style.backgroundImage = `url("${image}")`;
@@ -3588,7 +4283,7 @@ class BacheaCalendar {
             if (!event || !event.id) return;
             events[event.id] = {
                 t: event.title || '', d: event.date || '', h: event.time || '', l: event.location || '',
-                c: event.creatorId || '', p: this.getParticipantIds(event)
+                e: this.isTrip(event) ? event.endDate : '', c: event.creatorId || '', p: this.getParticipantIds(event)
             };
         });
         const proposals = {};
@@ -3636,7 +4331,7 @@ class BacheaCalendar {
                         add('proposals', { eventId: id, title: `📅 Data fissata: ${now.t}`, body: `${this.formatDateKey(now.d)}${now.h ? ' · ' + now.h : ''}` });
                     }
                 } else if (now.c !== me && now.d >= today) {
-                    add('newEvents', { eventId: id, title: `🆕 Nuovo evento: ${now.t}`, body: `${this.formatDateKey(now.d)}${now.l ? ' · ' + now.l : ''} · da ${this.getParticipantName(now.c)}` });
+                    add('newEvents', { eventId: id, title: now.e ? `✈️ Nuovo viaggio: ${now.t}` : `🆕 Nuovo evento: ${now.t}`, body: `${now.e ? this.formatTripRange({ date: now.d, endDate: now.e }) : this.formatDateKey(now.d)}${now.l ? ' · ' + now.l : ''} · da ${this.getParticipantName(now.c)}` });
                 }
                 return;
             }
@@ -3649,8 +4344,8 @@ class BacheaCalendar {
             }
             // Modifiche agli eventi a cui partecipo (le fa solo il creatore)
             if (now.p.includes(me)) {
-                if (now.d !== before.d) {
-                    add('changes', { eventId: id, title: `📅 Evento spostato: ${now.t}`, body: `Ora è ${this.formatDateKey(now.d)}${now.h ? ' · ' + now.h : ''}` });
+                if (now.d !== before.d || (now.e || '') !== (before.e || '')) {
+                    add('changes', { eventId: id, title: `📅 ${now.e ? 'Viaggio' : 'Evento'} spostato: ${now.t}`, body: now.e ? this.formatTripRange({ date: now.d, endDate: now.e }) : `Ora è ${this.formatDateKey(now.d)}${now.h ? ' · ' + now.h : ''}` });
                 } else if (now.h !== before.h || now.l !== before.l || now.t !== before.t) {
                     const what = [now.t !== before.t && 'nome', now.h !== before.h && 'ora', now.l !== before.l && 'luogo'].filter(Boolean).join(', ');
                     add('changes', { eventId: id, title: `✏️ Evento modificato: ${now.t}`, body: `Cambiato: ${what}` });
@@ -4498,8 +5193,10 @@ class BacheaCalendar {
         const index = {};
         Object.values(this.events).forEach(event => {
             if (!event || !event.id || !event.date) return;
-            if (!index[event.date]) index[event.date] = [];
-            index[event.date].push(event);
+            this.getEventDayKeys(event).forEach(key => {
+                if (!index[key]) index[key] = [];
+                index[key].push(event);
+            });
         });
         Object.values(index).forEach(dayEvents => this.sortByTime(dayEvents));
         this.notes = index;
@@ -4963,7 +5660,8 @@ class BacheaCalendar {
     applyEditPermissions(event) {
         const canEdit = this.canEditEvent(event);
         this.canEditCurrentEvent = canEdit;
-        ['editTitle', 'editDate', 'editTime', 'editLocation', 'editFee', 'editNotes', 'editCategoryCurrent'].forEach(id => {
+        ['editTitle', 'editDate', 'editTime', 'editLocation', 'editFee', 'editNotes', 'editCategoryCurrent',
+            'editTripTitle', 'editTripOrigin', 'editTripDestination', 'editTripDate', 'editTripEndDate', 'editTripCost', 'editTripMax', 'editTripNeeds'].forEach(id => {
             document.getElementById(id).disabled = !canEdit;
         });
         const show = (id, visible, display = 'inline-block') => {
@@ -5002,12 +5700,16 @@ class BacheaCalendar {
             updates[`eventChats/${id}`] = null;
             updates[`chatReadStatus/${this.userId}/${id}`] = null;
             updates[`eventImages/${id}`] = null;
+            if (this.isTrip(this.events[id])) {
+                updates[`itineraries/${id}`] = null;
+                updates[`itineraryDays/${id}`] = null;
+            }
         };
 
         try {
             const updates = {};
             Object.values(this.events).forEach(event => {
-                if (event && event.id && event.date && event.date < firstOfMonth && event.creatorId && event.creatorId === this.userId) { // solo i propri, anche per l'admin
+                if (event && event.id && event.date && this.getEventEndKey(event) < firstOfMonth && event.creatorId && event.creatorId === this.userId) { // solo i propri, anche per l'admin (i viaggi dal ritorno)
                     removeEvent(updates, event.id);
                 }
             });
@@ -5188,6 +5890,8 @@ class BacheaCalendar {
         this.renderEditLink(note.link);
         this.showEditCover(note);
         this.applyEditPermissions(note);
+        this.applyTripLook(note);
+        this.updateItineraryTab(note); // partecipanti cambiati: chi può scrivere l'itinerario
     }
 
     openEditModal(eventId) {
@@ -5203,6 +5907,8 @@ class BacheaCalendar {
         this.editOriginal = JSON.parse(JSON.stringify(note)); // com'era l'evento all'apertura del modulo
         document.getElementById('editTitle').value = note.title || '';
         this.setEditDateField(note.date);
+        this.fillEditTripFields(note);
+        this.updateItineraryTab(note);
         document.getElementById('editTime').value = note.time || '';
         document.getElementById('editLocation').value = note.location || '';
         document.getElementById('editNotes').value = note.notes || '';
@@ -5252,6 +5958,7 @@ class BacheaCalendar {
         this.updateChatInputVisibility(this.editParticipantsList);
 
         this.applyEditPermissions(note);
+        this.applyTripLook(note);
 
         document.getElementById('editModal').classList.add('active');
         document.getElementById('editModal').style.display = 'flex';
@@ -5500,6 +6207,8 @@ class BacheaCalendar {
             database.ref(`eventChats/${this.editingNote.id}/messages`).off('value', this.chatListener);
             this.chatListener = null;
         }
+        this.stopItinerary();
+        document.getElementById('editItineraryTabBtn').style.display = 'none';
 
         // Pulisci i campi del form
         document.getElementById('editTitle').value = '';
@@ -5563,6 +6272,7 @@ class BacheaCalendar {
     async saveEditedNote() {
         const current = this.getEditingEvent();
         if (!current || !this.canEditEvent(current)) return;
+        if (this.isTrip(current)) return this.saveEditedTrip(current); // il viaggio ha i suoi campi
 
         const title = document.getElementById('editTitle').value.trim();
         const dateKey = current.date;
@@ -5651,6 +6361,7 @@ class BacheaCalendar {
         document.getElementById('proposalEditBtn').addEventListener('click', () => this.openProposalEdit());
         document.getElementById('proposalCloseBtn').addEventListener('click', () => this.closeProposalModal());
         document.getElementById('proposalAddDateBtn').addEventListener('click', () => this.addProposalDate());
+        document.getElementById('proposalAddTripDateBtn').addEventListener('click', () => this.addProposalDate());
         document.getElementById('proposalDeleteBtn').addEventListener('click', () => this.deleteProposal());
 
         // Schede Date / Chat
@@ -5726,12 +6437,14 @@ class BacheaCalendar {
 
     parseProposalOptionKey(key) {
         const date = key.slice(0, 10);
+        if (key.charAt(10) === '~') return { date, time: '', endDate: key.slice(11, 21) }; // periodo di un viaggio
         const time = key.length >= 15 ? `${key.slice(11, 13)}:${key.slice(13, 15)}` : '';
         return { date, time };
     }
 
     formatProposalOption(key, short = false) {
-        const { date, time } = this.parseProposalOptionKey(key);
+        const { date, time, endDate } = this.parseProposalOptionKey(key);
+        if (endDate) return this.formatTripRange({ date, endDate });
         return this.formatDateKey(date, short) + (time ? ` · 🕐 ${time}` : '');
     }
 
@@ -5808,8 +6521,28 @@ class BacheaCalendar {
         newBtn.style.cssText = 'padding: 8px 12px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;';
         newBtn.textContent = '➕ Evento senza data';
         newBtn.addEventListener('click', () => this.openProposalCreate());
+        const newTripBtn = document.createElement('button');
+        newTripBtn.type = 'button';
+        newTripBtn.style.cssText = 'padding: 8px 12px; background: #3949ab; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;';
+        newTripBtn.textContent = '✈️ Viaggio senza data';
+        newTripBtn.addEventListener('click', () => this.openTripProposalCreate());
+        // I due pulsanti affiancati (sul telefono occupano tutta la riga, metà ciascuno)
+        const buttons = document.createElement('div');
+        const phone = this.isPhoneLayout();
+        buttons.style.cssText = `display: flex; gap: 6px; ${phone ? 'width: 100%;' : ''}`;
+        if (phone) {
+            [newBtn, newTripBtn].forEach(btn => {
+                btn.style.flex = '1 1 0';
+                btn.style.minWidth = '0';
+                btn.style.padding = '8px 4px';
+                btn.style.fontSize = '0.78rem';
+                btn.style.whiteSpace = 'nowrap';
+            });
+        }
+        buttons.appendChild(newBtn);
+        buttons.appendChild(newTripBtn);
         header.appendChild(label);
-        header.appendChild(newBtn);
+        header.appendChild(buttons);
         box.appendChild(header);
 
         proposals.forEach(proposal => {
@@ -5817,29 +6550,31 @@ class BacheaCalendar {
             const optionsCount = Object.keys(proposal.dateOptions || {}).length;
             const voted = this.hasVotedProposal(proposal);
 
-            let summary = 'Nessuna data proposta';
+            const tripProposal = this.isTripProposal(proposal);
+            let summary = tripProposal ? 'Nessun periodo proposto' : 'Nessuna data proposta';
             const tied = this.getTopProposalOptions(proposal).length;
             if (best && tied > 1) {
-                summary = `⭐ ${tied} date a pari merito · ${best.count} ${best.count === 1 ? 'voto' : 'voti'}`;
+                summary = `⭐ ${tied} ${tripProposal ? 'periodi' : 'date'} a pari merito · ${best.count} ${best.count === 1 ? 'voto' : 'voti'}`;
             } else if (best) {
                 summary = `⭐ ${this.formatProposalOption(best.key, true)} · ${best.count} ${best.count === 1 ? 'voto' : 'voti'}`;
             } else if (optionsCount > 0) {
                 summary = 'Nessun voto ancora';
             }
             if (optionsCount > 0) {
-                summary += ` · ${optionsCount} ${optionsCount === 1 ? 'data' : 'date'}`;
+                summary += tripProposal ? ` · ${optionsCount} ${optionsCount === 1 ? 'periodo' : 'periodi'}` : ` · ${optionsCount} ${optionsCount === 1 ? 'data' : 'date'}`;
             }
 
             const categoryColors = {
                 'color-neutral': '#764ba2', 'color-yellow': '#ffd54f', 'color-pink': '#ff6b9d', 'color-green': '#81c784',
-                'color-blue': '#64b5f6', 'color-purple': '#26a69a', 'color-teal': '#b71c1c', 'color-orange': '#ffb74d'
+                'color-blue': '#64b5f6', 'color-purple': '#26a69a', 'color-teal': '#b71c1c', 'color-orange': '#ffb74d',
+                'color-trip': '#3949ab'
             };
             const card = document.createElement('div');
             card.style.cssText = `margin-top: 10px; padding: 10px 12px; background: white; border: 3px solid ${categoryColors[proposal.color] || '#999'}; border-radius: 8px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.1);`;
             card.setAttribute('data-proposal-id', proposal.id);
             card.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                    <span style="font-weight: 600; color: #333;">${this.escapeHtml(proposal.title)}</span>
+                    <span style="font-weight: 600; color: #333;">${tripProposal ? '✈️ ' : ''}${this.escapeHtml(proposal.title)}</span>
                     <span class="proposal-badge" style="display: none; background: #f44336; color: white; border-radius: 10px; padding: 2px 8px; font-size: 0.75rem; font-weight: bold; white-space: nowrap;"></span>
                 </div>
                 <div style="font-size: 0.85rem; color: #666; margin-top: 2px;">${this.escapeHtml(summary)}${voted ? ' · <span style="color: #4CAF50;">✓ hai votato</span>' : ''}</div>
@@ -5976,6 +6711,8 @@ class BacheaCalendar {
     openProposalCreate() {
         this.openProposalId = null;
         this.editingProposalId = null;
+        this.proposalFormType = 'event';
+        this.showProposalFormFields('event');
         this.proposalImageRemoved = false;
         document.getElementById('proposalFirstDateSection').style.display = 'block';
         document.getElementById('proposalSubmitBtn').textContent = 'Crea proposta';
@@ -6003,7 +6740,10 @@ class BacheaCalendar {
     openProposalEdit() {
         const proposal = this.proposals[this.openProposalId];
         if (!proposal || !this.canManageProposal(proposal)) return;
+        if (this.isTripProposal(proposal)) return this.openTripProposalEdit(proposal); // il viaggio ha i suoi campi
         const proposalId = proposal.id;
+        this.proposalFormType = 'event';
+        this.showProposalFormFields('event');
 
         this.closeProposalChat();
         this.editingProposalId = proposalId;
@@ -6085,6 +6825,7 @@ class BacheaCalendar {
 
     async createProposal(e) {
         e.preventDefault();
+        if (this.proposalFormType === 'trip') return this.createTripProposal(); // viaggio senza data
         const title = document.getElementById('proposalTitle').value.trim();
         const editing = this.proposals[this.editingProposalId] || null;
 
@@ -6174,6 +6915,11 @@ class BacheaCalendar {
         newDateInput.value = '';
         newDateInput.min = this.getTomorrowKey();
         document.getElementById('proposalNewTime').value = '';
+        // Viaggio: si propone un periodo (partenza e ritorno)
+        ['proposalNewTripDate', 'proposalNewTripEndDate'].forEach(id => {
+            document.getElementById(id).value = '';
+            document.getElementById(id).min = this.getTomorrowKey();
+        });
         this.proposalChatSeen = false;
         this.showProposalPane('proposalDatesPane');
         this.listenProposalChat(proposalId);
@@ -6186,9 +6932,29 @@ class BacheaCalendar {
         if (!proposal) return;
         this.applyCategoryTheme('proposalModal', proposal.color);
 
-        document.getElementById('proposalModalTitle').textContent = `🗳️ ${proposal.title}`;
-        this.setProposalCover(null);
-        if (proposal.imageVersion) {
+        const tripProposal = this.isTripProposal(proposal);
+        document.getElementById('proposalNewDateBlock').style.display = tripProposal ? 'none' : '';
+        document.getElementById('proposalNewTripBlock').style.display = tripProposal ? '' : 'none';
+        document.getElementById('proposalOptionsLabel').textContent = tripProposal ? '📅 Periodi proposti' : '📅 Date proposte';
+        document.querySelector('.proposal-tab[data-pane="proposalDatesPane"]').textContent = tripProposal ? '🗳️ Periodi' : '🗳️ Date';
+        if (tripProposal) {
+            document.getElementById('proposalModalTitle').textContent = `✈️ ${proposal.title}`;
+            this.setProposalCover(BacheaCalendar.TRIP_IMAGE);
+            const tripDetails = [];
+            if (this.formatTripPlaces(proposal)) tripDetails.push(`📍 ${this.escapeHtml(this.formatTripPlaces(proposal))}`);
+            tripDetails.push(
+                `🗓️ ${proposal.days ? `${proposal.days} ${proposal.days === 1 ? 'giorno' : 'giorni'}` : 'Giorni da decidere'}`,
+                `💶 Budget: ${this.formatCost(proposal.cost)}${proposal.cost ? ' a persona' : ''}`,
+                `👥 ${proposal.maxParticipants ? `Al massimo ${proposal.maxParticipants} partecipanti` : 'Aperto a chiunque'}`
+            );
+            if (proposal.notes) tripDetails.push(`🎒 ${this.escapeHtml(proposal.notes).replace(/\n/g, '<br>')}`);
+            tripDetails.push(`👤 Proposta da: ${this.escapeHtml(this.getProposalCreatorName(proposal))}`);
+            document.getElementById('proposalDetails').innerHTML = tripDetails.map(d => `<div style="margin-bottom: 4px;">${d}</div>`).join('');
+        }
+
+        document.getElementById('proposalModalTitle').textContent = tripProposal ? `✈️ ${proposal.title}` : `🗳️ ${proposal.title}`;
+        if (!tripProposal) this.setProposalCover(null);
+        if (!tripProposal && proposal.imageVersion) {
             this.getEventImage(proposal).then(image => {
                 if (this.openProposalId === proposal.id) this.setProposalCover(image);
             });
@@ -6204,7 +6970,7 @@ class BacheaCalendar {
         }
         if (proposal.notes) details.push(`📝 ${this.escapeHtml(proposal.notes).replace(/\n/g, '<br>')}`);
         details.push(`👤 Proposta da: ${this.escapeHtml(this.getProposalCreatorName(proposal))}`);
-        document.getElementById('proposalDetails').innerHTML = details.map(d => `<div style="margin-bottom: 4px;">${d}</div>`).join('');
+        if (!tripProposal) document.getElementById('proposalDetails').innerHTML = details.map(d => `<div style="margin-bottom: 4px;">${d}</div>`).join('');
 
         const isCreator = this.canManageProposal(proposal);
         document.getElementById('proposalDeleteBtn').style.display = isCreator ? 'block' : 'none';
@@ -6215,7 +6981,7 @@ class BacheaCalendar {
 
         const options = this.getProposalOptions(proposal);
         if (options.length === 0) {
-            listEl.innerHTML = '<div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; text-align: center;">Ancora nessuna data: proponine una qui sotto 👇</div>';
+            listEl.innerHTML = `<div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; text-align: center;">${tripProposal ? 'Ancora nessun periodo: proponine uno qui sotto 👇' : 'Ancora nessuna data: proponine una qui sotto 👇'}</div>`;
             return;
         }
 
@@ -6245,7 +7011,7 @@ class BacheaCalendar {
 
             const actions = row.querySelector('.proposal-option-actions');
             if (!option.isFuture) {
-                actions.innerHTML = '<span style="font-size: 0.85rem; color: #999;">⏳ Data passata</span>';
+                actions.innerHTML = `<span style="font-size: 0.85rem; color: #999;">${tripProposal ? '⏳ Periodo passato' : '⏳ Data passata'}</span>`;
             } else {
                 const voteBtn = document.createElement('button');
                 voteBtn.type = 'button';
@@ -6258,7 +7024,7 @@ class BacheaCalendar {
                     const fixBtn = document.createElement('button');
                     fixBtn.type = 'button';
                     fixBtn.style.cssText = 'flex: 1; padding: 8px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;';
-                    fixBtn.textContent = '📅 Fissa questa data';
+                    fixBtn.textContent = tripProposal ? '📅 Fissa questo periodo' : '📅 Fissa questa data';
                     fixBtn.addEventListener('click', () => this.fixProposalDate(option.key));
                     actions.appendChild(fixBtn);
                 }
@@ -6285,6 +7051,7 @@ class BacheaCalendar {
         const proposalId = this.openProposalId;
         const proposal = this.proposals[proposalId];
         if (!proposal) return;
+        if (this.isTripProposal(proposal)) return this.addTripProposalPeriod(proposal);
 
         const input = document.getElementById('proposalNewDate');
         const timeInput = document.getElementById('proposalNewTime');
@@ -6323,15 +7090,18 @@ class BacheaCalendar {
             this.showErrorPopup('Si può fissare solo una delle date più votate (tra quelle votate da chi ha creato la proposta, se ce ne sono)');
             return;
         }
-        const { date: dateKey, time: optionTime } = this.parseProposalOptionKey(optionKey);
+        const { date: dateKey, time: optionTime, endDate: optionEndDate } = this.parseProposalOptionKey(optionKey);
+        const tripProposal = this.isTripProposal(proposal);
         if (!this.isFutureDateKey(dateKey)) {
             this.showErrorPopup('Puoi fissare solo date da domani in poi');
             return;
         }
 
-        const confirmed = await this.showConfirmDialog(
-            `Fissare "${proposal.title}" per ${this.formatProposalOption(optionKey)}? ` +
-            `L'evento andrà nel calendario e chi ha votato questa data diventerà partecipante.`,
+        const confirmed = await this.showConfirmDialog(tripProposal
+            ? `Fissare il viaggio "${proposal.title}" ${this.formatProposalOption(optionKey).toLowerCase()}? ` +
+              `Il viaggio andrà nel calendario e chi ha votato questo periodo diventerà partecipante.`
+            : `Fissare "${proposal.title}" per ${this.formatProposalOption(optionKey)}? ` +
+              `L'evento andrà nel calendario e chi ha votato questa data diventerà partecipante.`,
             '📅 Fissa', '#4CAF50'
         );
         if (!confirmed) return;
@@ -6350,7 +7120,22 @@ class BacheaCalendar {
             const participants = {};
             voters.forEach(v => { if (v.deviceId) participants[v.deviceId] = true; });
 
-            const event = {
+            const event = tripProposal && optionEndDate ? {
+                id: proposalId, // Stesso id: la chat resta collegata
+                type: 'trip',
+                date: dateKey,
+                endDate: optionEndDate,
+                title: fresh.title || proposal.title,
+                origin: fresh.origin || '',
+                destination: fresh.destination || '',
+                cost: fresh.cost || 0,
+                maxParticipants: fresh.maxParticipants || 0,
+                notes: fresh.notes || '',
+                color: 'color-trip',
+                participants: participants,
+                creatorId: fresh.creatorId || this.userId,
+                createdAt: Date.now()
+            } : {
                 id: proposalId, // Stesso id: chat e immagine restano collegate
                 date: dateKey,
                 title: fresh.title || proposal.title,
@@ -6372,11 +7157,176 @@ class BacheaCalendar {
 
             // 3. La proposta non serve più
             await proposalRef.remove();
-            this.showSuccessPopup(`Data fissata! L'evento è nel calendario per ${this.formatProposalOption(optionKey)}.`);
+            this.showSuccessPopup(tripProposal
+                ? `Periodo fissato! Il viaggio è nel calendario: ${this.formatProposalOption(optionKey).toLowerCase()}.`
+                : `Data fissata! L'evento è nel calendario per ${this.formatProposalOption(optionKey)}.`);
         } catch (error) {
             this.notifyWriteError('Fissare la data', error);
             proposalRef.child('fixedDate').remove().catch(() => {});
         }
+    }
+
+    // ===== ✈️ Viaggio senza data (0.7.0) =====
+    // proposals/{id} con type: 'trip', cost, maxParticipants, notes (esigenze), color 'color-trip'.
+    // Le opzioni sono periodi: chiave "YYYY-MM-DD~YYYY-MM-DD" (partenza~ritorno) in dateOptions e votes.
+    // Fissando un periodo diventa un viaggio (events/{stesso id}) con chi l'ha votato come partecipante.
+    isTripProposal(proposal) {
+        return !!proposal && proposal.type === 'trip';
+    }
+
+    tripOptionKey(start, end) {
+        return `${start}~${end}`;
+    }
+
+    // Controllo di un periodo proposto: '' se va bene, altrimenti cosa non va
+    checkTripRange(start, end) {
+        if (!start) return 'scegli il giorno della partenza';
+        if (!end) return 'scegli il giorno del ritorno';
+        if (!this.isFutureDateKey(start)) return 'la partenza deve essere da domani in poi';
+        if (end < start) return 'il ritorno non può essere prima della partenza';
+        if (this.daysBetweenKeys(start, end) >= BacheaCalendar.MAX_TRIP_DAYS) return `un viaggio può durare al massimo ${BacheaCalendar.MAX_TRIP_DAYS} giorni`;
+        return '';
+    }
+
+    // Modulo delle proposte: campi dell'evento o del viaggio
+    showProposalFormFields(type) {
+        const trip = type === 'trip';
+        document.getElementById('proposalEventFields').style.display = trip ? 'none' : '';
+        document.getElementById('proposalTripFields').style.display = trip ? '' : 'none';
+    }
+
+    // Aspetto comune del modulo del viaggio senza data (nuovo e modifica)
+    prepareTripProposalForm(title, submitLabel) {
+        this.proposalFormType = 'trip';
+        this.showProposalFormFields('trip');
+        document.getElementById('proposalSubmitBtn').textContent = submitLabel;
+        document.getElementById('proposalImageTools').style.display = 'none'; // copertina fissa dell'aereo
+        this.setProposalCover(BacheaCalendar.TRIP_IMAGE);
+        this.applyCategoryTheme('proposalModal', 'color-trip');
+        document.getElementById('proposalModalTitle').textContent = title;
+        document.getElementById('proposalCreateForm').style.display = 'block';
+        document.getElementById('proposalViewSection').style.display = 'none';
+    }
+
+    openTripProposalCreate() {
+        this.openProposalId = null;
+        this.editingProposalId = null;
+        ['proposalTripTitle', 'proposalTripOrigin', 'proposalTripDestination', 'proposalTripDays', 'proposalTripCost', 'proposalTripMax',
+            'proposalTripNeeds', 'proposalTripFirstDate', 'proposalTripFirstEndDate'].forEach(id => {
+            document.getElementById(id).value = '';
+        });
+        this.updateTripDaysHint('proposalTripFirst');
+        document.getElementById('proposalTripFirstDate').min = this.getTomorrowKey();
+        document.getElementById('proposalTripFirstEndDate').min = this.getTomorrowKey();
+        delete document.getElementById('proposalTripFirstDate').dataset.previous;
+        document.getElementById('proposalTripFirstSection').style.display = 'block';
+        this.prepareTripProposalForm('✈️ Nuovo viaggio senza data', 'Crea proposta');
+        this.showProposalModal();
+        document.getElementById('proposalTripTitle').focus();
+    }
+
+    openTripProposalEdit(proposal) {
+        this.closeProposalChat();
+        this.editingProposalId = proposal.id;
+        this.proposalEditOriginal = JSON.parse(JSON.stringify(proposal));
+        document.getElementById('proposalTripTitle').value = proposal.title || '';
+        document.getElementById('proposalTripOrigin').value = proposal.origin || '';
+        document.getElementById('proposalTripDestination').value = proposal.destination || '';
+        document.getElementById('proposalTripDays').value = proposal.days ? proposal.days : '';
+        document.getElementById('proposalTripCost').value = proposal.cost ? (Number.isInteger(proposal.cost) ? String(proposal.cost) : proposal.cost.toFixed(2).replace('.', ',')) : '';
+        document.getElementById('proposalTripMax').value = proposal.maxParticipants ? proposal.maxParticipants : '';
+        document.getElementById('proposalTripNeeds').value = proposal.notes || '';
+        document.getElementById('proposalTripFirstSection').style.display = 'none'; // i periodi si propongono dal dettaglio
+        this.prepareTripProposalForm('✏️ Modifica proposta', 'Salva');
+        document.getElementById('proposalTripTitle').focus();
+    }
+
+    async createTripProposal() {
+        const editing = this.proposals[this.editingProposalId] || null;
+        const value = id => document.getElementById(id).value;
+        const required = [];
+        const optional = [];
+        const title = value('proposalTripTitle').trim();
+        if (!title) required.push({ id: 'proposalTripTitle', label: 'Nome del viaggio', message: 'è vuoto: scrivi come si chiama il viaggio' });
+        const days = this.checkTripDays(value('proposalTripDays'));
+        if (days.error) optional.push({ id: 'proposalTripDays', label: 'Numero di giorni', message: days.error, without: editing ? 'cambiare i giorni (restano quelli di prima)' : 'numero di giorni (da decidere)' });
+        const cost = this.checkCost(value('proposalTripCost'));
+        if (cost.error) optional.push({ id: 'proposalTripCost', label: 'Budget a persona', message: cost.error, without: editing ? 'cambiare il budget (resta quello di prima)' : 'budget (sarà da definire)' });
+        const max = this.checkMaxParticipants(value('proposalTripMax'));
+        if (max.error) optional.push({ id: 'proposalTripMax', label: 'Max. partecipanti', message: max.error, without: editing ? 'cambiare il massimo (resta quello di prima)' : 'massimo (potrà partecipare chiunque)' });
+        let start = editing ? '' : value('proposalTripFirstDate');
+        let end = editing ? '' : value('proposalTripFirstEndDate');
+        const rangeProblem = (start || end) ? this.checkTripRange(start, end) : '';
+        if (rangeProblem) {
+            const id = !start || rangeProblem.includes('partenza') ? 'proposalTripFirstDate' : 'proposalTripFirstEndDate';
+            optional.push({ id, label: 'Primo periodo', message: rangeProblem, without: 'il primo periodo (si può proporre dopo)' });
+        }
+        if (!await this.checkFormFields(required, optional, editing ? 'salvare' : 'creare la proposta')) return;
+        if (rangeProblem) start = end = '';
+
+        const fields = {
+            title,
+            origin: value('proposalTripOrigin').trim(),
+            destination: value('proposalTripDestination').trim(),
+            days: days.error ? ((editing && editing.days) || 0) : days.value,
+            cost: cost.error ? ((editing && editing.cost) || 0) : cost.value,
+            maxParticipants: max.error ? ((editing && editing.maxParticipants) || 0) : max.value,
+            notes: value('proposalTripNeeds').trim() // Esigenze specifiche
+        };
+
+        if (editing) {
+            const proposalId = editing.id;
+            const changed = this.keepChangedFields(fields, this.proposalEditOriginal, { cost: 0, maxParticipants: 0, days: 0 });
+            const done = () => { this.editingProposalId = null; this.openProposalView(proposalId); };
+            if (!Object.keys(changed).length) { done(); return; }
+            database.ref(`proposals/${proposalId}`).update(changed)
+                .then(() => { done(); this.showSuccessPopup('Proposta modificata'); })
+                .catch(error => this.notifyWriteError('Salvataggio della proposta', error));
+            return;
+        }
+
+        const id = 'evt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        const proposal = Object.assign({ id, type: 'trip', color: 'color-trip' }, fields, {
+            creatorId: this.userId,
+            creatorName: (this.userName || '').slice(0, 10),
+            createdAt: Date.now()
+        });
+        // Chi crea non vota in automatico: magari non può esserci
+        if (start && end) {
+            proposal.dateOptions = { [this.tripOptionKey(start, end)]: { addedBy: this.userName || '', addedById: this.userId, createdAt: Date.now() } };
+        }
+        database.ref(`proposals/${id}`).set(proposal)
+            .then(() => {
+                this.recordStat('proposalsCreated');
+                this.openProposalView(id);
+                this.showSuccessPopup('Proposta creata! Ora tutti possono votare i periodi.');
+            })
+            .catch(error => this.notifyWriteError('Creazione della proposta', error));
+    }
+
+    addTripProposalPeriod(proposal) {
+        const startInput = document.getElementById('proposalNewTripDate');
+        const endInput = document.getElementById('proposalNewTripEndDate');
+        const problem = this.checkTripRange(startInput.value, endInput.value);
+        if (problem) {
+            this.showErrorPopup(problem.charAt(0).toUpperCase() + problem.slice(1));
+            return;
+        }
+        const optionKey = this.tripOptionKey(startInput.value, endInput.value);
+        if (proposal.dateOptions && proposal.dateOptions[optionKey]) {
+            this.showErrorPopup('Questo periodo è già stato proposto: votalo dalla lista');
+            return;
+        }
+        // Chi propone un periodo lo vota anche (può sempre togliere il voto)
+        database.ref(`proposals/${proposal.id}`).update({
+            [`dateOptions/${optionKey}`]: { addedBy: this.userName || '', addedById: this.userId, createdAt: Date.now() },
+            [`votes/${optionKey}/${this.getVoterKey()}`]: { name: this.userName, deviceId: this.userId }
+        }).then(() => {
+            startInput.value = '';
+            endInput.value = '';
+            delete startInput.dataset.previous;
+            this.updateTripDaysHint('proposalNewTrip');
+        }).catch(error => this.notifyWriteError('Proposta del periodo', error));
     }
 
     async deleteProposal() {

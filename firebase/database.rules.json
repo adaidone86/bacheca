@@ -61,6 +61,24 @@
         "id": {
           ".validate": "newData.isString()"
         },
+        "type": {
+          ".validate": "newData.isString() && newData.val() === 'trip'"
+        },
+        "endDate": {
+          ".validate": "newData.isString() && newData.val().matches(/^\\d{4}-\\d{2}-\\d{2}$/) && newData.val() >= newData.parent().child('date').val()"
+        },
+        "cost": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 99999"
+        },
+        "maxParticipants": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 999 && newData.val() % 1 === 0"
+        },
+        "origin": {
+          ".validate": "newData.isString() && newData.val().length <= 100"
+        },
+        "destination": {
+          ".validate": "newData.isString() && newData.val().length <= 100"
+        },
         "$other": {
           ".validate": false
         }
@@ -101,7 +119,7 @@
         "dateOptions": {
           "$optionKey": {
             ".write": "(auth != null && !data.exists() && newData.exists() && newData.child('addedById').val() === auth.uid && root.child('proposals/' + $proposalId).exists()) && !root.child('blocked/' + auth.uid).exists() && (root.child('approved/' + auth.uid).val() === true || root.child('roles/' + auth.uid).val() === 'admin')",
-            ".validate": "$optionKey.matches(/^\\d{4}-\\d{2}-\\d{2}(_\\d{4})?$/) && newData.hasChildren(['addedById', 'createdAt']) && newData.child('addedBy').isString() && newData.child('addedBy').val().length <= 40 && newData.child('createdAt').isNumber()",
+            ".validate": "$optionKey.matches(/^\\d{4}-\\d{2}-\\d{2}(_\\d{4}|~\\d{4}-\\d{2}-\\d{2})?$/) && newData.hasChildren(['addedById', 'createdAt']) && newData.child('addedBy').isString() && newData.child('addedBy').val().length <= 40 && newData.child('createdAt').isNumber()",
             "$other": {
               ".validate": "$other === 'addedBy' || $other === 'addedById' || $other === 'createdAt'"
             }
@@ -109,7 +127,7 @@
         },
         "votes": {
           "$optionKey": {
-            ".validate": "$optionKey.matches(/^\\d{4}-\\d{2}-\\d{2}(_\\d{4})?$/)",
+            ".validate": "$optionKey.matches(/^\\d{4}-\\d{2}-\\d{2}(_\\d{4}|~\\d{4}-\\d{2}-\\d{2})?$/)",
             "$voter": {
               ".write": "(auth != null && auth.uid === $voter) && !root.child('blocked/' + auth.uid).exists() && (root.child('approved/' + auth.uid).val() === true || root.child('roles/' + auth.uid).val() === 'admin')",
               ".validate": "newData.child('deviceId').val() === $voter && newData.child('name').isString() && newData.child('name').val().length <= 40"
@@ -162,7 +180,31 @@
           ".validate": "newData.isString() && newData.val().length <= 10"
         },
         "fixedDate": {
-          ".validate": "newData.isString() && newData.val().length <= 20",
+          ".validate": "newData.isString() && newData.val().length <= 25",
+          ".write": "((auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid) || (auth != null && root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists() && (root.child('approved/' + auth.uid).val() === true || root.child('roles/' + auth.uid).val() === 'admin')"
+        },
+        "type": {
+          ".validate": "newData.isString() && newData.val() === 'trip'",
+          ".write": "((auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid) || (auth != null && root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists() && (root.child('approved/' + auth.uid).val() === true || root.child('roles/' + auth.uid).val() === 'admin')"
+        },
+        "cost": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 99999",
+          ".write": "((auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid) || (auth != null && root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists() && (root.child('approved/' + auth.uid).val() === true || root.child('roles/' + auth.uid).val() === 'admin')"
+        },
+        "maxParticipants": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 999 && newData.val() % 1 === 0",
+          ".write": "((auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid) || (auth != null && root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists() && (root.child('approved/' + auth.uid).val() === true || root.child('roles/' + auth.uid).val() === 'admin')"
+        },
+        "origin": {
+          ".validate": "newData.isString() && newData.val().length <= 100",
+          ".write": "((auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid) || (auth != null && root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists() && (root.child('approved/' + auth.uid).val() === true || root.child('roles/' + auth.uid).val() === 'admin')"
+        },
+        "destination": {
+          ".validate": "newData.isString() && newData.val().length <= 100",
+          ".write": "((auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid) || (auth != null && root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists() && (root.child('approved/' + auth.uid).val() === true || root.child('roles/' + auth.uid).val() === 'admin')"
+        },
+        "days": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 60 && newData.val() % 1 === 0",
           ".write": "((auth != null && root.child('proposals/' + $proposalId + '/creatorId').val() === auth.uid) || (auth != null && root.child('roles/' + auth.uid).val() === 'admin')) && !root.child('blocked/' + auth.uid).exists() && (root.child('approved/' + auth.uid).val() === true || root.child('roles/' + auth.uid).val() === 'admin')"
         },
         "$other": {
@@ -336,6 +378,68 @@
           },
           "at": {
             ".validate": "newData.isNumber()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "itineraries": {
+      ".read": "(auth != null) && !root.child('blocked/' + auth.uid).exists() && (root.child('approved/' + auth.uid).val() === true || root.child('roles/' + auth.uid).val() === 'admin')",
+      "$eventId": {
+        ".write": "auth != null && !newData.exists() && (!root.child('events/' + $eventId).exists() || root.child('events/' + $eventId + '/creatorId').val() === auth.uid || root.child('roles/' + auth.uid).val() === 'admin') && !root.child('blocked/' + auth.uid).exists() && (root.child('approved/' + auth.uid).val() === true || root.child('roles/' + auth.uid).val() === 'admin')",
+        "$stopId": {
+          ".write": "auth != null && root.child('events/' + $eventId + '/type').val() === 'trip' && (root.child('events/' + $eventId + '/participants/' + auth.uid).val() === true || root.child('events/' + $eventId + '/creatorId').val() === auth.uid || root.child('roles/' + auth.uid).val() === 'admin') && !root.child('blocked/' + auth.uid).exists() && (root.child('approved/' + auth.uid).val() === true || root.child('roles/' + auth.uid).val() === 'admin')",
+          ".validate": "newData.hasChildren(['day', 'place', 'by', 'at'])",
+          "day": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 365 && newData.val() % 1 === 0"
+          },
+          "time": {
+            ".validate": "newData.isString() && newData.val().length <= 5"
+          },
+          "place": {
+            ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100"
+          },
+          "note": {
+            ".validate": "newData.isString() && newData.val().length <= 200"
+          },
+          "by": {
+            ".validate": "newData.isString() && newData.val() === (data.exists() ? data.val() : auth.uid)"
+          },
+          "at": {
+            ".validate": "newData.isNumber()"
+          },
+          "cost": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 99999"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "itineraryDays": {
+      ".read": "(auth != null) && !root.child('blocked/' + auth.uid).exists() && (root.child('approved/' + auth.uid).val() === true || root.child('roles/' + auth.uid).val() === 'admin')",
+      "$eventId": {
+        ".write": "auth != null && !newData.exists() && (!root.child('events/' + $eventId).exists() || root.child('events/' + $eventId + '/creatorId').val() === auth.uid || root.child('roles/' + auth.uid).val() === 'admin') && !root.child('blocked/' + auth.uid).exists() && (root.child('approved/' + auth.uid).val() === true || root.child('roles/' + auth.uid).val() === 'admin')",
+        "$day": {
+          ".write": "auth != null && root.child('events/' + $eventId + '/type').val() === 'trip' && (root.child('events/' + $eventId + '/participants/' + auth.uid).val() === true || root.child('events/' + $eventId + '/creatorId').val() === auth.uid || root.child('roles/' + auth.uid).val() === 'admin') && !root.child('blocked/' + auth.uid).exists() && (root.child('approved/' + auth.uid).val() === true || root.child('roles/' + auth.uid).val() === 'admin')",
+          ".validate": "$day.matches(/^\\d{1,3}$/) && newData.hasChildren(['by', 'at'])",
+          "sleep": {
+            ".validate": "newData.isString() && newData.val().length <= 100"
+          },
+          "travel": {
+            ".validate": "newData.isString() && newData.val().length <= 100"
+          },
+          "by": {
+            ".validate": "newData.isString() && newData.val() === auth.uid"
+          },
+          "at": {
+            ".validate": "newData.isNumber()"
+          },
+          "plan": {
+            ".validate": "newData.isString() && newData.val().length <= 500"
           },
           "$other": {
             ".validate": false

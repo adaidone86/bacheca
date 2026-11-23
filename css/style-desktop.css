@@ -268,6 +268,11 @@ button {
     color: white;
 }
 
+.color-trip {
+    background: #3949ab;
+    color: white;
+}
+
 .add-note-btn {
     position: absolute;
     bottom: 8px;
@@ -758,6 +763,10 @@ footer {
 
 .event-item.color-orange {
     border-color: #ffb74d;
+}
+
+.event-item.color-trip {
+    border-color: #3949ab;
 }
 
 .empty-list {

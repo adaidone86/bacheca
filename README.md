@@ -34,6 +34,7 @@ bacheca/
 ├── rilasci/                # Novità di ogni versione per gli utenti (ℹ️ Info) + elenco
 ├── icons/                  # Icone PWA
 ├── immagini/               # Immagini statiche
+├── tests/                  # Prove su TEST (vedi "🧪 Prove")
 └── backup/                 # Esportazioni JSON degli eventi (non usate dal codice)
 ```
 
@@ -52,6 +53,23 @@ e apri `http://localhost:8000/bacheca/`.
 1. Fai il push su `main`
 2. **Impostazioni → Pages** → "Deploy from a branch" → `main`
 3. La bacheca sarà su `https://tuo-username.github.io/bacheca/`
+
+## 🧪 Prove
+
+Tutte le prove usano **solo il database di TEST** e cancellano quello che creano. Per le prove servono le credenziali
+di un account TEST con ruolo admin (per approvare gli utenti di prova):
+
+```powershell
+$env:BACHECA_ADMIN_USER='...'; $env:BACHECA_ADMIN_PASS='...'
+```
+
+| Prova | Cosa controlla | Come si lancia (dalla cartella `bacheca`) |
+|---|---|---|
+| `tests/rules_test.py` | Le regole di Firebase: ogni scrittura e lettura deve essere permessa o bloccata come previsto | `python tests/rules_test.py config.js` |
+| `tests/ui_test.html` | L'interfaccia a misura di telefono: modulo dell'evento invariato, viaggio, striscia nel calendario, finestra del giorno, lista, itinerario (programma, tappe, costi, budget), viaggio senza data, proposta di evento invariata | con `config.js` su `'TEST'`, servire la cartella superiore (`python -m http.server 8000`) e aprire `http://localhost:8000/bacheca/tests/ui_test.html`; inserire username e password di un utente di prova approvato e premere ▶ Avvia |
+| `tests/demo_data.py` | Non è una prova: crea utenti (Anna, Marco, Giulia) ed esempi di eventi, viaggi e proposte per guardare l'app a mano | `python tests/demo_data.py config.js create` · `online` · `say` · `offline` · `delete` |
+
+`tests/demo_users.json` (username e password degli utenti di prova) non va nel repository.
 
 ## 📝 Come funziona
 

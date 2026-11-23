@@ -9,3 +9,7 @@ build/
 
 # Backup del database: contengono dati personali, non vanno pubblicati su GitHub Pages
 /backup/
+
+# Utenti di prova creati da tests/demo_data.py (contengono password)
+/tests/demo_users.json
+__pycache__/

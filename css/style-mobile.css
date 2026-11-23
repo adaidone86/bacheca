@@ -189,17 +189,18 @@ button {
     display: none !important;
 }
 
+/* In alto a destra: sotto il numero del giorno passano le strisce dei viaggi */
 .day-count {
-    align-self: center;
-    margin-top: auto;
-    margin-bottom: 2px;
-    min-width: 22px;
-    height: 22px;
-    padding: 0 5px;
-    border-radius: 11px;
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    min-width: 15px;
+    height: 15px;
+    padding: 0 3px;
+    border-radius: 8px;
     background: #667eea;
     color: white;
-    font-size: 0.75rem;
+    font-size: 0.6rem;
     font-weight: 700;
     display: flex;
     align-items: center;
@@ -365,6 +366,11 @@ button {
     color: white;
 }
 
+.color-trip {
+    background: #3949ab;
+    color: white;
+}
+
 .add-note-btn {
     position: absolute;
     bottom: 2px;
@@ -465,15 +471,18 @@ button {
 
 .modal-tab {
     flex: 1;
-    padding: 10px 12px;
+    min-width: 0;
+    padding: 10px 4px;
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     color: #999;
     border-bottom: 3px solid transparent;
     transition: all 0.3s ease;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .modal-tab:hover {
@@ -860,6 +869,10 @@ footer {
 
 .event-item.color-orange {
     border-color: #ffb74d;
+}
+
+.event-item.color-trip {
+    border-color: #3949ab;
 }
 
 .empty-list {

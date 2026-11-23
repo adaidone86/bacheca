@@ -126,6 +126,7 @@ try:
           'fee': 10, 'color': 'color-teal', 'link': 'https://example.com', 'creatorId': A['uid'], 'createdAt': now}
     check('A crea un evento', 'permesso', A, 'PUT', f'events/{eid}', ev)
     eid2 = eid + 'x'
+    tid = eid + 'trip'
     check('A crea un evento a nome di B', 'bloccato', A, 'PUT', f'events/{eid2}', {**ev, 'id': eid2, 'creatorId': B['uid']})
     check('Titolo di 100 caratteri', 'permesso', A, 'PUT', f'events/{eid}/title', 'T' * 100)
     check('Titolo di 101 caratteri', 'bloccato', A, 'PUT', f'events/{eid}/title', 'T' * 101)
@@ -164,6 +165,59 @@ try:
     check('B cancella il proprio messaggio', 'bloccato', B, 'DELETE', f'eventChats/{eid}/messages/m1')
     check('A (creatore) cancella solo la chat', 'bloccato', A, 'DELETE', f'eventChats/{eid}')
     check('B cancella la chat', 'bloccato', B, 'DELETE', f'eventChats/{eid}')
+
+    # Viaggi e itinerario (0.7.0): type 'trip' + endDate; itineraries/{evento}/{tappa} scritto da partecipanti e creatore
+    trip = {'id': tid, 'type': 'trip', 'date': '2099-12-31', 'endDate': '2100-01-03', 'title': 'Viaggio di prova', 'cost': 1500.5,
+            'maxParticipants': 6, 'notes': 'documenti', 'color': 'color-trip', 'creatorId': A['uid'], 'createdAt': now}
+    check('A crea un viaggio', 'permesso', A, 'PUT', f'events/{tid}', trip)
+    check('Ritorno prima della partenza', 'bloccato', A, 'PUT', f'events/{tid}/endDate', '2099-12-30')
+    check('Ritorno in formato sbagliato', 'bloccato', A, 'PUT', f'events/{tid}/endDate', '03/01/2100')
+    check('Tipo diverso da viaggio', 'bloccato', A, 'PUT', f'events/{tid}/type', 'crociera')
+    check('Viaggio: partenza da e destinazione', 'permesso', A, 'PATCH', f'events/{tid}', {'origin': 'Roma', 'destination': 'Napoli'})
+    check('Viaggio: destinazione di 101 caratteri', 'bloccato', A, 'PUT', f'events/{tid}/destination', 'D' * 101)
+    check('Costo 99999', 'permesso', A, 'PUT', f'events/{tid}/cost', 99999)
+    check('Costo 100000', 'bloccato', A, 'PUT', f'events/{tid}/cost', 100000)
+    check('Costo negativo', 'bloccato', A, 'PUT', f'events/{tid}/cost', -1)
+    check('Massimo partecipanti 0 (illimitati)', 'permesso', A, 'PUT', f'events/{tid}/maxParticipants', 0)
+    check('Massimo partecipanti 1000', 'bloccato', A, 'PUT', f'events/{tid}/maxParticipants', 1000)
+    check('Massimo partecipanti con la virgola', 'bloccato', A, 'PUT', f'events/{tid}/maxParticipants', 2.5)
+    check('A sposta il viaggio (partenza e ritorno insieme)', 'permesso', A, 'PATCH', f'events/{tid}', {'date': '2099-12-30', 'endDate': '2100-01-02'})
+    stop = lambda u, **kw: {'day': 0, 'time': '09:00', 'place': 'Stazione', 'note': 'treno', 'by': u['uid'], 'at': now, **kw}
+    check('B (non iscritto) aggiunge una tappa', 'bloccato', B, 'PUT', f'itineraries/{tid}/s0', stop(B))
+    check('A (creatore) aggiunge una tappa', 'permesso', A, 'PUT', f'itineraries/{tid}/s1', stop(A))
+    check('B si iscrive al viaggio', 'permesso', B, 'PUT', f'events/{tid}/participants/{B["uid"]}', True)
+    check('B (iscritto) aggiunge una tappa', 'permesso', B, 'PUT', f'itineraries/{tid}/s2', stop(B, day=2, time=''))
+    check('B legge l\'itinerario', 'permesso', B, 'GET', f'itineraries/{tid}')
+    check('B aggiunge una tappa a nome di A', 'bloccato', B, 'PUT', f'itineraries/{tid}/s3', stop(A))
+    check('B modifica la tappa di A (autore invariato)', 'permesso', B, 'PUT', f'itineraries/{tid}/s1', stop(A, place='Porto'))
+    check('B si fa autore della tappa di A', 'bloccato', B, 'PUT', f'itineraries/{tid}/s1/by', B['uid'])
+    check('Tappa senza luogo', 'bloccato', B, 'PUT', f'itineraries/{tid}/s4', stop(B, place=''))
+    check('Luogo di 101 caratteri', 'bloccato', B, 'PUT', f'itineraries/{tid}/s4', stop(B, place='L' * 101))
+    check('Nota di 201 caratteri', 'bloccato', B, 'PUT', f'itineraries/{tid}/s4', stop(B, note='N' * 201))
+    check('Ora di 6 caratteri', 'bloccato', B, 'PUT', f'itineraries/{tid}/s4', stop(B, time='09:00x'))
+    check('Giorno negativo', 'bloccato', B, 'PUT', f'itineraries/{tid}/s4', stop(B, day=-1))
+    check('Giorno con la virgola', 'bloccato', B, 'PUT', f'itineraries/{tid}/s4', stop(B, day=1.5))
+    check('Tappa con campo sconosciuto', 'bloccato', B, 'PUT', f'itineraries/{tid}/s4', stop(B, hack='x'))
+    check('Tappa in un evento che non è un viaggio', 'bloccato', B, 'PUT', f'itineraries/{eid}/s1', stop(B))
+    check('Tappa con costo a persona', 'permesso', B, 'PUT', f'itineraries/{tid}/s5', stop(B, cost=25.5))
+    check('Tappa con costo negativo', 'bloccato', B, 'PUT', f'itineraries/{tid}/s6', stop(B, cost=-1))
+    day = lambda u, **kw: {'sleep': 'Hotel Mare', 'travel': 'Treno, 2 ore', 'by': u['uid'], 'at': now, **kw}
+    check('B (iscritto) scrive notte e spostamento', 'permesso', B, 'PUT', f'itineraryDays/{tid}/0', day(B))
+    check('A (creatore) corregge notte e spostamento', 'permesso', A, 'PUT', f'itineraryDays/{tid}/0', day(A, sleep='Ostello'))
+    check('Notte e spostamento a nome di un altro', 'bloccato', B, 'PUT', f'itineraryDays/{tid}/1', day(A))
+    check('Giorno con chiave non valida', 'bloccato', B, 'PUT', f'itineraryDays/{tid}/primo', day(B))
+    check('Dove si dorme di 101 caratteri', 'bloccato', B, 'PUT', f'itineraryDays/{tid}/1', day(B, sleep='S' * 101))
+    check('Cosa si fa (500 caratteri)', 'permesso', B, 'PUT', f'itineraryDays/{tid}/1', day(B, plan='P' * 500))
+    check('Cosa si fa di 501 caratteri', 'bloccato', B, 'PUT', f'itineraryDays/{tid}/2', day(B, plan='P' * 501))
+    check('Notte e spostamento con campo sconosciuto', 'bloccato', B, 'PUT', f'itineraryDays/{tid}/1', day(B, hack='x'))
+    check('Notte e spostamento in un evento che non è un viaggio', 'bloccato', B, 'PUT', f'itineraryDays/{eid}/0', day(B))
+    check('B cancella tutte le notti e gli spostamenti', 'bloccato', B, 'DELETE', f'itineraryDays/{tid}')
+    check('B toglie notte e spostamento di un giorno', 'permesso', B, 'DELETE', f'itineraryDays/{tid}/0')
+    check('B riscrive notte e spostamento', 'permesso', B, 'PUT', f'itineraryDays/{tid}/0', day(B))
+    check('B cancella tutto l\'itinerario', 'bloccato', B, 'DELETE', f'itineraries/{tid}')
+    check('B toglie una tappa', 'permesso', B, 'DELETE', f'itineraries/{tid}/s2')
+    check('A elimina il viaggio con chat e itinerario insieme', 'permesso', A, 'PATCH', '',
+          {f'events/{tid}': None, f'eventChats/{tid}': None, f'eventImages/{tid}': None, f'itineraries/{tid}': None, f'itineraryDays/{tid}': None})
 
     # Letture chat e presenza
     check('B salva la propria lettura', 'permesso', B, 'PUT', f'chatReadStatus/{B["uid"]}/{eid}', {'lastReadTimestamp': now})
@@ -204,6 +258,32 @@ try:
     check('B scrive nella chat della proposta', 'permesso', B, 'PUT', f'eventChats/{pid}/messages/p1', msg(B, 'per me va bene'))
     check('A cancella solo la chat della proposta', 'bloccato', A, 'DELETE', f'eventChats/{pid}')
     check('B elimina la proposta di A', 'bloccato', B, 'DELETE', f'proposals/{pid}')
+
+    # Viaggio senza data (0.7.0): type 'trip', costo, posti; le opzioni sono periodi "partenza~ritorno"
+    tpid = f'claudetesttp_{now}'
+    tp = {'id': tpid, 'type': 'trip', 'title': 'Viaggio da fissare', 'cost': 1200, 'maxParticipants': 8, 'notes': 'passaporto',
+          'color': 'color-trip', 'creatorId': A['uid'], 'creatorName': 'ProvaA', 'createdAt': now,
+          'dateOptions': {'2099-06-01~2099-06-07': opt(A)}}
+    check('A crea un viaggio senza data con un periodo', 'permesso', A, 'PUT', f'proposals/{tpid}', tp)
+    check('Viaggio senza data: tipo diverso', 'bloccato', A, 'PUT', f'proposals/{tpid}/type', 'crociera')
+    check('Viaggio senza data: costo 100000', 'bloccato', A, 'PUT', f'proposals/{tpid}/cost', 100000)
+    check('A (creatore) cambia il costo', 'permesso', A, 'PUT', f'proposals/{tpid}/cost', 999.5)
+    check('A (creatore) mette giorni, partenza da e destinazione', 'permesso', A, 'PATCH', f'proposals/{tpid}', {'days': 7, 'origin': 'Roma', 'destination': 'Sardegna'})
+    check('Viaggio senza data: 61 giorni', 'bloccato', A, 'PUT', f'proposals/{tpid}/days', 61)
+    check('Viaggio senza data: giorni con la virgola', 'bloccato', A, 'PUT', f'proposals/{tpid}/days', 2.5)
+    check('B cambia la destinazione del viaggio di A', 'bloccato', B, 'PUT', f'proposals/{tpid}/destination', 'Altrove')
+    check('B cambia il costo del viaggio di A', 'bloccato', B, 'PUT', f'proposals/{tpid}/cost', 1)
+    check('B cambia i posti del viaggio di A', 'bloccato', B, 'PUT', f'proposals/{tpid}/maxParticipants', 2)
+    check('B propone un periodo', 'permesso', B, 'PUT', f'proposals/{tpid}/dateOptions/2099-07-01~2099-07-03', opt(B))
+    check('B: periodo con chiave non valida', 'bloccato', B, 'PUT', f'proposals/{tpid}/dateOptions/2099-07-01~luglio', opt(B))
+    check('B vota un periodo', 'permesso', B, 'PUT', f'proposals/{tpid}/votes/2099-07-01~2099-07-03/{B["uid"]}', {'name': 'ProvaB', 'deviceId': B['uid']})
+    check('A fissa un periodo (blocco)', 'permesso', A, 'PUT', f'proposals/{tpid}/fixedDate', '2099-07-01~2099-07-03')
+    check('A crea il viaggio fissato con B partecipante', 'permesso', A, 'PUT', f'events/{tpid}', {
+        'id': tpid, 'type': 'trip', 'date': '2099-07-01', 'endDate': '2099-07-03', 'title': 'Viaggio da fissare', 'cost': 999.5,
+        'maxParticipants': 8, 'notes': 'passaporto', 'color': 'color-trip', 'participants': {B['uid']: True},
+        'creatorId': A['uid'], 'createdAt': now})
+    check('A toglie la proposta fissata', 'permesso', A, 'DELETE', f'proposals/{tpid}')
+    check('A elimina il viaggio fissato', 'permesso', A, 'PATCH', '', {f'events/{tpid}': None, f'eventChats/{tpid}': None})
 
     # "Fissa questa data" come fa l'app: blocco fixedDate, evento con lo stesso id e i votanti, poi via la proposta
     fid = f'claudetestf_{now}'
@@ -332,9 +412,10 @@ finally:
                 continue
             owner = A if item.get('creatorId') == A['uid'] else (B if item.get('creatorId') == B['uid'] else ADM)
             if owner:
-                db(owner, 'PATCH', '', {f'{node}/{key}': None, f'eventChats/{key}': None, f'eventImages/{key}': None})
+                extra = {f'itineraries/{key}': None, f'itineraryDays/{key}': None} if (node == 'events' and item.get('type') == 'trip') else {}
+                db(owner, 'PATCH', '', {f'{node}/{key}': None, f'eventChats/{key}': None, f'eventImages/{key}': None, **extra})
     left = []
-    for path in [f'events/{eid}', f'proposals/{pid}', f'eventChats/{eid}', f'eventChats/{pid}', f'eventImages/{eid}', f'events/{fid}', f'proposals/{fid}', f'eventChats/{fid}']:
+    for path in [f'events/{eid}', f'proposals/{pid}', f'eventChats/{eid}', f'eventChats/{pid}', f'eventImages/{eid}', f'events/{fid}', f'proposals/{fid}', f'eventChats/{fid}', f'events/{tid}', f'itineraries/{tid}', f'itineraryDays/{tid}', f'proposals/{tpid}', f'events/{tpid}']:
         st, val = db(A, 'GET', path)
         if val is not None: left.append(path)
     db(ADM, 'PATCH', '', {f'approved/{A["uid"]}': None, f'approved/{B["uid"]}': None})  # per ultime, dopo i controlli

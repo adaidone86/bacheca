@@ -341,6 +341,11 @@
             <form id="noteForm" novalidate>
                 <!-- Tab: Evento -->
                 <div id="evento-tab" class="modal-tab-content active edit-compact">
+                    <div class="event-type-choice" id="eventTypeChoice">
+                        <button type="button" class="event-type-btn active" data-type="event">📌 Evento</button>
+                        <button type="button" class="event-type-btn" data-type="trip">✈️ Viaggio</button>
+                    </div>
+                    <div id="eventFieldsBlock">
                     <div class="form-group">
                         <div id="eventLinkContainer" class="edit-row">
                             <button type="button" id="eventLinkOpenBtn" style="flex: 1; min-width: 0; height: 40px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: white; background: #2196F3;">🌐 Vai sul sito</button>
@@ -429,6 +434,55 @@
                         <label for="eventNotes">📝 Note aggiuntive</label>
                         <textarea id="eventNotes" maxlength="500" placeholder="Es: con cena cantata! 📞 Prenotazioni..."></textarea>
                     </div>
+                    </div>
+                <!-- Campi del viaggio (0.7.0): gli eventi hanno i loro, qui sopra -->
+                <div id="tripFieldsBlock" style="display: none;">
+                    <div class="form-group">
+                        <label for="tripTitle">✈️ Nome del viaggio</label>
+                        <input type="text" id="tripTitle" maxlength="100" placeholder="Es: WEEKEND A NAPOLI">
+                    </div>
+
+                    <div class="edit-row">
+                        <div class="form-group">
+                            <label for="tripOrigin">📍 Partenza da</label>
+                            <input type="text" id="tripOrigin" maxlength="100" placeholder="Es: Roma">
+                        </div>
+                        <div class="form-group">
+                            <label for="tripDestination">🏁 Destinazione</label>
+                            <input type="text" id="tripDestination" maxlength="100" placeholder="Es: Napoli">
+                        </div>
+                    </div>
+
+                    <div class="edit-row">
+                        <div class="form-group">
+                            <label for="tripDate">🛫 Partenza</label>
+                            <input type="date" id="tripDate">
+                        </div>
+                        <div class="form-group">
+                            <label for="tripEndDate" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">🛬 Ritorno <span id="tripDaysHint" class="trip-days-hint"></span></label>
+                            <input type="date" id="tripEndDate">
+                        </div>
+                    </div>
+
+                    <div class="edit-row">
+                        <div class="form-group">
+                            <label for="tripCost" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">💶 Budget a persona</label>
+                            <div style="position: relative;">
+                                <input type="text" id="tripCost" maxlength="9" inputmode="decimal" placeholder="Da definire" style="padding-right: 28px;">
+                                <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: #666; pointer-events: none;">€</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="tripMax">👥 Max. partecipanti</label>
+                            <input type="number" id="tripMax" min="0" max="999" step="1" inputmode="numeric" placeholder="Chiunque">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="tripNeeds">🎒 Esigenze specifiche</label>
+                        <textarea id="tripNeeds" maxlength="500" placeholder="Es: documento d'identità valido, solo bagaglio a mano..."></textarea>
+                    </div>
+                </div>
                 </div>
 
                 <div class="modal-buttons">
@@ -487,6 +541,10 @@
                     <label class="color-checkbox">
                         <input type="checkbox" class="color-filter" data-color="color-orange" checked>
                         <span class="color-filter-label" style="background: #ffb74d; color: white;">🏞️ Escursioni</span>
+                    </label>
+                    <label class="color-checkbox">
+                        <input type="checkbox" class="color-filter" data-color="color-trip" checked>
+                        <span class="color-filter-label" style="background: #3949ab; color: white;">✈️ Viaggi</span>
                     </label>
                 </div>
             </div>
@@ -584,6 +642,7 @@
 
             <!-- Creazione -->
             <form id="proposalCreateForm" class="edit-compact" novalidate>
+                <div id="proposalEventFields">
                 <div class="form-group">
                     <div id="proposalLinkContainer" class="edit-row">
                         <button type="button" id="proposalLinkOpenBtn" style="flex: 1; min-width: 0; height: 40px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: white; background: #2196F3;">🌐 Vai sul sito</button>
@@ -677,6 +736,68 @@
                     </div>
                 </div>
                 </div>
+                </div>
+
+                <!-- Viaggio senza data (0.7.0): campi del viaggio; le date proposte sono periodi (partenza e ritorno) -->
+                <div id="proposalTripFields" style="display: none;">
+                    <div class="form-group">
+                        <label for="proposalTripTitle">✈️ Nome del viaggio</label>
+                        <input type="text" id="proposalTripTitle" maxlength="100" placeholder="Es: VACANZA IN SARDEGNA">
+                    </div>
+
+                    <div class="edit-row">
+                        <div class="form-group">
+                            <label for="proposalTripOrigin">📍 Partenza da</label>
+                            <input type="text" id="proposalTripOrigin" maxlength="100" placeholder="Es: Roma">
+                        </div>
+                        <div class="form-group">
+                            <label for="proposalTripDestination">🏁 Destinazione</label>
+                            <input type="text" id="proposalTripDestination" maxlength="100" placeholder="Es: Sardegna del nord">
+                        </div>
+                    </div>
+
+                    <div class="edit-row">
+                        <div class="form-group">
+                            <label for="proposalTripDays">🗓️ Numero di giorni</label>
+                            <input type="number" id="proposalTripDays" min="1" max="60" step="1" inputmode="numeric" placeholder="Da decidere">
+                        </div>
+                        <div class="form-group"></div>
+                    </div>
+
+                    <div class="edit-row">
+                        <div class="form-group">
+                            <label for="proposalTripCost" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">💶 Budget a persona</label>
+                            <div style="position: relative;">
+                                <input type="text" id="proposalTripCost" maxlength="9" inputmode="decimal" placeholder="Da definire" style="padding-right: 28px;">
+                                <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: #666; pointer-events: none;">€</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="proposalTripMax">👥 Max. partecipanti</label>
+                            <input type="number" id="proposalTripMax" min="0" max="999" step="1" inputmode="numeric" placeholder="Chiunque">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="proposalTripNeeds">🎒 Esigenze specifiche</label>
+                        <textarea id="proposalTripNeeds" maxlength="500" placeholder="Es: documento d'identità valido, solo bagaglio a mano..."></textarea>
+                    </div>
+
+                    <div id="proposalTripFirstSection">
+                    <div style="border-top: 1px solid rgba(255,255,255,0.35); margin: 4px 0 8px 0;"></div>
+                    <p style="margin: 0 0 10px 0; font-size: 0.8rem; opacity: 0.85;">Il periodo è facoltativo: i periodi si possono proporre e votare anche dopo.</p>
+                    <div class="edit-row">
+                        <div class="form-group">
+                            <label for="proposalTripFirstDate" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">🛫 Partenza</label>
+                            <input type="date" id="proposalTripFirstDate">
+                        </div>
+                        <div class="form-group">
+                            <label for="proposalTripFirstEndDate" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">🛬 Ritorno <span id="proposalTripFirstDaysHint" class="trip-days-hint"></span></label>
+                            <input type="date" id="proposalTripFirstEndDate">
+                        </div>
+                    </div>
+                    </div>
+                </div>
 
                 <div class="modal-buttons" style="padding: 0;">
                     <button type="submit" class="btn-save" id="proposalSubmitBtn" style="background: #4CAF50; color: white;">Crea proposta</button>
@@ -695,9 +816,10 @@
                 <div id="proposalDatesPane">
                     <div id="proposalDetails" style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 12px; margin-bottom: 16px; font-size: 0.95rem;"></div>
 
-                    <div style="font-weight: 600; margin-bottom: 8px;">📅 Date proposte</div>
+                    <div id="proposalOptionsLabel" style="font-weight: 600; margin-bottom: 8px;">📅 Date proposte</div>
                     <div id="proposalOptionsList" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px;"></div>
 
+                    <div id="proposalNewDateBlock">
                     <!-- Tutti possono proporre una data, con l'ora facoltativa -->
                     <div style="display: flex; gap: 8px; margin-bottom: 8px;">
                         <input type="date" id="proposalNewDate" style="flex: 1.4; min-width: 0; padding: 8px; border: 2px solid #eee; border-radius: 8px; font-size: 1rem;">
@@ -705,6 +827,21 @@
                         <button type="button" id="proposalAddDateBtn" style="padding: 8px 14px; background: #FF9800; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; white-space: nowrap;">➕ Proponi</button>
                     </div>
                     <p style="font-size: 0.8rem; opacity: 0.85; margin: 0 0 16px 0;">Proponi una data (l'ora è facoltativa) e vota tutte quelle in cui puoi esserci. Chi ha creato la proposta fissa la data più votata: l'evento finisce nel calendario e chi ha votato quella data diventa partecipante.</p>
+                    </div>
+
+                    <!-- Viaggio senza data: tutti possono proporre un periodo (partenza e ritorno) -->
+                    <div id="proposalNewTripBlock" style="display: none;">
+                    <div style="display: flex; gap: 8px; margin-bottom: 8px; align-items: flex-end;">
+                        <label style="flex: 1; min-width: 0; font-size: 0.8rem;">🛫 Partenza
+                            <input type="date" id="proposalNewTripDate" style="width: 100%; box-sizing: border-box; padding: 8px; border: 2px solid #eee; border-radius: 8px; font-size: 1rem;">
+                        </label>
+                        <label style="flex: 1; min-width: 0; font-size: 0.8rem;">🛬 Ritorno <span id="proposalNewTripDaysHint" class="trip-days-hint"></span>
+                            <input type="date" id="proposalNewTripEndDate" style="width: 100%; box-sizing: border-box; padding: 8px; border: 2px solid #eee; border-radius: 8px; font-size: 1rem;">
+                        </label>
+                    </div>
+                    <button type="button" id="proposalAddTripDateBtn" style="width: 100%; padding: 9px 14px; margin-bottom: 8px; background: #FF9800; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">➕ Proponi questo periodo</button>
+                    <p style="font-size: 0.8rem; opacity: 0.85; margin: 0 0 16px 0;">Proponi un periodo (partenza e ritorno) e vota tutti quelli in cui puoi esserci. Chi ha creato la proposta fissa il periodo più votato: il viaggio finisce nel calendario e chi ha votato quel periodo diventa partecipante.</p>
+                    </div>
                 </div>
 
                 <div id="proposalChatPane" style="display: none; margin-bottom: 16px;">
@@ -745,6 +882,65 @@
         .event-form-modal .category-option input { display: none; }
         .event-form-modal .category-option:has(input:checked) { outline: 3px solid #333; outline-offset: -3px; }
         .cover-toggle-btn { background: none; border: none; color: white; font-size: inherit; font-weight: inherit; cursor: pointer; padding: 0; text-shadow: inherit; }
+        /* Evento o viaggio (0.7.0) */
+        /* Il riquadro bianco scivola sotto il pulsante scelto */
+        .event-type-choice { position: relative; display: flex; gap: 6px; margin-bottom: 12px; padding: 4px; background: rgba(0,0,0,0.12); border-radius: 10px; }
+        .event-type-choice::before { content: ''; position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 7px); background: #fff; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .event-type-choice.trip::before { transform: translateX(calc(100% + 6px)); }
+        .event-type-btn { position: relative; z-index: 1; flex: 1; height: 36px; border: none; border-radius: 8px; background: transparent; color: white; font-weight: 600; font-size: 0.95rem; cursor: pointer; transition: color 0.3s ease; }
+        .event-type-btn.active { color: #4a3aa8; }
+        .cover-toggle-btn:disabled { cursor: default; color: white; opacity: 1; }
+        /* Striscia dei viaggi nel calendario (0.7.0): una per riga della settimana, il nome al centro */
+        .days-grid { --strip-h: 22px; --strip-top: 38px; --strip-font: 0.8rem; }
+        .trip-strip { position: relative; z-index: 3; align-self: start; min-width: 0; height: var(--strip-h); margin: calc(var(--strip-top) + var(--lane, 0) * (var(--strip-h) + 3px)) 0 0 0; padding: 0 8px; display: flex; align-items: center; justify-content: center; font-size: var(--strip-font); font-weight: 600; white-space: nowrap; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.25); box-sizing: border-box; }
+        .trip-strip span { overflow: hidden; text-overflow: ellipsis; }
+        .trip-strip.starts { margin-left: 6px; border-top-left-radius: 9px; border-bottom-left-radius: 9px; }
+        .trip-strip.ends { margin-right: 6px; border-top-right-radius: 9px; border-bottom-right-radius: 9px; }
+        .trip-strip.past { opacity: 0.5; cursor: default; pointer-events: none; }
+        .day .notes-container { margin-top: calc(var(--trip-lanes, 0) * (var(--strip-h) + 3px)); }
+        @media (max-width: 768px) {
+            .days-grid { --strip-h: 13px; --strip-top: 19px; --strip-font: 0.55rem; }
+            .trip-strip { padding: 0 3px; box-shadow: none; }
+            .trip-strip.starts { margin-left: 3px; border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
+            .trip-strip.ends { margin-right: 3px; border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
+            .trip-strip[data-lane="2"], .trip-strip[data-lane="3"] { display: none; } /* sul telefono al massimo 2 viaggi per riga: gli altri nel numerino */
+        }
+        .trip-days-hint { font-weight: 400; opacity: 0.85; }
+        .day-modal-section { margin: 4px 0 0; font-size: 0.8rem; font-weight: 700; color: #4a3aa8; text-transform: uppercase; letter-spacing: 0.03em; }
+        .event-form-modal .edit-compact input[type="number"] { width: 100%; height: 40px; padding: 0 10px; border: 2px solid #eee; border-radius: 8px; font-size: 0.95rem; box-sizing: border-box; }
+        /* Itinerario del viaggio */
+        .itinerary-hint { margin: 0 0 10px; font-size: 0.85rem; opacity: 0.85; }
+        .itinerary-day { background: #fff; color: #333; border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.12); }
+        .itinerary-day.after-return { opacity: 0.7; }
+        .itinerary-day-title { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; color: #4a3aa8; font-size: 0.95rem; margin-bottom: 6px; }
+        .itinerary-day-cost { flex: 0 0 auto; font-size: 0.82rem; color: #2e7d32; }
+        .itinerary-day-info { display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px; margin-bottom: 4px; background: #f7f8ff; border-radius: 8px; font-size: 0.85rem; color: #444; }
+        .itinerary-day-add { width: 100%; margin-bottom: 4px; padding: 6px; border: 1px dashed #c5cbf5; background: transparent; color: #4a3aa8; border-radius: 8px; font-size: 0.82rem; cursor: pointer; }
+        .itinerary-stop-cost { font-weight: 600; font-size: 0.8rem; color: #2e7d32; white-space: nowrap; }
+        .itinerary-total { margin-bottom: 10px; padding: 8px 12px; background: #e8f5e9; color: #1b5e20; border-radius: 10px; font-size: 0.88rem; }
+        .itinerary-total.over { background: #ffebee; color: #b71c1c; }
+        .itinerary-stop { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; border-top: 1px solid #eee; }
+        .itinerary-stop:first-of-type { border-top: none; }
+        .itinerary-time { flex: 0 0 44px; font-weight: 700; font-size: 0.85rem; color: #667eea; padding-top: 1px; }
+        .itinerary-body { flex: 1; min-width: 0; }
+        .itinerary-place { font-weight: 600; font-size: 0.92rem; }
+        .itinerary-note { font-size: 0.85rem; color: #555; white-space: pre-wrap; }
+        .itinerary-by { font-size: 0.72rem; color: #999; margin-top: 2px; }
+        .itinerary-actions { flex: 0 0 auto; display: flex; gap: 4px; }
+        .itinerary-actions button { border: none; background: #f0f0f0; border-radius: 6px; width: 30px; height: 30px; cursor: pointer; font-size: 0.85rem; }
+        .itinerary-empty { font-size: 0.82rem; color: #999; }
+        .itinerary-add { width: 100%; margin-top: 6px; padding: 7px; border: 2px dashed #c5cbf5; background: #f7f8ff; color: #4a3aa8; border-radius: 8px; font-weight: 600; cursor: pointer; }
+        .itinerary-form { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding: 8px; background: #f7f8ff; border-radius: 8px; }
+        .itinerary-form .itinerary-form-row { display: flex; gap: 6px; }
+        .itinerary-form textarea { width: 100%; min-height: 64px; padding: 6px 8px; border: 2px solid #ddd; border-radius: 6px; font-size: 0.92rem; font-family: inherit; box-sizing: border-box; resize: vertical; }
+        .itinerary-plan { white-space: pre-wrap; margin-bottom: 2px; color: #333; }
+        .itinerary-form input { min-width: 0; width: 100%; height: 38px; padding: 0 8px; border: 2px solid #ddd; border-radius: 6px; font-size: 0.92rem; box-sizing: border-box; }
+        .itinerary-form input[type="time"] { flex: 0 0 96px; width: 96px; }
+        .itinerary-form input.itinerary-place-input { flex: 1; }
+        .itinerary-form input.field-error { border-color: #e53935; }
+        .itinerary-form-msg { font-size: 0.8rem; color: #e53935; min-height: 0; }
+        .itinerary-form-buttons { display: flex; gap: 6px; }
+        .itinerary-form-buttons button { flex: 1; height: 36px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; }
     </style>
     <div class="modal event-form-modal" id="editModal">
         <div class="modal-content">
@@ -773,11 +969,13 @@
                 <div class="modal-tabs" style="margin-top: 15px;">
                     <button class="modal-tab active" data-tab="edit-evento-tab" style="background: rgba(255,255,255,0.9); color: #667eea;">📌 Evento</button>
                     <button class="modal-tab" id="editParticipantsTabBtn" data-tab="edit-participants-tab" style="background: rgba(255,255,255,0.7); color: #333;">👥 Partecipanti</button>
+                    <button class="modal-tab" id="editItineraryTabBtn" data-tab="edit-itinerary-tab" style="display: none; background: rgba(255,255,255,0.7); color: #333;">🗺️ Itinerario</button>
                 </div>
             </div>
             <form id="editForm" novalidate>
                 <!-- Tab: Evento -->
                 <div id="edit-evento-tab" class="modal-tab-content active edit-compact">
+                    <div id="editEventFieldsBlock">
                     <div class="form-group">
                         <div id="editLinkContainer" class="edit-row">
                             <button type="button" id="editLinkOpenBtn" style="flex: 1; min-width: 0; height: 40px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: white; background: #2196F3;">🌐 Vai sul sito</button>
@@ -866,6 +1064,55 @@
                         <label for="editNotes">📝 Note aggiuntive</label>
                         <textarea id="editNotes" maxlength="500"></textarea>
                     </div>
+                    </div>
+                <!-- Campi del viaggio (0.7.0): gli eventi hanno i loro, qui sopra -->
+                <div id="editTripFieldsBlock" style="display: none;">
+                    <div class="form-group">
+                        <label for="editTripTitle">✈️ Nome del viaggio</label>
+                        <input type="text" id="editTripTitle" maxlength="100" placeholder="Es: WEEKEND A NAPOLI">
+                    </div>
+
+                    <div class="edit-row">
+                        <div class="form-group">
+                            <label for="editTripOrigin">📍 Partenza da</label>
+                            <input type="text" id="editTripOrigin" maxlength="100" placeholder="Es: Roma">
+                        </div>
+                        <div class="form-group">
+                            <label for="editTripDestination">🏁 Destinazione</label>
+                            <input type="text" id="editTripDestination" maxlength="100" placeholder="Es: Napoli">
+                        </div>
+                    </div>
+
+                    <div class="edit-row">
+                        <div class="form-group">
+                            <label for="editTripDate">🛫 Partenza</label>
+                            <input type="date" id="editTripDate">
+                        </div>
+                        <div class="form-group">
+                            <label for="editTripEndDate" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">🛬 Ritorno <span id="editTripDaysHint" class="trip-days-hint"></span></label>
+                            <input type="date" id="editTripEndDate">
+                        </div>
+                    </div>
+
+                    <div class="edit-row">
+                        <div class="form-group">
+                            <label for="editTripCost" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">💶 Budget a persona</label>
+                            <div style="position: relative;">
+                                <input type="text" id="editTripCost" maxlength="9" inputmode="decimal" placeholder="Da definire" style="padding-right: 28px;">
+                                <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: #666; pointer-events: none;">€</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="editTripMax">👥 Max. partecipanti</label>
+                            <input type="number" id="editTripMax" min="0" max="999" step="1" inputmode="numeric" placeholder="Chiunque">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editTripNeeds">🎒 Esigenze specifiche</label>
+                        <textarea id="editTripNeeds" maxlength="500" placeholder="Es: documento d'identità valido, solo bagaglio a mano..."></textarea>
+                    </div>
+                </div>
                 </div>
 
                 <!-- Tab: Partecipanti -->
@@ -892,6 +1139,12 @@
                             <button type="button" id="chatSendBtn" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Invia</button>
                         </div>
                     </div>
+                </div>
+
+                <!-- Tab: Itinerario (solo viaggi): tappe divise per giorno, le scrivono i partecipanti -->
+                <div id="edit-itinerary-tab" class="modal-tab-content">
+                    <p id="itineraryHint" class="itinerary-hint"></p>
+                    <div id="itineraryDays"></div>
                 </div>
 
                 <div class="modal-buttons">

@@ -1,0 +1,54 @@
+🆕 Versione 0.7.0
+
+✨ NOVITÀ
+
+   ✈️ Viaggi
+      • Quando crei un evento, in alto scegli "✈️ Viaggio"
+      • Il viaggio ha i suoi campi: nome del viaggio, partenza da
+        e destinazione, date di partenza e ritorno (accanto vedi
+        quanti giorni dura), budget a persona, numero massimo
+        di partecipanti (vuoto = chiunque) ed esigenze specifiche
+      • Va bene per un weekend di 2 o 3 giorni come per
+        una vacanza di una o due settimane (al massimo 60 giorni)
+      • Nel calendario il viaggio è una striscia unica che unisce
+        i giorni dalla partenza al ritorno, con il nome al centro:
+        se continua nella settimana dopo, il nome si ripete
+      • Toccando un giorno vedi prima i viaggi e poi gli eventi
+      • Nella lista vedi "Dal … al …", quanti giorni dura,
+        da dove a dove, il budget e quanti posti sono occupati
+      • Quando i posti finiscono compare "🚫 Posti esauriti"
+      • In ⚙️ → 🎨 Visualizzazione puoi nascondere i viaggi
+      • Partecipanti e chat funzionano come per gli eventi
+      • Chi ha creato il viaggio può spostarlo tutto insieme:
+        cambiando la partenza o trascinandolo nel calendario
+        (dal PC), anche il ritorno si sposta
+
+   🗳️ Viaggio senza data
+      • Nel riquadro 🗳️ Da fissare, accanto a "Evento senza data",
+        c'è "✈️ Viaggio senza data": per un viaggio di cui
+        non sapete ancora il periodo
+      • Si possono già scrivere partenza da, destinazione,
+        budget a persona e numero di giorni
+      • Invece delle date si propongono periodi (partenza e ritorno)
+        e ognuno vota quelli in cui c'è con "👍 Ci sono":
+        se i giorni sono decisi, scegli la partenza
+        e il ritorno si mette da solo
+      • Chi ha creato la proposta tocca "📅 Fissa questo periodo":
+        il viaggio va nel calendario e chi ha votato
+        quel periodo diventa partecipante
+
+   🗺️ Itinerario
+      • Apri il viaggio e vai sulla scheda 🗺️ Itinerario:
+        i giorni del viaggio uno sotto l'altro (Giorno 1, Giorno 2…)
+      • In ogni giorno tocca "📝 Programma del giorno" per scrivere
+        cosa si fa, come ci si sposta e dove si dorme quella notte
+      • Tocca "➕ Tappa" e scrivi l'ora (facoltativa), dove, una nota
+        e, se vuoi, quanto costa a persona (es. 09:00 · Museo · 15 €)
+      • In cima vedi quanto costano in tutto le tappe a persona
+        rispetto al budget del viaggio: verde se ci stai dentro,
+        rosso se lo superi
+      • Le tappe le scrivono tutti i partecipanti: si vede
+        chi ha aggiunto ognuna, e si possono correggere ✏️
+        o togliere 🗑️
+      • Se il viaggio si sposta, le tappe restano
+        al loro giorno del viaggio
